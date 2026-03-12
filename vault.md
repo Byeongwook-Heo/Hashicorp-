@@ -170,4 +170,4 @@ vault token lookup
 - 감사 로그(Audit Device) 활성화
 - 백업/복구 리허설 수행
 
-필요하면 다음 단계로 Kubernetes(Auth Method), AppRole, Dynamic Secrets(DB/Cloud)까지 확장 가이드를 추가할 수 있습니다.
+
