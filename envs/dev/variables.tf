@@ -157,7 +157,7 @@ variable "db_max_allocated_storage" {
 variable "db_engine_version" {
   description = "PostgreSQL engine version."
   type        = string
-  default     = "16.4"
+  default     = "16.14"
 }
 
 variable "db_parameter_group_family" {
@@ -183,4 +183,3 @@ variable "db_skip_final_snapshot" {
   type        = bool
   default     = true
 }
-
