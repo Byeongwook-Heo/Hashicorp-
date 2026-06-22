@@ -24,3 +24,22 @@ output "rds_secret_arn" {
   sensitive   = true
 }
 
+output "vault_instance_ids" {
+  description = "Vault Enterprise EC2 instance IDs."
+  value       = module.vault_enterprise.instance_ids
+}
+
+output "vault_private_ips" {
+  description = "Vault Enterprise private IPs."
+  value       = module.vault_enterprise.private_ips
+}
+
+output "vault_private_api_urls" {
+  description = "Vault Enterprise private API URLs."
+  value       = module.vault_enterprise.private_api_urls
+}
+
+output "vault_init_parameter_name" {
+  description = "SSM SecureString parameter name containing Vault init output."
+  value       = module.vault_enterprise.init_parameter_name
+}

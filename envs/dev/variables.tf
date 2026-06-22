@@ -183,3 +183,39 @@ variable "db_skip_final_snapshot" {
   type        = bool
   default     = true
 }
+
+variable "vault_node_count" {
+  description = "Number of Vault Enterprise EC2 nodes."
+  type        = number
+  default     = 3
+}
+
+variable "vault_instance_type" {
+  description = "EC2 instance type for Vault Enterprise nodes."
+  type        = string
+  default     = "t4g.2xlarge"
+}
+
+variable "vault_root_volume_size" {
+  description = "Root EBS volume size in GiB for Vault Enterprise nodes."
+  type        = number
+  default     = 100
+}
+
+variable "vault_license_parameter_name" {
+  description = "SSM SecureString parameter name containing the Vault Enterprise license."
+  type        = string
+  default     = "/hashicorp-lab/dev/vault/license"
+}
+
+variable "vault_init_parameter_name" {
+  description = "SSM SecureString parameter name for storing Vault init output."
+  type        = string
+  default     = "/hashicorp-lab/dev/vault/init"
+}
+
+variable "vault_api_allowed_cidrs" {
+  description = "CIDR blocks allowed to access Vault API port 8200."
+  type        = list(string)
+  default     = ["10.40.0.0/16"]
+}

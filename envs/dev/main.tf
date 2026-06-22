@@ -95,3 +95,21 @@ module "data" {
   tags                   = local.default_tags
 }
 
+module "vault_enterprise" {
+  source = "../../modules/vault-enterprise"
+
+  name_prefix                  = local.name_prefix
+  aws_region                   = var.aws_region
+  vpc_id                       = module.network.vpc_id
+  vpc_cidr                     = var.vpc_cidr
+  subnet_ids                   = module.network.app_private_subnet_ids
+  ami_id                       = var.ami_id
+  instance_type                = var.vault_instance_type
+  key_name                     = var.key_name
+  node_count                   = var.vault_node_count
+  root_volume_size             = var.vault_root_volume_size
+  vault_license_parameter_name = var.vault_license_parameter_name
+  vault_init_parameter_name    = var.vault_init_parameter_name
+  vault_api_allowed_cidrs      = var.vault_api_allowed_cidrs
+  tags                         = local.default_tags
+}
