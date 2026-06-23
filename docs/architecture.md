@@ -28,93 +28,115 @@ flowchart TB
 ## 2. AWS 전체 구성도
 
 ```mermaid
-flowchart TB
+flowchart LR
   USER["Internet Client"]
 
   subgraph AWS["AWS Account 063455554839 / Region ap-northeast-2"]
     subgraph VPC["VPC: vpc-0faaeb5858901d385 / 10.40.0.0/16"]
-      IGW["Internet Gateway: igw-00ab287079b961349"]
-      ALB["ALB: hashicorp-lab-dev-alb"]
-      TG["Target Group: hashicorp-lab-dev-app-tg / HTTP 8080"]
-
-      subgraph AZA["AZ: ap-northeast-2a"]
-        PUBA["Public Subnet: subnet-068dffa0960dbcffd / 10.40.0.0/24"]
-        NATA["NAT Gateway: nat-055071e22c99f9c63 / 43.201.225.26"]
-        APPA["App Private Subnet: subnet-026ffcc7ad4b697c6 / 10.40.10.0/24"]
-        EC2A["EC2: i-08450f25c585819e4 / t4g.2xlarge / 10.40.10.73"]
-        VAULT1["Vault Enterprise: i-0711d6a1adb0e1609 / leader / 10.40.10.202"]
-        VAULT3["Vault Enterprise: i-013740958d1b26329 / standby / 10.40.10.147"]
-        DBA["DB Private Subnet: subnet-07e488fded4534ef2 / 10.40.20.0/24"]
+      subgraph PUBLIC["Public Subnets"]
+        IGW["Internet Gateway"]
+        ALB["ALB: hashicorp-lab-dev-alb"]
+        TG["Target Group: HTTP 8080"]
+        NAT["NAT Gateways"]
       end
 
-      subgraph AZC["AZ: ap-northeast-2c"]
-        PUBC["Public Subnet: subnet-068a968f3426594db / 10.40.1.0/24"]
-        NATC["NAT Gateway: nat-043cd9721598266d0 / 15.164.15.171"]
-        APPC["App Private Subnet: subnet-06c50448784244f83 / 10.40.11.0/24"]
-        EC2C["EC2: i-00ff48dc6e30fa13e / t4g.2xlarge / 10.40.11.47"]
-        VAULT2["Vault Enterprise: i-01d934cd430ab6576 / standby / 10.40.11.68"]
-        DBC["DB Private Subnet: subnet-0cd8afeeca0ace850 / 10.40.21.0/24"]
+      subgraph APP["Private App Subnets"]
+        APPA["App EC2: ap-northeast-2a / 10.40.10.73"]
+        APPC["App EC2: ap-northeast-2c / 10.40.11.47"]
       end
 
-      RDS["RDS PostgreSQL: hashicorp-lab-dev-postgres / db.t4g.2xlarge / Multi-AZ"]
-      KMS["AWS KMS: alias/hashicorp-lab-dev-vault-unseal"]
-      SSM["SSM SecureString: Vault license and init output"]
+      subgraph VAULT["Vault Enterprise Private Subnets"]
+        VAULTAPI["Vault API Endpoint: 8200"]
+        VAULTRAFT["Vault Raft Cluster: 3 nodes / 8201"]
+      end
+
+      subgraph DATA["Private DB Subnets"]
+        RDS["RDS PostgreSQL Multi-AZ"]
+      end
+
+      subgraph AWSCTRL["AWS Control Plane"]
+        KMS["KMS Auto-unseal Key"]
+        SSM["SSM SecureString"]
+      end
     end
   end
 
   USER -->|"HTTP 80"| ALB
+  IGW --> ALB
   ALB --> TG
-  TG -->|"HTTP 8080"| EC2A
-  TG -->|"HTTP 8080"| EC2C
-  EC2A -->|"PostgreSQL 5432"| RDS
-  EC2C -->|"PostgreSQL 5432"| RDS
-  EC2A -->|"Vault API 8200"| VAULT1
-  EC2C -->|"Vault API 8200"| VAULT1
-  VAULT1 <-->|"Raft 8201"| VAULT2
-  VAULT1 <-->|"Raft 8201"| VAULT3
-  VAULT2 <-->|"Raft 8201"| VAULT3
-  VAULT1 -->|"Auto-unseal"| KMS
-  VAULT2 -->|"Auto-unseal"| KMS
-  VAULT3 -->|"Auto-unseal"| KMS
-  VAULT1 -->|"License and init bootstrap"| SSM
-  VAULT2 -->|"License bootstrap"| SSM
-  VAULT3 -->|"License bootstrap"| SSM
-  EC2A -->|"Outbound update/install"| NATA
-  EC2C -->|"Outbound update/install"| NATC
-  NATA --> IGW
-  NATC --> IGW
-  IGW --> USER
-  RDS --- DBA
-  RDS --- DBC
+  TG -->|"HTTP 8080"| APPA
+  TG -->|"HTTP 8080"| APPC
+  APPA -->|"PostgreSQL 5432"| RDS
+  APPC -->|"PostgreSQL 5432"| RDS
+  APPA -->|"Vault API 8200"| VAULTAPI
+  APPC -->|"Vault API 8200"| VAULTAPI
+  VAULTAPI --> VAULTRAFT
+  VAULTRAFT -->|"Auto-unseal"| KMS
+  VAULTRAFT -->|"License and init output"| SSM
+  APPA -->|"Outbound HTTPS"| NAT
+  APPC -->|"Outbound HTTPS"| NAT
+  VAULTRAFT -->|"Outbound HTTPS"| NAT
+  NAT --> IGW
 ```
 
-## 3. 보안 그룹 관계
+## 3. Vault Enterprise 상세 구성
 
 ```mermaid
-flowchart LR
-  INTERNET["0.0.0.0/0"]
-  ALBSG["ALB SG: sg-0426535b0c315d7ec"]
-  APPSG["App SG: sg-03595a6d14b909f7f"]
-  DBSG["DB SG: sg-0fc8953d806482eb4"]
+flowchart TB
+  APP["App EC2 / Future Workloads"]
   VAULTSG["Vault SG: sg-008ac46b7cedb8ffe"]
-  VPC["VPC CIDR: 10.40.0.0/16"]
-  ALB["Application Load Balancer"]
-  APP["ASG EC2 Instances"]
-  DB["RDS PostgreSQL"]
-  VAULT["Vault Enterprise Raft Cluster"]
 
-  INTERNET -->|"Allow TCP 80"| ALBSG
-  ALBSG --> ALB
-  ALB -->|"Forward TCP 8080"| APPSG
-  APPSG --> APP
-  APP -->|"Allow TCP 5432"| DBSG
-  DBSG --> DB
-  VPC -->|"Allow TCP 8200"| VAULTSG
-  VAULTSG --> VAULT
-  VAULTSG -->|"Self allow TCP 8201"| VAULTSG
+  subgraph CLUSTER["Vault Enterprise Raft Cluster"]
+    V1["Vault 01 Leader\n10.40.10.202"]
+    Q["Raft Quorum\nTCP 8201"]
+    V2["Vault 02 Performance Standby\n10.40.11.68"]
+    V3["Vault 03 Performance Standby\n10.40.10.147"]
+  end
+
+  KMS["AWS KMS\nalias/hashicorp-lab-dev-vault-unseal"]
+  SSM["SSM SecureString\n/license and /init"]
+
+  APP -->|"TCP 8200"| VAULTSG
+  VAULTSG --> V1
+  VAULTSG --> V2
+  VAULTSG --> V3
+
+  V1 <-->|"Raft"| Q
+  V2 <-->|"Raft"| Q
+  V3 <-->|"Raft"| Q
+
+  Q -->|"Auto-unseal"| KMS
+  Q -->|"Bootstrap data"| SSM
 ```
 
-## 4. 요청 및 Vault 처리 흐름
+## 4. 보안 그룹 관계
+
+```mermaid
+flowchart TB
+  subgraph WEB["Web Request Path"]
+    INTERNET["0.0.0.0/0"]
+    ALBSG["ALB SG\nTCP 80"]
+    ALB["Application Load Balancer"]
+    APPSG["App SG\nTCP 8080 from ALB"]
+    APP["ASG EC2 Instances"]
+    DBSG["DB SG\nTCP 5432 from App"]
+    DB["RDS PostgreSQL"]
+  end
+
+  subgraph VAULTPATH["Vault Access Path"]
+    VPC["VPC CIDR\n10.40.0.0/16"]
+    VAULTSG["Vault SG\nTCP 8200 from VPC"]
+    VAULTAPI["Vault API"]
+    RAFTSG["Vault SG self rule\nTCP 8201"]
+    RAFT["Vault Raft Traffic"]
+  end
+
+  INTERNET --> ALBSG --> ALB --> APPSG --> APP --> DBSG --> DB
+  VPC --> VAULTSG --> VAULTAPI
+  VAULTSG --> RAFTSG --> RAFT
+```
+
+## 5. 요청 및 Vault 처리 흐름
 
 ```mermaid
 sequenceDiagram
@@ -142,7 +164,7 @@ sequenceDiagram
   NAT->>Internet: Outbound HTTPS
 ```
 
-## 5. 운영 메모
+## 6. 운영 메모
 
 - Vault Enterprise는 3노드 Raft 클러스터로 초기화됨.
 - Vault 리더는 `10.40.10.202`, standby는 `10.40.11.68`, `10.40.10.147`.
