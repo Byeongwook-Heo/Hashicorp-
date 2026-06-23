@@ -35,6 +35,8 @@ flowchart LR
 
 ## Smoke 결과
 
+PDF 스타일 matrix 및 1000만 개 부하 테스트 결과는 `docs/vault-benchmark-test-result-2026-06-23.md`에 정리되어 있다.
+
 ### Transit encrypt/decrypt
 
 ```text
