@@ -25,6 +25,9 @@ modules/alb/              Application Load Balancer and target group
 modules/compute/          Launch template and Auto Scaling Group
 modules/data/             RDS PostgreSQL subnet group and instance
 modules/iam/              EC2 instance profile for SSM and CloudWatch
+modules/vault-enterprise/ Vault Enterprise Raft cluster
+modules/keycloak/         Keycloak HA nodes, ALB, PostgreSQL, admin secret
+modules/mcp-server/       Private MCP server, internal ALB, API Gateway VPC Link
 docs/                     Operating notes
 aws-ec2-*/                Earlier bootstrap and one-instance lab code
 ```
@@ -33,15 +36,18 @@ aws-ec2-*/                Earlier bootstrap and one-instance lab code
 
 ```text
 Internet
-  -> Public ALB subnets
-  -> ALB
-  -> Private application subnets
-  -> Auto Scaling Group, EC2 t4g.2xlarge
-  -> Private database subnets
-  -> RDS PostgreSQL db.t4g.2xlarge
+  -> Public ALBs
+  -> App Auto Scaling Group, EC2 t4g.2xlarge
+  -> Keycloak Auto Scaling Group, EC2 t4g.2xlarge
+  -> API Gateway HTTP API
+  -> VPC Link
+  -> Internal MCP ALB
+  -> MCP Auto Scaling Group, EC2 t4g.2xlarge
+  -> Vault Enterprise Raft cluster, 3 x EC2 t4g.2xlarge
+  -> PostgreSQL RDS Multi-AZ databases, db.t4g.2xlarge
 ```
 
-The default design uses two Availability Zones, public subnets for the ALB, private subnets for application instances, and isolated private subnets for RDS.
+The default design uses two Availability Zones, public subnets for public ALBs and NAT gateways, private application subnets for EC2 workloads, and isolated private database subnets for RDS.
 
 ## Workflows
 
@@ -60,4 +66,3 @@ The code is prepared for HCP Terraform organization `hashicorp_lab` and workspac
 ## Secrets
 
 Do not commit AWS credentials, `.tfvars`, Terraform state, private keys, or license files. Those are excluded by `.gitignore`.
-

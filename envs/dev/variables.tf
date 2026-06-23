@@ -219,3 +219,111 @@ variable "vault_api_allowed_cidrs" {
   type        = list(string)
   default     = ["10.40.0.0/16"]
 }
+
+variable "keycloak_node_count" {
+  description = "Number of Keycloak EC2 nodes."
+  type        = number
+  default     = 2
+}
+
+variable "keycloak_instance_type" {
+  description = "EC2 instance type for Keycloak nodes."
+  type        = string
+  default     = "t4g.2xlarge"
+}
+
+variable "keycloak_root_volume_size" {
+  description = "Root EBS volume size in GiB for Keycloak nodes."
+  type        = number
+  default     = 100
+}
+
+variable "keycloak_allowed_http_cidrs" {
+  description = "CIDR blocks allowed to access the public Keycloak ALB."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "keycloak_version" {
+  description = "Keycloak container version."
+  type        = string
+  default     = "26.6.0"
+}
+
+variable "keycloak_admin_username" {
+  description = "Initial Keycloak bootstrap admin username."
+  type        = string
+  default     = "admin"
+}
+
+variable "keycloak_db_name" {
+  description = "Keycloak database name."
+  type        = string
+  default     = "keycloak"
+}
+
+variable "keycloak_db_username" {
+  description = "Keycloak database master username."
+  type        = string
+  default     = "keycloakadmin"
+}
+
+variable "keycloak_db_instance_class" {
+  description = "RDS instance class for Keycloak PostgreSQL."
+  type        = string
+  default     = "db.t4g.2xlarge"
+}
+
+variable "keycloak_db_allocated_storage" {
+  description = "Initial Keycloak RDS storage in GiB."
+  type        = number
+  default     = 100
+}
+
+variable "keycloak_db_max_allocated_storage" {
+  description = "Maximum Keycloak RDS autoscaled storage in GiB."
+  type        = number
+  default     = 500
+}
+
+variable "keycloak_db_multi_az" {
+  description = "Enable Multi-AZ for Keycloak RDS."
+  type        = bool
+  default     = true
+}
+
+variable "keycloak_db_deletion_protection" {
+  description = "Protect the Keycloak RDS instance from accidental deletion."
+  type        = bool
+  default     = false
+}
+
+variable "keycloak_db_skip_final_snapshot" {
+  description = "Skip final snapshot when destroying Keycloak RDS."
+  type        = bool
+  default     = true
+}
+
+variable "mcp_node_count" {
+  description = "Number of MCP server EC2 nodes."
+  type        = number
+  default     = 2
+}
+
+variable "mcp_instance_type" {
+  description = "EC2 instance type for MCP server nodes."
+  type        = string
+  default     = "t4g.2xlarge"
+}
+
+variable "mcp_root_volume_size" {
+  description = "Root EBS volume size in GiB for MCP server nodes."
+  type        = number
+  default     = 100
+}
+
+variable "mcp_port" {
+  description = "MCP server listener port."
+  type        = number
+  default     = 8081
+}

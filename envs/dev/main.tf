@@ -113,3 +113,49 @@ module "vault_enterprise" {
   vault_api_allowed_cidrs      = var.vault_api_allowed_cidrs
   tags                         = local.default_tags
 }
+
+module "keycloak" {
+  source = "../../modules/keycloak"
+
+  name_prefix            = local.name_prefix
+  aws_region             = var.aws_region
+  vpc_id                 = module.network.vpc_id
+  public_subnet_ids      = module.network.public_subnet_ids
+  app_subnet_ids         = module.network.app_private_subnet_ids
+  db_subnet_ids          = module.network.db_private_subnet_ids
+  ami_id                 = var.ami_id
+  instance_type          = var.keycloak_instance_type
+  key_name               = var.key_name
+  node_count             = var.keycloak_node_count
+  root_volume_size       = var.keycloak_root_volume_size
+  allowed_http_cidrs     = var.keycloak_allowed_http_cidrs
+  keycloak_version       = var.keycloak_version
+  admin_username         = var.keycloak_admin_username
+  db_name                = var.keycloak_db_name
+  db_username            = var.keycloak_db_username
+  db_instance_class      = var.keycloak_db_instance_class
+  allocated_storage      = var.keycloak_db_allocated_storage
+  max_allocated_storage  = var.keycloak_db_max_allocated_storage
+  engine_version         = var.db_engine_version
+  parameter_group_family = var.db_parameter_group_family
+  multi_az               = var.keycloak_db_multi_az
+  deletion_protection    = var.keycloak_db_deletion_protection
+  skip_final_snapshot    = var.keycloak_db_skip_final_snapshot
+  tags                   = local.default_tags
+}
+
+module "mcp_server" {
+  source = "../../modules/mcp-server"
+
+  name_prefix               = local.name_prefix
+  vpc_id                    = module.network.vpc_id
+  subnet_ids                = module.network.app_private_subnet_ids
+  ami_id                    = var.ami_id
+  instance_type             = var.mcp_instance_type
+  key_name                  = var.key_name
+  iam_instance_profile_name = module.iam.instance_profile_name
+  node_count                = var.mcp_node_count
+  root_volume_size          = var.mcp_root_volume_size
+  port                      = var.mcp_port
+  tags                      = local.default_tags
+}

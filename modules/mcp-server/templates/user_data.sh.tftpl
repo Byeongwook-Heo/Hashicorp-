@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+log() {
+  echo "[$(date --iso-8601=seconds)] $*"
+}
+
+log "Installing MCP server prerequisites"
+apt-get update
+apt-get install -y python3
+
+install -d -o root -g root -m 0755 /opt/mcp-server
+
+cat >/opt/mcp-server/server.py <<'PY'
+#!/usr/bin/env python3
+import json
+import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+SERVER_NAME = os.environ.get("MCP_SERVER_NAME", "hashicorp-lab-mcp")
+PORT = int(os.environ.get("MCP_PORT", "8081"))
+
+
+def rpc_result(request_id, result):
+    return {"jsonrpc": "2.0", "id": request_id, "result": result}
+
+
+def rpc_error(request_id, code, message):
+    return {"jsonrpc": "2.0", "id": request_id, "error": {"code": code, "message": message}}
+
+
+def initialize(request_id):
+    return rpc_result(
+        request_id,
+        {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": SERVER_NAME, "version": "0.1.0"},
+        },
+    )
+
+
+def tools_list(request_id):
+    return rpc_result(
+        request_id,
+        {
+            "tools": [
+                {
+                    "name": "lab_status",
+                    "description": "Return a short status summary for the HashiCorp AWS lab.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                },
+                {
+                    "name": "echo",
+                    "description": "Echo a text message for MCP connectivity tests.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {"message": {"type": "string"}},
+                        "required": ["message"],
+                        "additionalProperties": False,
+                    },
+                },
+            ]
+        },
+    )
+
+
+def tools_call(request_id, params):
+    name = params.get("name")
+    args = params.get("arguments") or {}
+    if name == "lab_status":
+        text = (
+            "HashiCorp AWS lab MCP endpoint is online. "
+            "Vault Enterprise, Keycloak, API Gateway, and private MCP server are designed as separate tiers."
+        )
+    elif name == "echo":
+        text = str(args.get("message", ""))
+    else:
+        return rpc_error(request_id, -32602, f"Unknown tool: {name}")
+
+    return rpc_result(request_id, {"content": [{"type": "text", "text": text}]})
+
+
+def handle_rpc(payload):
+    request_id = payload.get("id")
+    method = payload.get("method")
+    params = payload.get("params") or {}
+
+    if method == "initialize":
+        return initialize(request_id)
+    if method == "notifications/initialized":
+        return None
+    if method == "ping":
+        return rpc_result(request_id, {})
+    if method == "tools/list":
+        return tools_list(request_id)
+    if method == "tools/call":
+        return tools_call(request_id, params)
+    return rpc_error(request_id, -32601, f"Method not found: {method}")
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "HashiCorpLabMCP/0.1"
+
+    def _headers(self, status=200, content_type="application/json"):
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def do_GET(self):
+        if self.path in ("/", "/health"):
+            self._headers(200)
+            self.wfile.write(json.dumps({"status": "ok", "server": SERVER_NAME}).encode())
+            return
+        self._headers(404)
+        self.wfile.write(json.dumps({"error": "not found"}).encode())
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        body = self.rfile.read(length)
+        try:
+            payload = json.loads(body.decode() or "{}")
+        except json.JSONDecodeError:
+            self._headers(400)
+            self.wfile.write(json.dumps(rpc_error(None, -32700, "Parse error")).encode())
+            return
+
+        if isinstance(payload, list):
+            responses = [handle_rpc(item) for item in payload]
+            responses = [item for item in responses if item is not None]
+            self._headers(200)
+            self.wfile.write(json.dumps(responses).encode())
+            return
+
+        response = handle_rpc(payload)
+        self._headers(202 if response is None else 200)
+        if response is not None:
+            self.wfile.write(json.dumps(response).encode())
+
+    def log_message(self, fmt, *args):
+        print("%s - %s" % (self.address_string(), fmt % args))
+
+
+if __name__ == "__main__":
+    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+PY
+
+cat >/etc/systemd/system/mcp-server.service <<SERVICE
+[Unit]
+Description=HashiCorp Lab MCP Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=MCP_PORT=${port}
+Environment=MCP_SERVER_NAME=${name_prefix}-mcp
+ExecStart=/usr/bin/python3 /opt/mcp-server/server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable --now mcp-server
+
+log "MCP server bootstrap complete"

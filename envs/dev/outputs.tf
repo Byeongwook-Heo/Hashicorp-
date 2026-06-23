@@ -43,3 +43,39 @@ output "vault_init_parameter_name" {
   description = "SSM SecureString parameter name containing Vault init output."
   value       = module.vault_enterprise.init_parameter_name
 }
+
+output "keycloak_url" {
+  description = "Keycloak public URL."
+  value       = module.keycloak.url
+}
+
+output "keycloak_autoscaling_group_name" {
+  description = "Keycloak Auto Scaling Group name."
+  value       = module.keycloak.autoscaling_group_name
+}
+
+output "keycloak_db_endpoint" {
+  description = "Keycloak PostgreSQL endpoint."
+  value       = module.keycloak.db_endpoint
+}
+
+output "keycloak_admin_secret_arn" {
+  description = "Secrets Manager secret ARN containing Keycloak bootstrap admin credentials."
+  value       = module.keycloak.admin_secret_arn
+  sensitive   = true
+}
+
+output "mcp_api_endpoint" {
+  description = "Public API Gateway endpoint for MCP server."
+  value       = module.mcp_server.api_endpoint
+}
+
+output "mcp_internal_alb_dns_name" {
+  description = "Internal ALB DNS name for MCP server."
+  value       = module.mcp_server.internal_alb_dns_name
+}
+
+output "mcp_autoscaling_group_name" {
+  description = "MCP server Auto Scaling Group name."
+  value       = module.mcp_server.autoscaling_group_name
+}

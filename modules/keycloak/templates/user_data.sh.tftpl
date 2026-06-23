@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+log() {
+  echo "[$(date --iso-8601=seconds)] $*"
+}
+
+log "Installing Keycloak prerequisites"
+apt-get update
+apt-get install -y awscli curl docker.io jq
+systemctl enable --now docker
+
+TOKEN="$(curl -sS -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")"
+PRIVATE_IP="$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/local-ipv4)"
+
+log "Fetching Keycloak secrets"
+DB_SECRET="$(aws secretsmanager get-secret-value \
+  --region "${aws_region}" \
+  --secret-id "${db_secret_arn}" \
+  --query SecretString \
+  --output text)"
+
+ADMIN_SECRET="$(aws secretsmanager get-secret-value \
+  --region "${aws_region}" \
+  --secret-id "${admin_secret_arn}" \
+  --query SecretString \
+  --output text)"
+
+DB_USER="$(jq -r '.username' <<<"$DB_SECRET")"
+DB_PASS="$(jq -r '.password' <<<"$DB_SECRET")"
+ADMIN_USER="$(jq -r '.username' <<<"$ADMIN_SECRET")"
+ADMIN_PASS="$(jq -r '.password' <<<"$ADMIN_SECRET")"
+
+log "Starting Keycloak ${keycloak_version}"
+docker pull "quay.io/keycloak/keycloak:${keycloak_version}"
+docker rm -f keycloak 2>/dev/null || true
+
+docker run -d \
+  --name keycloak \
+  --restart unless-stopped \
+  --network host \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME="$ADMIN_USER" \
+  -e KC_BOOTSTRAP_ADMIN_PASSWORD="$ADMIN_PASS" \
+  -e KEYCLOAK_ADMIN="$ADMIN_USER" \
+  -e KEYCLOAK_ADMIN_PASSWORD="$ADMIN_PASS" \
+  -e KC_DB=postgres \
+  -e KC_DB_URL="jdbc:postgresql://${db_host}:5432/${db_name}" \
+  -e KC_DB_USERNAME="$DB_USER" \
+  -e KC_DB_PASSWORD="$DB_PASS" \
+  -e KC_HTTP_ENABLED=true \
+  -e KC_HTTP_PORT=8080 \
+  -e KC_HOSTNAME_STRICT=false \
+  -e KC_PROXY_HEADERS=xforwarded \
+  -e KC_CACHE=ispn \
+  -e KC_CACHE_STACK=jdbc-ping \
+  -e KC_HEALTH_ENABLED=true \
+  -e KC_METRICS_ENABLED=true \
+  -e JAVA_OPTS_APPEND="-Djgroups.bind.address=$PRIVATE_IP -Djgroups.bind.port=7800" \
+  "quay.io/keycloak/keycloak:${keycloak_version}" \
+  start \
+  --http-enabled=true \
+  --http-port=8080 \
+  --hostname-strict=false \
+  --proxy-headers=xforwarded \
+  --cache=ispn \
+  --cache-stack=jdbc-ping \
+  --health-enabled=true \
+  --metrics-enabled=true
+
+log "Waiting for Keycloak to answer"
+for _ in $(seq 1 90); do
+  if curl -fsS "http://127.0.0.1:8080/realms/master" >/dev/null; then
+    log "Keycloak is ready"
+    exit 0
+  fi
+  sleep 10
+done
+
+log "Keycloak did not become ready within timeout"
+docker logs --tail 120 keycloak || true
+exit 1
