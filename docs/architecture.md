@@ -50,6 +50,7 @@ flowchart TB
         MCPA["MCP EC2\n10.40.10.29"]
         MCPC["MCP EC2\n10.40.11.40"]
         MCPALB["MCP Internal ALB"]
+        BENCH["Vault Benchmark Runner\n10.40.10.98"]
       end
 
       subgraph VAULT["Vault Enterprise Private Cluster"]
@@ -91,6 +92,7 @@ flowchart TB
   KCC -->|"PostgreSQL 5432"| KCRDS
   APPA -->|"Vault API 8200"| VAULT1
   APPC -->|"Vault API 8200"| VAULT1
+  BENCH -->|"Benchmark Traffic 8200"| VAULT1
   VAULT1 <-->|"Raft 8201"| VAULT2
   VAULT1 <-->|"Raft 8201"| VAULT3
   VAULT1 -->|"Auto-unseal"| KMS
@@ -103,6 +105,7 @@ flowchart TB
   KCC -->|"Outbound HTTPS"| NAT
   MCPA -->|"Outbound HTTPS"| NAT
   MCPC -->|"Outbound HTTPS"| NAT
+  BENCH -->|"Outbound HTTPS"| NAT
   NAT --> IGW
 ```
 
@@ -111,6 +114,7 @@ flowchart TB
 ```mermaid
 flowchart TB
   APP["App EC2 / Future Workloads"]
+  BENCH["Vault Benchmark Runner\nc7g.2xlarge / 10.40.10.98"]
   VAULTSG["Vault SG: sg-008ac46b7cedb8ffe"]
 
   subgraph CLUSTER["Vault Enterprise Raft Cluster"]
@@ -122,8 +126,10 @@ flowchart TB
 
   KMS["AWS KMS\nalias/hashicorp-lab-dev-vault-unseal"]
   SSM["SSM SecureString\n/license and /init"]
+  RESULT["Benchmark Results\n/opt/vault-benchmark/results"]
 
   APP -->|"TCP 8200"| VAULTSG
+  BENCH -->|"Transit and FPE load\nTCP 8200"| VAULTSG
   VAULTSG --> V1
   VAULTSG --> V2
   VAULTSG --> V3
@@ -134,6 +140,8 @@ flowchart TB
 
   Q -->|"Auto-unseal"| KMS
   Q -->|"Bootstrap data"| SSM
+  BENCH -->|"Read init token at runtime"| SSM
+  BENCH --> RESULT
 ```
 
 ## 4. 보안 그룹 관계
@@ -242,7 +250,9 @@ sequenceDiagram
 - `/Users/heobyeong-ug/Downloads/vault.hclic`는 `2026-05-31` 만료라 기동 실패했고, 현재 SSM 라이선스 파라미터는 `vault_exp20260930.hclic` 내용으로 갱신됨.
 - Keycloak은 2노드 EC2 ASG와 전용 PostgreSQL Multi-AZ RDS로 구성됨.
 - MCP 서버는 2노드 EC2 ASG, 내부 ALB, API Gateway HTTP API VPC Link로 구성됨.
+- Vault benchmark runner는 private subnet의 `c7g.2xlarge` 단일 EC2로 구성됨.
 - ALB HTTP 응답 정상 확인됨.
 - Keycloak `/realms/master`, MCP `/health`, MCP JSON-RPC `initialize` 응답 정상 확인됨.
+- Vault Transit smoke benchmark와 Transform FPE smoke benchmark 정상 확인됨.
 - RDS는 `available`, Multi-AZ 활성화 상태.
 - 실습이 끝나면 `envs/dev`에서 `terraform destroy`로 비용 발생 리소스를 내려야 함.

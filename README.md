@@ -28,6 +28,8 @@ modules/iam/              EC2 instance profile for SSM and CloudWatch
 modules/vault-enterprise/ Vault Enterprise Raft cluster
 modules/keycloak/         Keycloak HA nodes, ALB, PostgreSQL, admin secret
 modules/mcp-server/       Private MCP server, internal ALB, API Gateway VPC Link
+modules/vault-benchmark-runner/
+                          Private EC2 runner for Vault benchmark tests
 docs/                     Operating notes
 aws-ec2-*/                Earlier bootstrap and one-instance lab code
 ```
@@ -44,6 +46,7 @@ Internet
   -> Internal MCP ALB
   -> MCP Auto Scaling Group, EC2 t4g.2xlarge
   -> Vault Enterprise Raft cluster, 3 x EC2 t4g.2xlarge
+  -> Vault benchmark runner, EC2 c7g.2xlarge
   -> PostgreSQL RDS Multi-AZ databases, db.t4g.2xlarge
 ```
 

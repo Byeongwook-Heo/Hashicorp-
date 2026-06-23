@@ -159,3 +159,21 @@ module "mcp_server" {
   port                      = var.mcp_port
   tags                      = local.default_tags
 }
+
+module "vault_benchmark_runner" {
+  source = "../../modules/vault-benchmark-runner"
+
+  name_prefix               = local.name_prefix
+  aws_region                = var.aws_region
+  vpc_id                    = module.network.vpc_id
+  subnet_id                 = module.network.app_private_subnet_ids[0]
+  ami_id                    = var.ami_id
+  instance_type             = var.vault_benchmark_runner_instance_type
+  key_name                  = var.key_name
+  root_volume_size          = var.vault_benchmark_runner_root_volume_size
+  vault_addr                = module.vault_enterprise.private_api_urls[0]
+  vault_init_parameter_name = module.vault_enterprise.init_parameter_name
+  vault_benchmark_version   = var.vault_benchmark_version
+  go_version                = var.vault_benchmark_go_version
+  tags                      = local.default_tags
+}

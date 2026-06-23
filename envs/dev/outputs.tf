@@ -79,3 +79,13 @@ output "mcp_autoscaling_group_name" {
   description = "MCP server Auto Scaling Group name."
   value       = module.mcp_server.autoscaling_group_name
 }
+
+output "vault_benchmark_runner_instance_id" {
+  description = "Vault benchmark runner EC2 instance ID."
+  value       = module.vault_benchmark_runner.instance_id
+}
+
+output "vault_benchmark_runner_private_ip" {
+  description = "Vault benchmark runner private IP."
+  value       = module.vault_benchmark_runner.private_ip
+}

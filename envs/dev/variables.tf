@@ -327,3 +327,27 @@ variable "mcp_port" {
   type        = number
   default     = 8081
 }
+
+variable "vault_benchmark_runner_instance_type" {
+  description = "EC2 instance type for the Vault benchmark runner."
+  type        = string
+  default     = "c7g.2xlarge"
+}
+
+variable "vault_benchmark_runner_root_volume_size" {
+  description = "Root EBS volume size in GiB for the Vault benchmark runner."
+  type        = number
+  default     = 100
+}
+
+variable "vault_benchmark_version" {
+  description = "vault-benchmark Git tag to build on the benchmark runner."
+  type        = string
+  default     = "v0.4.0"
+}
+
+variable "vault_benchmark_go_version" {
+  description = "Go version used to build vault-benchmark on the runner."
+  type        = string
+  default     = "1.24.5"
+}

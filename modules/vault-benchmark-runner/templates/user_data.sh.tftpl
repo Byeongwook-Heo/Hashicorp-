@@ -1,0 +1,376 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+log() {
+  echo "[$(date --iso-8601=seconds)] $*"
+}
+
+log "Installing Vault benchmark runner prerequisites"
+apt-get update
+apt-get install -y ca-certificates curl gpg lsb-release jq awscli git build-essential unzip python3
+
+if apt-get install -y wrk; then
+  log "wrk installed"
+else
+  log "wrk package is unavailable from apt; Transit tests are still available"
+fi
+
+if [ ! -f /usr/share/keyrings/hashicorp-archive-keyring.gpg ]; then
+  curl -fsSL https://apt.releases.hashicorp.com/gpg | gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+fi
+
+if [ ! -f /etc/apt/sources.list.d/hashicorp.list ]; then
+  echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" > /etc/apt/sources.list.d/hashicorp.list
+fi
+
+apt-get update
+apt-get install -y vault
+
+install -d -o root -g root -m 0755 /opt/vault-benchmark/bin
+install -d -o root -g root -m 0755 /opt/vault-benchmark/configs
+install -d -o root -g root -m 0755 /opt/vault-benchmark/lua
+install -d -o root -g root -m 0755 /opt/vault-benchmark/data
+install -d -o root -g root -m 0755 /opt/vault-benchmark/results
+
+log "Installing Go ${go_version}"
+curl -fsSLo /tmp/go.tar.gz "https://go.dev/dl/go${go_version}.linux-arm64.tar.gz"
+rm -rf /usr/local/go
+tar -C /usr/local -xzf /tmp/go.tar.gz
+ln -sf /usr/local/go/bin/go /usr/local/bin/go
+ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
+log "Building vault-benchmark ${vault_benchmark_version}"
+export PATH="/usr/local/go/bin:/root/go/bin:$PATH"
+export HOME="/root"
+export GOPATH="/root/go"
+export GOMODCACHE="/root/go/pkg/mod"
+export GOCACHE="/root/.cache/go-build"
+export GOTOOLCHAIN=auto
+install -d -o root -g root -m 0755 "$GOPATH" "$GOMODCACHE" "$GOCACHE"
+go install "github.com/hashicorp/vault-benchmark@${vault_benchmark_version}"
+install -o root -g root -m 0755 /root/go/bin/vault-benchmark /usr/local/bin/vault-benchmark
+
+cat >/opt/vault-benchmark/env.sh <<'EOF_ENV'
+export AWS_REGION="${aws_region}"
+export AWS_DEFAULT_REGION="${aws_region}"
+export VAULT_ADDR="${vault_addr}"
+export VAULT_INIT_PARAMETER_NAME="${vault_init_parameter_name}"
+EOF_ENV
+chmod 0644 /opt/vault-benchmark/env.sh
+
+cat >/usr/local/bin/vault-token <<'EOF_TOKEN'
+#!/usr/bin/env bash
+set -euo pipefail
+source /opt/vault-benchmark/env.sh
+aws ssm get-parameter \
+  --region "$AWS_REGION" \
+  --name "$VAULT_INIT_PARAMETER_NAME" \
+  --with-decryption \
+  --query "Parameter.Value" \
+  --output text | jq -r '.root_token'
+EOF_TOKEN
+chmod 0755 /usr/local/bin/vault-token
+
+cat >/usr/local/bin/vault-benchmark-status <<'EOF_STATUS'
+#!/usr/bin/env bash
+set -euo pipefail
+source /opt/vault-benchmark/env.sh
+export VAULT_TOKEN="$(vault-token)"
+vault status
+vault operator raft list-peers || true
+vault read sys/license/status || true
+unset VAULT_TOKEN
+EOF_STATUS
+chmod 0755 /usr/local/bin/vault-benchmark-status
+
+cat >/opt/vault-benchmark/configs/transit-smoke.hcl <<'EOF_TRANSIT_SMOKE'
+duration = "30s"
+report_mode = "terse"
+random_mounts = true
+cleanup = true
+
+test "transit_encrypt" "encrypt_payload_128" {
+  weight = 50
+
+  config {
+    payload_len = 128
+
+    keys {
+      name = "benchmark-aes256"
+      type = "aes256-gcm96"
+    }
+  }
+}
+
+test "transit_decrypt" "decrypt_payload_128" {
+  weight = 50
+
+  config {
+    payload_len = 128
+
+    keys {
+      name = "benchmark-aes256"
+      type = "aes256-gcm96"
+    }
+  }
+}
+EOF_TRANSIT_SMOKE
+
+cat >/opt/vault-benchmark/configs/transit-encrypt-only.hcl <<'EOF_TRANSIT_ENCRYPT'
+duration = "60s"
+report_mode = "terse"
+random_mounts = true
+cleanup = true
+
+test "transit_encrypt" "encrypt_payload_128" {
+  weight = 100
+
+  config {
+    payload_len = 128
+
+    keys {
+      name = "benchmark-aes256"
+      type = "aes256-gcm96"
+    }
+  }
+}
+EOF_TRANSIT_ENCRYPT
+
+cat >/opt/vault-benchmark/configs/transit-decrypt-only.hcl <<'EOF_TRANSIT_DECRYPT'
+duration = "60s"
+report_mode = "terse"
+random_mounts = true
+cleanup = true
+
+test "transit_decrypt" "decrypt_payload_128" {
+  weight = 100
+
+  config {
+    payload_len = 128
+
+    keys {
+      name = "benchmark-aes256"
+      type = "aes256-gcm96"
+    }
+  }
+}
+EOF_TRANSIT_DECRYPT
+
+cat >/usr/local/bin/run-vault-benchmark <<'EOF_RUN_BENCH'
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /opt/vault-benchmark/env.sh
+
+SCENARIO="$${1:-transit-smoke}"
+CONFIG="/opt/vault-benchmark/configs/$${SCENARIO}.hcl"
+DURATION_OVERRIDE="$${DURATION:-}"
+TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+RESULT_DIR="/opt/vault-benchmark/results/$${TIMESTAMP}-$${SCENARIO}"
+
+if [ ! -f "$CONFIG" ]; then
+  echo "Config not found: $CONFIG" >&2
+  echo "Available configs:" >&2
+  ls -1 /opt/vault-benchmark/configs >&2
+  exit 1
+fi
+
+install -d -o root -g root -m 0755 "$RESULT_DIR"
+export VAULT_TOKEN="$(vault-token)"
+
+vault status >"$RESULT_DIR/vault-status.txt"
+
+ARGS=(run -config="$CONFIG")
+if [ -n "$DURATION_OVERRIDE" ]; then
+  ARGS+=("-duration=$DURATION_OVERRIDE")
+fi
+
+set +e
+vault-benchmark "$${ARGS[@]}" >"$RESULT_DIR/output.txt" 2>&1
+rc=$?
+set -e
+
+unset VAULT_TOKEN
+
+cp "$CONFIG" "$RESULT_DIR/config.hcl"
+echo "$RESULT_DIR" > /opt/vault-benchmark/results/latest
+echo "result_dir=$RESULT_DIR"
+cat "$RESULT_DIR/output.txt"
+exit "$rc"
+EOF_RUN_BENCH
+chmod 0755 /usr/local/bin/run-vault-benchmark
+
+cat >/usr/local/bin/prepare-transform-fpe <<'EOF_PREPARE_FPE'
+#!/usr/bin/env bash
+set -euo pipefail
+source /opt/vault-benchmark/env.sh
+export VAULT_TOKEN="$(vault-token)"
+
+vault secrets enable -path=transform transform 2>/dev/null || true
+vault write transform/transformations/fpe/card-number \
+  template=builtin/creditcardnumber \
+  tweak_source=internal \
+  allowed_roles=payments
+vault write transform/role/payments transformations=card-number
+
+unset VAULT_TOKEN
+echo "Transform FPE role prepared: payments / card-number"
+EOF_PREPARE_FPE
+chmod 0755 /usr/local/bin/prepare-transform-fpe
+
+python3 <<'PY'
+from pathlib import Path
+out = Path("/opt/vault-benchmark/data")
+for count in (20, 40, 80, 160, 320):
+    with (out / f"cards-{count}.txt").open("w", encoding="utf-8") as fh:
+        for i in range(count):
+            # Deterministic, syntactically credit-card-shaped test data.
+            fh.write(f"411111{(i + 1):010d}\n")
+PY
+
+cat >/opt/vault-benchmark/lua/transform-fpe-encode.lua <<'EOF_LUA'
+local cards_file = os.getenv("CARDS_FILE") or "/opt/vault-benchmark/data/cards-20.txt"
+local role = os.getenv("FPE_ROLE") or "payments"
+local transformation = os.getenv("FPE_TRANSFORMATION") or "card-number"
+local token = os.getenv("VAULT_TOKEN")
+
+if token == nil or token == "" then
+  error("VAULT_TOKEN is required")
+end
+
+local cards = {}
+for line in io.lines(cards_file) do
+  if line ~= "" then
+    table.insert(cards, line)
+  end
+end
+
+if #cards == 0 then
+  error("No cards loaded from " .. cards_file)
+end
+
+local headers = {}
+headers["Content-Type"] = "application/json"
+headers["X-Vault-Token"] = token
+
+local index = 0
+
+request = function()
+  index = index + 1
+  local value = cards[((index - 1) % #cards) + 1]
+  local body = "{\"value\":\"" .. value .. "\",\"transformation\":\"" .. transformation .. "\"}"
+  return wrk.format("POST", "/v1/transform/encode/" .. role, headers, body)
+end
+EOF_LUA
+
+cat >/usr/local/bin/run-transform-fpe-wrk <<'EOF_RUN_FPE'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v wrk >/dev/null 2>&1; then
+  echo "wrk is not installed on this runner" >&2
+  exit 1
+fi
+
+source /opt/vault-benchmark/env.sh
+
+THREADS="$${THREADS:-2}"
+CONNECTIONS="$${CONNECTIONS:-2}"
+DURATION="$${DURATION:-30s}"
+CARD_COUNT="$${CARD_COUNT:-20}"
+CARDS_FILE="$${CARDS_FILE:-/opt/vault-benchmark/data/cards-$${CARD_COUNT}.txt}"
+TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+RESULT_DIR="/opt/vault-benchmark/results/$${TIMESTAMP}-transform-fpe-$${CARD_COUNT}cards-t$${THREADS}-c$${CONNECTIONS}"
+
+if [ ! -f "$CARDS_FILE" ]; then
+  echo "Cards file not found: $CARDS_FILE" >&2
+  exit 1
+fi
+
+install -d -o root -g root -m 0755 "$RESULT_DIR"
+export VAULT_TOKEN="$(vault-token)"
+export CARDS_FILE
+
+set +e
+wrk -t"$THREADS" -c"$CONNECTIONS" -d"$DURATION" \
+  -s /opt/vault-benchmark/lua/transform-fpe-encode.lua \
+  "$VAULT_ADDR" >"$RESULT_DIR/output.txt" 2>&1
+rc=$?
+set -e
+
+unset VAULT_TOKEN
+
+echo "$RESULT_DIR" > /opt/vault-benchmark/results/latest
+echo "result_dir=$RESULT_DIR"
+cat "$RESULT_DIR/output.txt"
+exit "$rc"
+EOF_RUN_FPE
+chmod 0755 /usr/local/bin/run-transform-fpe-wrk
+
+cat >/usr/local/bin/run-transform-fpe-matrix <<'EOF_RUN_FPE_MATRIX'
+#!/usr/bin/env bash
+set -euo pipefail
+
+prepare-transform-fpe
+
+for card_count in 20 40 80 160 320; do
+  for tc in 2 4 8 16 32 64 128; do
+    THREADS="$tc" CONNECTIONS="$tc" CARD_COUNT="$card_count" DURATION="$${DURATION:-60s}" run-transform-fpe-wrk
+  done
+done
+EOF_RUN_FPE_MATRIX
+chmod 0755 /usr/local/bin/run-transform-fpe-matrix
+
+cat >/opt/vault-benchmark/README.md <<'EOF_README'
+# Vault Benchmark Runner
+
+Sensitive Vault tokens are not stored in config files. Scripts retrieve the initial root token from the SSM SecureString parameter at runtime.
+
+## Health check
+
+```bash
+vault-benchmark-status
+```
+
+## Transit smoke benchmark
+
+```bash
+run-vault-benchmark transit-smoke
+```
+
+Optional duration override:
+
+```bash
+DURATION=10s run-vault-benchmark transit-smoke
+```
+
+## Transit one-minute scenarios
+
+```bash
+run-vault-benchmark transit-encrypt-only
+run-vault-benchmark transit-decrypt-only
+```
+
+## Transform FPE
+
+Transform FPE requires a Vault Enterprise license with Advanced Data Protection.
+
+```bash
+prepare-transform-fpe
+THREADS=2 CONNECTIONS=2 CARD_COUNT=20 DURATION=30s run-transform-fpe-wrk
+```
+
+Full PDF-style matrix:
+
+```bash
+DURATION=60s run-transform-fpe-matrix
+```
+
+Results are written under `/opt/vault-benchmark/results`.
+EOF_README
+
+log "Vault benchmark runner bootstrap complete"
+vault version || true
+vault-benchmark version || true
