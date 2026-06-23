@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620" role="img" aria-labelledby="title desc">
+<title>Transform FPE Encode - TPS</title>
+<desc>Transform FPE Encode - TPS benchmark line chart by thread and connection count.</desc>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="92" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#111827">Transform FPE Encode - TPS</text>
+<text x="92" y="61" font-family="Arial, sans-serif" font-size="13" fill="#4b5563">X axis: Thread/Connection, Y axis: requests/sec</text>
+<line x1="92" y1="524.00" x2="890" y2="524.00" stroke="#e5e7eb" stroke-width="1"/>
+<text x="80" y="528.00" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">0</text>
+<line x1="92" y1="433.20" x2="890" y2="433.20" stroke="#e5e7eb" stroke-width="1"/>
+<text x="80" y="437.20" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">865</text>
+<line x1="92" y1="342.40" x2="890" y2="342.40" stroke="#e5e7eb" stroke-width="1"/>
+<text x="80" y="346.40" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">2K</text>
+<line x1="92" y1="251.60" x2="890" y2="251.60" stroke="#e5e7eb" stroke-width="1"/>
+<text x="80" y="255.60" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">3K</text>
+<line x1="92" y1="160.80" x2="890" y2="160.80" stroke="#e5e7eb" stroke-width="1"/>
+<text x="80" y="164.80" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">3K</text>
+<line x1="92" y1="70.00" x2="890" y2="70.00" stroke="#e5e7eb" stroke-width="1"/>
+<text x="80" y="74.00" text-anchor="end" font-family="Arial, sans-serif" font-size="12" fill="#6b7280">4K</text>
+<line x1="92" y1="70" x2="92" y2="524" stroke="#374151" stroke-width="1.4"/>
+<line x1="92" y1="524" x2="890" y2="524" stroke="#374151" stroke-width="1.4"/>
+<line x1="92.00" y1="524" x2="92.00" y2="530" stroke="#374151" stroke-width="1"/>
+<text x="92.00" y="552" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#374151">2</text>
+<line x1="225.00" y1="524" x2="225.00" y2="530" stroke="#374151" stroke-width="1"/>
+<text x="225.00" y="552" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#374151">4</text>
+<line x1="358.00" y1="524" x2="358.00" y2="530" stroke="#374151" stroke-width="1"/>
+<text x="358.00" y="552" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#374151">8</text>
+<line x1="491.00" y1="524" x2="491.00" y2="530" stroke="#374151" stroke-width="1"/>
+<text x="491.00" y="552" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#374151">16</text>
+<line x1="624.00" y1="524" x2="624.00" y2="530" stroke="#374151" stroke-width="1"/>
+<text x="624.00" y="552" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#374151">32</text>
+<line x1="757.00" y1="524" x2="757.00" y2="530" stroke="#374151" stroke-width="1"/>
+<text x="757.00" y="552" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#374151">64</text>
+<line x1="890.00" y1="524" x2="890.00" y2="530" stroke="#374151" stroke-width="1"/>
+<text x="890.00" y="552" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#374151">128</text>
+<text x="491.00" y="590" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="600" fill="#374151">Thread / Connection</text>
+<path d="M 92.00 419.02 L 225.00 318.86 L 358.00 182.40 L 491.00 128.62 L 624.00 119.82 L 757.00 119.72 L 890.00 118.64" fill="none" stroke="#2563eb" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="92.00" cy="419.02" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"><title>batch 20: 1,000.42 requests/sec</title></circle>
+<circle cx="225.00" cy="318.86" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"><title>batch 20: 1,954.94 requests/sec</title></circle>
+<circle cx="358.00" cy="182.40" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"><title>batch 20: 3,255.38 requests/sec</title></circle>
+<circle cx="491.00" cy="128.62" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"><title>batch 20: 3,767.83 requests/sec</title></circle>
+<circle cx="624.00" cy="119.82" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"><title>batch 20: 3,851.71 requests/sec</title></circle>
+<circle cx="757.00" cy="119.72" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"><title>batch 20: 3,852.68 requests/sec</title></circle>
+<circle cx="890.00" cy="118.64" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"><title>batch 20: 3,862.95 requests/sec</title></circle>
+<path d="M 92.00 453.17 L 225.00 385.52 L 358.00 316.70 L 491.00 299.25 L 624.00 296.11 L 757.00 297.45 L 890.00 299.56" fill="none" stroke="#16a34a" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="92.00" cy="453.17" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>batch 40: 674.98 requests/sec</title></circle>
+<circle cx="225.00" cy="385.52" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>batch 40: 1,319.70 requests/sec</title></circle>
+<circle cx="358.00" cy="316.70" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>batch 40: 1,975.51 requests/sec</title></circle>
+<circle cx="491.00" cy="299.25" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>batch 40: 2,141.78 requests/sec</title></circle>
+<circle cx="624.00" cy="296.11" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>batch 40: 2,171.69 requests/sec</title></circle>
+<circle cx="757.00" cy="297.45" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>batch 40: 2,158.93 requests/sec</title></circle>
+<circle cx="890.00" cy="299.56" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"><title>batch 40: 2,138.84 requests/sec</title></circle>
+<path d="M 92.00 481.84 L 225.00 443.20 L 358.00 410.25 L 491.00 404.80 L 624.00 405.45 L 757.00 407.04 L 890.00 408.19" fill="none" stroke="#dc2626" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="92.00" cy="481.84" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>batch 80: 401.73 requests/sec</title></circle>
+<circle cx="225.00" cy="443.20" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>batch 80: 769.97 requests/sec</title></circle>
+<circle cx="358.00" cy="410.25" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>batch 80: 1,083.99 requests/sec</title></circle>
+<circle cx="491.00" cy="404.80" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>batch 80: 1,135.99 requests/sec</title></circle>
+<circle cx="624.00" cy="405.45" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>batch 80: 1,129.76 requests/sec</title></circle>
+<circle cx="757.00" cy="407.04" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>batch 80: 1,114.62 requests/sec</title></circle>
+<circle cx="890.00" cy="408.19" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"><title>batch 80: 1,103.63 requests/sec</title></circle>
+<path d="M 92.00 500.38 L 225.00 478.76 L 358.00 463.69 L 491.00 462.83 L 624.00 463.90 L 757.00 463.98 L 890.00 464.56" fill="none" stroke="#9333ea" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="92.00" cy="500.38" r="4.5" fill="#9333ea" stroke="#ffffff" stroke-width="1.5"><title>batch 160: 225.10 requests/sec</title></circle>
+<circle cx="225.00" cy="478.76" r="4.5" fill="#9333ea" stroke="#ffffff" stroke-width="1.5"><title>batch 160: 431.16 requests/sec</title></circle>
+<circle cx="358.00" cy="463.69" r="4.5" fill="#9333ea" stroke="#ffffff" stroke-width="1.5"><title>batch 160: 574.71 requests/sec</title></circle>
+<circle cx="491.00" cy="462.83" r="4.5" fill="#9333ea" stroke="#ffffff" stroke-width="1.5"><title>batch 160: 582.98 requests/sec</title></circle>
+<circle cx="624.00" cy="463.90" r="4.5" fill="#9333ea" stroke="#ffffff" stroke-width="1.5"><title>batch 160: 572.71 requests/sec</title></circle>
+<circle cx="757.00" cy="463.98" r="4.5" fill="#9333ea" stroke="#ffffff" stroke-width="1.5"><title>batch 160: 571.96 requests/sec</title></circle>
+<circle cx="890.00" cy="464.56" r="4.5" fill="#9333ea" stroke="#ffffff" stroke-width="1.5"><title>batch 160: 566.46 requests/sec</title></circle>
+<path d="M 92.00 511.44 L 225.00 500.25 L 358.00 493.11 L 491.00 493.36 L 624.00 494.35 L 757.00 493.24 L 890.00 493.44" fill="none" stroke="#ea580c" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="92.00" cy="511.44" r="4.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"><title>batch 320: 119.72 requests/sec</title></circle>
+<circle cx="225.00" cy="500.25" r="4.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"><title>batch 320: 226.37 requests/sec</title></circle>
+<circle cx="358.00" cy="493.11" r="4.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"><title>batch 320: 294.33 requests/sec</title></circle>
+<circle cx="491.00" cy="493.36" r="4.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"><title>batch 320: 291.98 requests/sec</title></circle>
+<circle cx="624.00" cy="494.35" r="4.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"><title>batch 320: 282.58 requests/sec</title></circle>
+<circle cx="757.00" cy="493.24" r="4.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"><title>batch 320: 293.11 requests/sec</title></circle>
+<circle cx="890.00" cy="493.44" r="4.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"><title>batch 320: 291.20 requests/sec</title></circle>
+<text x="928" y="70" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#111827">Batch Count</text>
+<line x1="928" y1="104" x2="956" y2="104" stroke="#2563eb" stroke-width="4" stroke-linecap="round"/>
+<circle cx="942" cy="104" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="1.5"/>
+<text x="970" y="109" font-family="Arial, sans-serif" font-size="13" fill="#374151">20</text>
+<line x1="928" y1="134" x2="956" y2="134" stroke="#16a34a" stroke-width="4" stroke-linecap="round"/>
+<circle cx="942" cy="134" r="4.5" fill="#16a34a" stroke="#ffffff" stroke-width="1.5"/>
+<text x="970" y="139" font-family="Arial, sans-serif" font-size="13" fill="#374151">40</text>
+<line x1="928" y1="164" x2="956" y2="164" stroke="#dc2626" stroke-width="4" stroke-linecap="round"/>
+<circle cx="942" cy="164" r="4.5" fill="#dc2626" stroke="#ffffff" stroke-width="1.5"/>
+<text x="970" y="169" font-family="Arial, sans-serif" font-size="13" fill="#374151">80</text>
+<line x1="928" y1="194" x2="956" y2="194" stroke="#9333ea" stroke-width="4" stroke-linecap="round"/>
+<circle cx="942" cy="194" r="4.5" fill="#9333ea" stroke="#ffffff" stroke-width="1.5"/>
+<text x="970" y="199" font-family="Arial, sans-serif" font-size="13" fill="#374151">160</text>
+<line x1="928" y1="224" x2="956" y2="224" stroke="#ea580c" stroke-width="4" stroke-linecap="round"/>
+<circle cx="942" cy="224" r="4.5" fill="#ea580c" stroke="#ffffff" stroke-width="1.5"/>
+<text x="970" y="229" font-family="Arial, sans-serif" font-size="13" fill="#374151">320</text>
+</svg>

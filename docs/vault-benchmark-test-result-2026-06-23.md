@@ -26,9 +26,11 @@
 
 각 요청은 batch body 하나를 전송한다. `Batch Count`는 요청 1건에 포함된 평문 또는 카드번호 개수다.
 
-### Transit Encrypt - TPS
+### Transit Encrypt - TPS (Transit 암호화 API가 초당 처리한 HTTP 요청 수)
 
 단위: requests/sec
+
+![Transit Encrypt TPS](assets/vault-benchmark/transit-encrypt-tps.svg)
 
 | Batch Count | T/C 2 | T/C 4 | T/C 8 | T/C 16 | T/C 32 | T/C 64 | T/C 128 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -38,9 +40,11 @@
 | 160 | 891.53 | 1,732.65 | 2,259.79 | 2,478.49 | 2,498.79 | 2,521.83 | 2,555.81 |
 | 320 | 591.78 | 1,158.49 | 1,349.92 | 1,425.59 | 1,445.99 | 1,402.45 | 1,430.22 |
 
-### Transit Decrypt - TPS
+### Transit Decrypt - TPS (Transit 복호화 API가 초당 처리한 HTTP 요청 수)
 
 단위: requests/sec
+
+![Transit Decrypt TPS](assets/vault-benchmark/transit-decrypt-tps.svg)
 
 | Batch Count | T/C 2 | T/C 4 | T/C 8 | T/C 16 | T/C 32 | T/C 64 | T/C 128 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -50,9 +54,11 @@
 | 160 | 850.50 | 1,670.58 | 2,172.50 | 2,355.97 | 2,389.77 | 2,380.52 | 2,357.05 |
 | 320 | 558.18 | 1,074.46 | 1,265.58 | 1,331.45 | 1,322.46 | 1,333.53 | 1,280.17 |
 
-### Transform FPE Encode - TPS
+### Transform FPE Encode - TPS (형태 보존 암호화 Encode API가 초당 처리한 HTTP 요청 수)
 
 단위: requests/sec
+
+![Transform FPE Encode TPS](assets/vault-benchmark/transform-fpe-encode-tps.svg)
 
 | Batch Count | T/C 2 | T/C 4 | T/C 8 | T/C 16 | T/C 32 | T/C 64 | T/C 128 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -66,9 +72,11 @@
 
 아래 값은 `requests/sec x Batch Count`로 계산한 초당 데이터 항목 처리량이다.
 
-### Transit Encrypt - Item Throughput
+### Transit Encrypt - Item Throughput (Transit 암호화 요청의 batch 안에 포함된 평문 데이터 항목을 초당 몇 개 처리했는지)
 
 단위: items/sec
+
+![Transit Encrypt Item Throughput](assets/vault-benchmark/transit-encrypt-item-throughput.svg)
 
 | Batch Count | T/C 2 | T/C 4 | T/C 8 | T/C 16 | T/C 32 | T/C 64 | T/C 128 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -78,9 +86,11 @@
 | 160 | 142,644.80 | 277,224.00 | 361,566.40 | 396,558.40 | 399,806.40 | 403,492.80 | 408,929.60 |
 | 320 | 189,369.60 | 370,716.80 | 431,974.40 | 456,188.80 | 462,716.80 | 448,784.00 | 457,670.40 |
 
-### Transit Decrypt - Item Throughput
+### Transit Decrypt - Item Throughput (Transit 복호화 요청의 batch 안에 포함된 암호문 데이터 항목을 초당 몇 개 처리했는지)
 
 단위: items/sec
+
+![Transit Decrypt Item Throughput](assets/vault-benchmark/transit-decrypt-item-throughput.svg)
 
 | Batch Count | T/C 2 | T/C 4 | T/C 8 | T/C 16 | T/C 32 | T/C 64 | T/C 128 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -90,9 +100,11 @@
 | 160 | 136,080.00 | 267,292.80 | 347,600.00 | 376,955.20 | 382,363.20 | 380,883.20 | 377,128.00 |
 | 320 | 178,617.60 | 343,827.20 | 404,985.60 | 426,064.00 | 423,187.20 | 426,729.60 | 409,654.40 |
 
-### Transform FPE Encode - Item Throughput
+### Transform FPE Encode - Item Throughput (형태 보존 암호화 요청의 batch 안에 포함된 카드번호 항목을 초당 몇 개 처리했는지)
 
 단위: items/sec
+
+![Transform FPE Encode Item Throughput](assets/vault-benchmark/transform-fpe-encode-item-throughput.svg)
 
 | Batch Count | T/C 2 | T/C 4 | T/C 8 | T/C 16 | T/C 32 | T/C 64 | T/C 128 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
