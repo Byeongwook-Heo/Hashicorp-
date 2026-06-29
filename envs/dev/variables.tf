@@ -351,3 +351,21 @@ variable "vault_benchmark_go_version" {
   type        = string
   default     = "1.24.5"
 }
+
+variable "bastion_instance_type" {
+  description = "EC2 instance type for the bastion host."
+  type        = string
+  default     = "t4g.2xlarge"
+}
+
+variable "bastion_root_volume_size" {
+  description = "Root EBS volume size in GiB for the bastion host."
+  type        = number
+  default     = 100
+}
+
+variable "bastion_allowed_ssh_cidrs" {
+  description = "CIDR blocks allowed to SSH to the bastion host."
+  type        = list(string)
+  default     = ["121.190.86.98/32"]
+}

@@ -35,9 +35,14 @@ variable "allow_database_egress" {
   default     = false
 }
 
+variable "bastion_security_group_id" {
+  description = "Optional bastion security group ID allowed to SSH to application instances."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Tags applied to security resources."
   type        = map(string)
   default     = {}
 }
-

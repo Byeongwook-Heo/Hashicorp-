@@ -89,3 +89,23 @@ output "vault_benchmark_runner_private_ip" {
   description = "Vault benchmark runner private IP."
   value       = module.vault_benchmark_runner.private_ip
 }
+
+output "bastion_instance_id" {
+  description = "Bastion EC2 instance ID."
+  value       = module.bastion.instance_id
+}
+
+output "bastion_public_ip" {
+  description = "Bastion public IP address."
+  value       = module.bastion.public_ip
+}
+
+output "bastion_private_ip" {
+  description = "Bastion private IP address."
+  value       = module.bastion.private_ip
+}
+
+output "bastion_ssh_command" {
+  description = "SSH command for the bastion host."
+  value       = "ssh -i ~/Downloads/Byeongwook.pem ubuntu@${module.bastion.public_ip}"
+}

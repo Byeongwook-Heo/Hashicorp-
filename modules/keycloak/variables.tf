@@ -60,6 +60,12 @@ variable "allowed_http_cidrs" {
   type        = list(string)
 }
 
+variable "bastion_security_group_id" {
+  description = "Optional bastion security group ID allowed to SSH to Keycloak instances."
+  type        = string
+  default     = null
+}
+
 variable "keycloak_version" {
   description = "Keycloak container image version."
   type        = string

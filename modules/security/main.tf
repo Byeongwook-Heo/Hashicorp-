@@ -37,6 +37,18 @@ resource "aws_security_group" "app" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  dynamic "ingress" {
+    for_each = var.bastion_security_group_id == null ? [] : [var.bastion_security_group_id]
+
+    content {
+      description     = "SSH from bastion"
+      from_port       = 22
+      to_port         = 22
+      protocol        = "tcp"
+      security_groups = [ingress.value]
+    }
+  }
+
   dynamic "egress" {
     for_each = var.allow_app_egress ? [1] : []
 
@@ -83,4 +95,3 @@ resource "aws_security_group" "db" {
     Name = "${var.name_prefix}-db-sg"
   })
 }
-

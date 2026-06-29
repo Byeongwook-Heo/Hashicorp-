@@ -16,6 +16,18 @@ resource "aws_security_group" "this" {
   description = "Security group for Vault benchmark runner"
   vpc_id      = var.vpc_id
 
+  dynamic "ingress" {
+    for_each = var.bastion_security_group_id == null ? [] : [var.bastion_security_group_id]
+
+    content {
+      description     = "SSH from bastion"
+      from_port       = 22
+      to_port         = 22
+      protocol        = "tcp"
+      security_groups = [ingress.value]
+    }
+  }
+
   egress {
     description = "All outbound"
     from_port   = 0

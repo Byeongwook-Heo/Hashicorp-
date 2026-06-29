@@ -51,6 +51,12 @@ variable "port" {
   default     = 8081
 }
 
+variable "bastion_security_group_id" {
+  description = "Optional bastion security group ID allowed to SSH to MCP server instances."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Tags applied to MCP server resources."
   type        = map(string)

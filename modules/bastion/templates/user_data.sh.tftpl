@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+
+if command -v apt-get >/dev/null 2>&1; then
+  apt-get update -y
+  apt-get install -y curl jq openssh-client
+fi
+
+if ! command -v session-manager-plugin >/dev/null 2>&1; then
+  arch="$(uname -m)"
+  case "$arch" in
+    aarch64|arm64)
+      plugin_url="https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_arm64/session-manager-plugin.deb"
+      ;;
+    x86_64|amd64)
+      plugin_url="https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb"
+      ;;
+    *)
+      echo "Unsupported architecture: $arch" >&2
+      exit 1
+      ;;
+  esac
+  curl -fsSLo /tmp/session-manager-plugin.deb "$plugin_url"
+  dpkg -i /tmp/session-manager-plugin.deb
+fi
+
+install -d -m 0755 /etc/hashicorp-lab
+cat >/etc/hashicorp-lab/env <<'EOF'
+AWS_REGION=${aws_region}
+NAME_PREFIX=${name_prefix}
+EOF
+
+cat >/usr/local/bin/lab-hosts <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /etc/hashicorp-lab/env
+
+aws ec2 describe-instances \
+  --region "$AWS_REGION" \
+  --filters \
+    "Name=instance-state-name,Values=running" \
+    "Name=tag:Project,Values=hashicorp-lab" \
+  --query 'Reservations[].Instances[].{Name:Tags[?Key==`Name`]|[0].Value,InstanceId:InstanceId,PrivateIp:PrivateIpAddress,PublicIp:PublicIpAddress,Type:InstanceType}' \
+  --output json |
+jq -r '
+  def alias_for($name; $ip):
+    if $name == "hashicorp-lab-dev-vault-01" then "vault-01"
+    elif $name == "hashicorp-lab-dev-vault-02" then "vault-02"
+    elif $name == "hashicorp-lab-dev-vault-03" then "vault-03"
+    elif $name == "hashicorp-lab-dev-vault-benchmark-runner" then "benchmark"
+    elif $name == "hashicorp-lab-dev-bastion" then "bastion"
+    elif $name == "hashicorp-lab-dev-app" and ($ip|startswith("10.40.10.")) then "app-01"
+    elif $name == "hashicorp-lab-dev-app" and ($ip|startswith("10.40.11.")) then "app-02"
+    elif $name == "hashicorp-lab-dev-keycloak" and ($ip|startswith("10.40.10.")) then "keycloak-01"
+    elif $name == "hashicorp-lab-dev-keycloak" and ($ip|startswith("10.40.11.")) then "keycloak-02"
+    elif $name == "hashicorp-lab-dev-mcp" and ($ip|startswith("10.40.10.")) then "mcp-01"
+    elif $name == "hashicorp-lab-dev-mcp" and ($ip|startswith("10.40.11.")) then "mcp-02"
+    else $name end;
+  ["ALIAS","INSTANCE_ID","PRIVATE_IP","PUBLIC_IP","TYPE","NAME"],
+  (. | sort_by(.Name, .PrivateIp)[] |
+    [alias_for(.Name; .PrivateIp), .InstanceId, (.PrivateIp // "-"), (.PublicIp // "-"), .Type, .Name])
+  | @tsv
+' | column -t
+EOF
+
+cat >/usr/local/bin/lab-ssm <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+source /etc/hashicorp-lab/env
+
+target="$${1:-}"
+if [ -z "$target" ]; then
+  echo "Usage: lab-ssm <alias|instance-id>" >&2
+  echo "Run lab-hosts to see aliases." >&2
+  exit 2
+fi
+
+if [[ "$target" == i-* ]]; then
+  instance_id="$target"
+else
+  instance_id="$(lab-hosts | awk -v alias="$target" 'NR > 1 && $1 == alias {print $2; exit}')"
+  if [ -z "$instance_id" ]; then
+    echo "Unknown alias: $target" >&2
+    echo "Run lab-hosts to see aliases." >&2
+    exit 1
+  fi
+fi
+
+exec aws ssm start-session --region "$AWS_REGION" --target "$instance_id"
+EOF
+
+cat >/usr/local/bin/lab-ssh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="$${1:-}"
+if [ -z "$target" ]; then
+  echo "Usage: lab-ssh <alias|private-ip>" >&2
+  echo "Run lab-hosts to see aliases." >&2
+  echo "This uses SSH and requires agent forwarding or a key available to ssh." >&2
+  exit 2
+fi
+
+if [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  host="$target"
+else
+  host="$(lab-hosts | awk -v alias="$target" 'NR > 1 && $1 == alias {print $3; exit}')"
+  if [ -z "$host" ]; then
+    echo "Unknown alias: $target" >&2
+    echo "Run lab-hosts to see aliases." >&2
+    exit 1
+  fi
+fi
+
+shift || true
+exec ssh -o StrictHostKeyChecking=accept-new ubuntu@"$host" "$@"
+EOF
+
+chmod 0755 /usr/local/bin/lab-hosts /usr/local/bin/lab-ssm /usr/local/bin/lab-ssh
+
+cat >/etc/update-motd.d/99-hashicorp-lab <<'EOF'
+#!/usr/bin/env bash
+cat <<'MSG'
+
+HashiCorp Lab Bastion
+  lab-hosts               List lab EC2 targets
+  lab-ssm vault-01        Start SSM session to a target
+  lab-ssh vault-01        SSH to a target, requires SSH agent/key
+
+MSG
+EOF
+chmod 0755 /etc/update-motd.d/99-hashicorp-lab

@@ -72,9 +72,14 @@ variable "vault_api_allowed_cidrs" {
   type        = list(string)
 }
 
+variable "bastion_security_group_id" {
+  description = "Optional bastion security group ID allowed to SSH to Vault nodes."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Tags applied to Vault resources."
   type        = map(string)
   default     = {}
 }
-

@@ -22,3 +22,8 @@ output "target_group_arn" {
   description = "MCP server target group ARN."
   value       = aws_lb_target_group.this.arn
 }
+
+output "security_group_id" {
+  description = "MCP server instance security group ID."
+  value       = aws_security_group.server.id
+}

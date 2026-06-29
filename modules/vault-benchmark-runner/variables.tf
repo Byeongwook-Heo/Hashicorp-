@@ -58,6 +58,12 @@ variable "go_version" {
   type        = string
 }
 
+variable "bastion_security_group_id" {
+  description = "Optional bastion security group ID allowed to SSH to the benchmark runner."
+  type        = string
+  default     = null
+}
+
 variable "tags" {
   description = "Tags to apply to resources."
   type        = map(string)
