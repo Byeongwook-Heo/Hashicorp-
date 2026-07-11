@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./styles.css";
+import "./product-ui.css";
 
 export const metadata: Metadata = {
   title: "Security Portal",

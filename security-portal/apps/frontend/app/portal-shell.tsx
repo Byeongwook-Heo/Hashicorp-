@@ -760,8 +760,8 @@ export default function PortalShell({ view }: { view: View }) {
           <Link href="/dashboard" className="brand" aria-label="Go to dashboard">
             <span className="brandMark">V</span>
             <div>
-              <strong>{t.brandTitle}</strong>
-              <small>{t.brandSubtitle}</small>
+              <strong>Vault</strong>
+              <small>{t.brandTitle}</small>
             </div>
           </Link>
           <button
@@ -795,7 +795,7 @@ export default function PortalShell({ view }: { view: View }) {
         <div className="sidebarFooter">
           <span className={`sidebarStatusDot ${vaultStatusTone}`} aria-hidden="true" />
           <div>
-            <strong>{localize(t, "Vault control plane", "Vault Control Plane")}</strong>
+            <strong>Vault</strong>
             <small>{vaultStatusLabel}</small>
           </div>
         </div>
@@ -825,7 +825,6 @@ export default function PortalShell({ view }: { view: View }) {
               <Menu aria-hidden="true" size={20} />
             </button>
             <div>
-              <span className="topbarKicker">{t.brandTitle}</span>
               <h1>{t.nav[view]}</h1>
               <StatusIndicator label={vaultStatusLabel} tone={vaultStatusTone} />
             </div>
@@ -1302,7 +1301,7 @@ function Dashboard({
   const credentialsHref = canUseView(currentUser.roles, "credentials") ? "/credentials" : "/secrets";
 
   return (
-    <div className="stack">
+    <div className="stack dashboardPage">
       <section className="overviewPanel">
         <div>
           <h2>{t.dashboard.title}</h2>
@@ -1340,16 +1339,11 @@ function Dashboard({
       </section>
       <div className="metrics">
         <Metric
-          label={t.dashboard.metrics.systems}
-          value={stats.systems}
-          href="/systems"
-          detail={
-            t === copy.ko
-              ? `${stats.secretSurfaces}${t.dashboard.metrics.mapped}`
-              : `${stats.secretSurfaces} ${t.dashboard.metrics.mapped}`
-          }
+          label={localize(t, "Total secrets", "전체 Secret")}
+          value={credentials.length}
+          href="/secrets"
+          detail={localize(t, `${stats.secretSurfaces} mapped surfaces`, `${stats.secretSurfaces}개 Surface 매핑`)}
         />
-        <Metric href={pendingHref} label={t.dashboard.metrics.pending} value={stats.pending} detail={t.dashboard.metrics.waiting} />
         <Metric
           label={t.dashboard.metrics.active}
           value={stats.active}
@@ -1360,6 +1354,7 @@ function Dashboard({
               : `${stats.expiringSoon} ${t.dashboard.metrics.expiring}`
           }
         />
+        <Metric href={pendingHref} label={t.dashboard.metrics.pending} value={stats.pending} detail={t.dashboard.metrics.waiting} />
         <Metric href={`${credentialsHref}?status=revoke_failed`} label={t.dashboard.metrics.failures} value={stats.failures} detail={t.dashboard.metrics.operator} tone="risk" />
       </div>
       <div className="dashboardGrid">
@@ -3257,13 +3252,13 @@ function PluginFactory({
     {
       id: "discover",
       icon: PackageSearch,
-      label: localize(t, "View plugin catalog", "플러그인 카탈로그 보기"),
+      label: localize(t, "Catalog", "카탈로그"),
       status: `${templates.length}`
     },
     {
       id: "review",
       icon: ListChecks,
-      label: localize(t, "View Factory operations", "Factory 운영 패널 보기"),
+      label: localize(t, "Operations", "운영"),
       status: "10"
     },
     ...(generated
@@ -3271,21 +3266,21 @@ function PluginFactory({
           {
             id: "files" as const,
             icon: Files,
-            label: localize(t, "View generated files", "생성 파일 보기"),
+            label: localize(t, "Generated files", "생성 파일"),
             status: `${draftFiles.length}`
           },
           {
             id: "build" as const,
             icon: Code2,
-            label: localize(t, "View build and apply plan", "빌드 및 적용 계획 보기"),
+            label: localize(t, "Build plan", "빌드 계획"),
             status: generated.buildTest.status
           },
           {
             id: "deploy" as const,
             icon: rollbackResult?.rolledBack ? Undo2 : applyResult?.applied ? CheckCircle2 : Rocket,
             label: applyResult
-              ? localize(t, "View apply result", "적용 결과 보기")
-              : localize(t, "View deployment review", "배포 검토 보기"),
+              ? localize(t, "Apply result", "적용 결과")
+              : localize(t, "Apply", "적용"),
             status: rollbackResult?.rolledBack
               ? localize(t, "Rolled back", "롤백됨")
               : applyResult?.applied
@@ -3297,11 +3292,10 @@ function PluginFactory({
     {
       id: "history",
       icon: History,
-      label: localize(t, "View job history", "작업 이력 보기"),
+      label: localize(t, "Job history", "작업 이력"),
       status: `${factoryJobs.length}`
     }
   ];
-  const activeFactoryLauncher = factoryLaunchers.find((launcher) => launcher.id === activeFactoryTab);
   const capabilityCards = [
     ["1", localize(t, "Dry-run diff", "Dry-run 변경점"), generated ? generated.dryRun.changes.length : 0],
     ["2", localize(t, "AI spec interview", "AI 질문형 설계"), requirementsInterview ? 7 - requirementsInterview.missingFields.length : 0],
@@ -4411,62 +4405,49 @@ function PluginFactory({
 
   return (
     <div className="stack pluginFactory">
-      <section className="pluginHero">
-        <div>
-          <span className="eyebrow">{localize(t, "AI-assisted workflow", "AI 기반 워크플로우")}</span>
-          <h2>{localize(t, "Plugin workspace", "플러그인 작업 공간")}</h2>
-          <p>
-            {localize(
-              t,
-              "Define the target, authentication, lifecycle, and mount in conversation before generation and guarded Vault apply.",
-              "대상 시스템과 인증·수명주기·Mount 경로를 대화로 확정한 뒤 생성과 안전한 Vault 적용으로 이어갑니다."
-            )}
-          </p>
+      <section className="factoryWorkspaceHeader">
+        <div className="factoryWorkspaceStatus">
+          <span className={`factoryConnectionDot ${assistantRuntime.provider}`} aria-hidden="true" />
+          <div>
+            <strong>
+              {assistantRuntime.provider === "ollama"
+                ? localize(t, "AI assistant connected", "AI 어시스턴트 연결됨")
+                : localize(t, "Local rules available", "로컬 규칙 엔진 사용 가능")}
+            </strong>
+            <small>
+              {localize(
+                t,
+                "Clarify the requirements in conversation, then generate and review the plugin.",
+                "대화로 요구사항을 정리한 뒤 플러그인을 생성하고 검토합니다."
+              )}
+            </small>
+          </div>
         </div>
-        <div className="pluginHeroActions">
+        <div className="factoryWorkspaceActions">
+          <button type="button" onClick={openRoleHomeAction}>
+            <History aria-hidden="true" size={16} />
+            {roleHome.action}
+            <span>{roleHome.metricValue}</span>
+          </button>
           <button className="primary" type="button" onClick={focusFactoryChat} disabled={busy === "load"}>
-            <MessageSquare aria-hidden="true" size={17} />
-            {localize(t, "Create with AI", "AI와 플러그인 만들기")}
-          </button>
-          <button
-            className="primaryGhost"
-            type="button"
-            onClick={() => setActiveFactoryTab("deploy")}
-            disabled={!generated}
-          >
-            <Rocket aria-hidden="true" size={17} />
-            {localize(t, "Deployment review", "배포 검토")}
+            <MessageSquare aria-hidden="true" size={16} />
+            {localize(t, "New plugin", "새 플러그인")}
           </button>
         </div>
-      </section>
-
-      <section className="factoryRoleHome">
-        <span className="factoryRoleIcon"><UserCheck aria-hidden="true" size={20} /></span>
-        <div>
-          <small>{roleHome.eyebrow}</small>
-          <strong>{roleHome.title}</strong>
-          <p>{roleHome.detail}</p>
-        </div>
-        <div className="factoryRoleMetric">
-          <span>{roleHome.metricLabel}</span>
-          <strong>{roleHome.metricValue}</strong>
-        </div>
-        <button type="button" onClick={openRoleHomeAction}>
-          {roleHome.action}
-        </button>
       </section>
 
       <section className="factoryJobTimeline" aria-label={localize(t, "Factory job progress", "Factory 작업 진행률")}>
         <div className="factoryTimelineHeader">
           <div>
-            <span>
+            <span>{localize(t, "Build status", "빌드 상태")}</span>
+            <strong>{currentJob?.pluginName || pluginName || localize(t, "New plugin draft", "새 플러그인 초안")}</strong>
+            <small>
               {currentJob
                 ? workspaceSaving
                   ? localize(t, "Saving workspace", "작업 저장 중")
                   : localize(t, "Workspace saved", "작업 저장됨")
                 : localize(t, "Design draft", "설계 초안")}
-            </span>
-            <strong>{currentJob?.pluginName || pluginName || localize(t, "New plugin draft", "새 플러그인 초안")}</strong>
+            </small>
           </div>
           <div>
             <span>{currentJob?.status ?? "draft"}</span>
@@ -4511,25 +4492,8 @@ function PluginFactory({
       <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "repair" || busy === "apply" ? "running" : ""}`}>
         <div className="panelHeader">
           <div>
-            <h2>{localize(t, "Factory chat", "Factory 채팅")}</h2>
-            <p>{localize(t, "Describe the outcome and refine the specification together.", "원하는 결과를 설명하면 필요한 조건부터 함께 정리합니다.")}</p>
-            <div
-              className={`assistantRuntime ${assistantRuntime.provider} ${assistantRuntime.fallbackReason ?? ""}`}
-              title={
-                assistantRuntime.provider === "ollama"
-                  ? `Ollama · ${assistantRuntime.model ?? "local model"}`
-                  : undefined
-              }
-            >
-              <span aria-hidden="true" />
-              {!assistantRuntime.checked
-                ? localize(t, "Checking AI connection", "AI 연결 확인 중")
-                : assistantRuntime.provider === "ollama"
-                  ? localize(t, "AI assistant online", "AI 어시스턴트 연결됨")
-                  : assistantRuntime.fallbackReason === "unavailable"
-                    ? localize(t, "Rules fallback · AI unavailable", "규칙 fallback · AI 연결 안 됨")
-                    : localize(t, "Rules fallback", "규칙 fallback")}
-            </div>
+            <h2>{localize(t, "Plugin design", "플러그인 설계")}</h2>
+            <p>{localize(t, "Describe the system and credential you need.", "연결할 시스템과 필요한 자격 증명을 설명해주세요.")}</p>
           </div>
           <div className="chatQuickActions">
             <button
@@ -4545,7 +4509,7 @@ function PluginFactory({
         </div>
         <div className="chatExamples" aria-label={localize(t, "Example prompts", "예시 프롬프트")}>
           <span>{localize(t, "Examples", "예시")}</span>
-          {chatExamples.map((example) => (
+          {chatExamples.slice(0, 3).map((example) => (
             <button
               key={example}
               type="button"
@@ -4728,23 +4692,6 @@ function PluginFactory({
       {status ? <div className={factoryStatusClassName(status)}>{status}</div> : null}
 
       <section className="factoryViewLauncher" aria-label={localize(t, "Factory views", "Factory 메뉴")}>
-        <div className="factoryLauncherHeader">
-          <div>
-            <span>{localize(t, "Factory views", "Factory 메뉴")}</span>
-            <strong>{activeFactoryLauncher?.label ?? localize(t, "Workspace", "작업 공간")}</strong>
-          </div>
-          {activeFactoryLauncher ? (
-            <button
-              aria-label={localize(t, "Close current view", "현재 화면 닫기")}
-              className="iconButton"
-              onClick={() => setActiveFactoryTab("workspace")}
-              title={localize(t, "Close current view", "현재 화면 닫기")}
-              type="button"
-            >
-              <X aria-hidden="true" size={16} />
-            </button>
-          ) : null}
-        </div>
         <div className="factoryLauncherGrid">
           {factoryLaunchers.map(({ id: launcherId, icon: Icon, label, status: launcherStatus }) => (
             <button
