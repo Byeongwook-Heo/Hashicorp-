@@ -75,6 +75,58 @@ describe("FactoryAssistant", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
+  it("treats a Korean create-then-apply request as one plugin workflow", async () => {
+    const assistant = new FactoryAssistant(rulesConfig, vaultPluginTemplates);
+    const openAiTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "openai");
+    const kafkaTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "kafka");
+    expect(openAiTemplate).toBeDefined();
+    expect(kafkaTemplate).toBeDefined();
+
+    const result = await assistant.chat({
+      locale: "ko",
+      selectedTemplateId: kafkaTemplate?.id,
+      generatedPluginName: kafkaTemplate?.name,
+      messages: [{ role: "user", content: "OpenAI 플러그인 만들고 Vault에 적용해줘" }]
+    });
+
+    expect(result.action).toEqual({ type: "generate-and-apply", templateId: openAiTemplate?.id });
+    expect(result.reply).toContain("OpenAI Project Secrets");
+    expect(result.reply).not.toContain("Kafka");
+  });
+
+  it("overrides an Ollama apply misclassification when the user names a new plugin", async () => {
+    const openAiTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "openai");
+    const kafkaTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "kafka");
+    expect(openAiTemplate).toBeDefined();
+    expect(kafkaTemplate).toBeDefined();
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          message: {
+            content: JSON.stringify({
+              reply: "기존 생성 결과를 적용하겠습니다.",
+              action: { type: "apply", templateId: null, filter: null }
+            })
+          }
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const assistant = new FactoryAssistant(ollamaConfig, vaultPluginTemplates, fetchMock);
+
+    const result = await assistant.chat({
+      locale: "ko",
+      selectedTemplateId: kafkaTemplate?.id,
+      generatedPluginName: kafkaTemplate?.name,
+      messages: [{ role: "user", content: "OpenAI 플러그인 만들고 Vault에 적용해줘" }]
+    });
+
+    expect(result.provider).toBe("ollama");
+    expect(result.action).toEqual({ type: "generate-and-apply", templateId: openAiTemplate?.id });
+    expect(result.reply).toContain("OpenAI Project Secrets");
+    expect(result.reply).not.toContain("Kafka");
+  });
+
   it("keeps comparison questions conversational when Ollama misclassifies them as a list", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(

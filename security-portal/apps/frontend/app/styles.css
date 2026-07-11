@@ -2119,6 +2119,44 @@ textarea {
   text-decoration: none;
 }
 
+.builderActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.builderActions span,
+.builderActions strong {
+  display: block;
+}
+
+.builderActions span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.builderActions strong {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builderActions button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
 .templateMeta,
 .builderGrid {
   display: grid;
@@ -5256,6 +5294,15 @@ tbody tr:hover {
 
   .factoryRoleHome > button {
     grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .builderActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .builderActions button {
     width: 100%;
   }
 

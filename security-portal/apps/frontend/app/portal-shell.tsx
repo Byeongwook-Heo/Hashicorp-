@@ -49,6 +49,7 @@ import {
   LogOut,
   Maximize2,
   Menu,
+  MessageSquare,
   Minimize2,
   Moon,
   PackageSearch,
@@ -65,7 +66,6 @@ import {
   Star,
   Sun,
   Undo2,
-  Upload,
   UserCheck,
   Users,
   Workflow,
@@ -2062,6 +2062,9 @@ type PluginFactoryHistoryItem = {
   createdAt: string;
   status: "success" | "warning";
 };
+type PluginApplyAttempt =
+  | { status: "applied"; result: VaultPluginApplyResult }
+  | { status: "approval-required" | "preflight-blocked" | "failed"; detail?: string };
 type FactoryTab = "workspace" | "discover" | "files" | "review" | "build" | "deploy" | "history";
 type FileEditorMode = "preview" | "edit" | "diff";
 type FactoryWorkspaceSnapshot = {
@@ -2155,6 +2158,8 @@ function PluginFactory({
   const [removeCatalogOnRollback, setRemoveCatalogOnRollback] = useState(false);
   const [rollbackResult, setRollbackResult] = useState<VaultPluginRollbackResult | null>(null);
   const jobCreationRef = useRef<Promise<VaultPluginFactoryJob> | null>(null);
+  const activeJobIdRef = useRef("");
+  const chatInputRef = useRef<HTMLInputElement | null>(null);
   const canApply = currentUser?.roles.includes("vault-admin") ?? false;
   const canReviewJobs = currentUser?.roles.some((role) => role === "security-approver" || role === "vault-admin") ?? false;
   const canAuthorJobs = currentUser?.roles.some((role) => role === "developer" || role === "app-owner" || role === "vault-admin") ?? false;
@@ -2234,6 +2239,10 @@ function PluginFactory({
       setActiveFilePath(draftFiles[0]?.path ?? "");
     }
   }, [activeFilePath, draftFiles]);
+
+  useEffect(() => {
+    activeJobIdRef.current = activeJobId;
+  }, [activeJobId]);
 
   const selectedTemplate = templates.find((template) => template.id === selectedId) ?? templates[0];
   const normalizedTemplateQuery = templateQuery.trim().toLowerCase();
@@ -2485,6 +2494,7 @@ function PluginFactory({
       })
     }).then((response) => {
       setActiveJobId(response.job.id);
+      activeJobIdRef.current = response.job.id;
       upsertFactoryJob(response.job);
       return response.job;
     });
@@ -2581,6 +2591,7 @@ function PluginFactory({
     setFactoryJobs(response.jobs);
     const updated = response.jobs.find((job) => job.id === activeJobId);
     if (updated) upsertFactoryJob(updated);
+    return response.jobs;
   }
 
   async function runFactoryJobAction(
@@ -2666,6 +2677,7 @@ function PluginFactory({
 
   function loadFactoryJob(job: VaultPluginFactoryJob) {
     setActiveJobId(job.id);
+    activeJobIdRef.current = job.id;
     hydrateFactoryWorkspace(job.snapshot as FactoryWorkspaceSnapshot, templates);
     setActiveFactoryTab(job.approval.status === "requested" && canReviewJobs ? "deploy" : "workspace");
   }
@@ -2681,6 +2693,19 @@ function PluginFactory({
 
   function toggleFactoryView(tab: Exclude<FactoryTab, "workspace">) {
     setActiveFactoryTab((current) => (current === tab ? "workspace" : tab));
+  }
+
+  function focusFactoryChat() {
+    setActiveFactoryTab("workspace");
+    window.requestAnimationFrame(() => {
+      const input = chatInputRef.current;
+      if (!input) return;
+      input.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        block: "center"
+      });
+      input.focus({ preventScroll: true });
+    });
   }
 
   function updateActiveFileContent(content: string) {
@@ -2863,7 +2888,8 @@ function PluginFactory({
     try {
       const activeJob = await ensureFactoryJob();
       job = activeJob;
-      await patchFactoryJobById(activeJob.id, {
+      activeJobIdRef.current = activeJob.id;
+      const generatingJob = await patchFactoryJobById(activeJob.id, {
         templateId: template.id,
         pluginName: input.pluginName,
         status: "running",
@@ -2927,14 +2953,30 @@ function PluginFactory({
         detail: `${response.generated.files.length} files · ${response.generated.mountPath}/ · ${shortId(response.generated.scaffoldSha256)}`,
         status: "success"
       });
-      const latestJob = factoryJobs.find((item) => item.id === activeJob.id) ?? activeJob;
+      const nextSnapshot: FactoryWorkspaceSnapshot = {
+        ...factoryWorkspaceSnapshot(),
+        activeTab: "files",
+        selectedId: template.id,
+        pluginName: response.generated.pluginName,
+        mountPath: response.generated.mountPath,
+        version: response.generated.version,
+        command: response.generated.command,
+        description: response.generated.description,
+        artifactSha256: response.generated.scaffoldSha256,
+        generated: response.generated,
+        applyResult: undefined,
+        rollbackResult: undefined,
+        draftFiles: response.generated.files,
+        activeFilePath: response.generated.files[0]?.path ?? ""
+      };
       await patchFactoryJobById(activeJob.id, {
         status: "running",
         stage: "security-review",
         progress: 70,
-        deployment: { ...latestJob.deployment, rollbackReady: response.generated.rollbackPlan.available },
+        snapshot: nextSnapshot as unknown as Record<string, unknown>,
+        deployment: { ...generatingJob.deployment, rollbackReady: response.generated.rollbackPlan.available },
         events: [
-          ...latestJob.events.filter((event) => event.label !== "generate" || event.status !== "running"),
+          ...generatingJob.events.filter((event) => event.label !== "generate" || event.status !== "running"),
           {
             id: `${Date.now()}-generated`,
             label: "generate",
@@ -2968,21 +3010,39 @@ function PluginFactory({
     });
   }
 
-  async function applyGeneratedPlugin(target: VaultPluginGenerateResult): Promise<VaultPluginApplyResult | null> {
+  async function applyGeneratedPlugin(target: VaultPluginGenerateResult): Promise<PluginApplyAttempt> {
     const effectiveSha256 = generated?.id === target.id ? artifactSha256 || target.scaffoldSha256 : target.scaffoldSha256;
     const canUseCurrentJob = Boolean(
       currentJob && currentUser && (currentJob.ownerId === currentUser.id || canReviewJobs)
     );
-    const job = canUseCurrentJob && currentJob ? currentJob : await ensureFactoryJob();
+    const candidateJob = canUseCurrentJob && currentJob ? currentJob : await ensureFactoryJob();
+    const targetJobId = activeJobIdRef.current || candidateJob.id;
+    let job: VaultPluginFactoryJob;
+    try {
+      const latestJobs = await refreshFactoryJobs();
+      const latestJob = latestJobs.find((item) => item.id === targetJobId);
+      if (!latestJob) throw new Error(localize(t, "Unable to verify the generated plugin job.", "생성된 플러그인 작업을 확인하지 못했습니다."));
+      job = latestJob;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : localize(t, "Unable to verify the Factory job.", "Factory 작업 상태를 확인하지 못했습니다.");
+      setStatus(detail);
+      return { status: "failed", detail };
+    }
     if (job.approval.status !== "approved") {
       setActiveFactoryTab("deploy");
       setStatus(localize(t, "Approval is required before Vault apply.", "Vault 적용 전에 승인이 필요합니다."));
-      return null;
+      return { status: "approval-required" };
     }
-    if (!preflightPassed) {
+    const targetHighFindings = target.securityReview.findings.filter((finding) => finding.severity === "high").length;
+    const targetPreflightPassed =
+      target.buildTest.status === "pass" &&
+      target.securityReview.posture !== "blocked" &&
+      targetHighFindings === 0 &&
+      /^[a-f0-9]{64}$/i.test(effectiveSha256);
+    if (!targetPreflightPassed) {
       setActiveFactoryTab("deploy");
       setStatus(localize(t, "Resolve every preflight check before apply.", "적용 전 사전 검증 항목을 모두 해결하세요."));
-      return null;
+      return { status: "preflight-blocked" };
     }
     startFactoryJob("apply", localize(t, `Applying ${target.pluginName}`, `${target.pluginName} Vault 적용 중`));
     setBusy("apply");
@@ -3031,12 +3091,13 @@ function PluginFactory({
         status: response.result.applied ? "success" : "warning"
       });
       await refreshFactoryJobs();
-      return response.result;
+      return { status: "applied", result: response.result };
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : "Unable to apply plugin");
-      finishFactoryJob("failed", `✕ ${err instanceof Error ? err.message : "apply failed"}`);
+      const detail = err instanceof Error ? err.message : "Unable to apply plugin";
+      setStatus(detail);
+      finishFactoryJob("failed", `✕ ${detail}`);
       void patchFactoryJobById(job.id, { status: "failed", stage: "deploy" }).catch(() => undefined);
-      return null;
+      return { status: "failed", detail };
     } finally {
       setBusy(null);
     }
@@ -3132,13 +3193,11 @@ function PluginFactory({
         addChatMessage("assistant", localize(t, "Vault admin role is required to apply it.", "Vault 적용에는 관리자 권한이 필요합니다."), "warning");
         return;
       }
-      const apply = await applyGeneratedPlugin(generated);
+      const applyAttempt = await applyGeneratedPlugin(generated);
       addChatMessage(
         "assistant",
-        apply
-          ? factoryAppliedMessage(apply, t)
-          : localize(t, "Apply failed. Check the status banner.", "적용에 실패했습니다. 상태 메시지를 확인하세요."),
-        apply ? "success" : "warning"
+        factoryApplyAttemptMessage(applyAttempt, generated.pluginName, t),
+        applyAttempt.status === "applied" ? "success" : "warning"
       );
       return;
     }
@@ -3184,13 +3243,11 @@ function PluginFactory({
       addChatMessage("assistant", localize(t, "Vault admin role is required to apply it.", "Vault 적용에는 관리자 권한이 필요합니다."), "warning");
       return;
     }
-    const apply = await applyGeneratedPlugin(generatedResult);
+    const applyAttempt = await applyGeneratedPlugin(generatedResult);
     addChatMessage(
       "assistant",
-      apply
-        ? factoryAppliedMessage(apply, t)
-        : localize(t, "Apply failed. Check the status banner.", "적용에 실패했습니다. 상태 메시지를 확인하세요."),
-      apply ? "success" : "warning"
+      factoryApplyAttemptMessage(applyAttempt, generatedResult.pluginName, t),
+      applyAttempt.status === "applied" ? "success" : "warning"
     );
   }
 
@@ -3246,33 +3303,6 @@ function PluginFactory({
     void submitChatPrompt(chatInput);
   }
 
-  async function generateSelectedTemplateFromChat() {
-    if (!selectedTemplate) return;
-    setActiveChatPrompt("selected-template-generate");
-    window.setTimeout(() => {
-      setActiveChatPrompt((activePrompt) => (activePrompt === "selected-template-generate" ? null : activePrompt));
-    }, 760);
-    addChatMessage(
-      "user",
-      localize(t, `Generate selected template: ${selectedTemplate.name}`, `선택 템플릿 생성: ${selectedTemplate.name}`)
-    );
-    addChatMessage("assistant", factoryStartMessage(selectedTemplate, false, t));
-    const generatedResult = await generateTemplateScaffold(
-      selectedTemplate,
-      {
-        pluginName,
-        mountPath,
-        version,
-        command,
-        description
-      },
-      localize(t, "Factory generated the selected template.", "Factory가 선택한 템플릿을 생성했습니다.")
-    );
-    if (generatedResult) {
-      addChatMessage("assistant", factoryGeneratedMessage(generatedResult, false, t), "success");
-    }
-  }
-
   return (
     <div className="stack pluginFactory">
       <section className="pluginHero">
@@ -3281,25 +3311,24 @@ function PluginFactory({
           <p>
             {localize(
               t,
-              "Create a custom Vault plugin scaffold, review the generated source, then register and enable it through the Vault adapter.",
-              "Vault 커스텀 플러그인 스캐폴드를 만들고, 생성된 소스와 적용 계획을 확인한 뒤 Vault 어댑터로 등록 및 활성화합니다."
+              "Describe the plugin you need in chat, or generate directly from a verified catalog template, then continue through deployment review.",
+              "채팅으로 필요한 플러그인을 요청하거나 검증된 카탈로그 템플릿에서 직접 생성한 뒤 배포 검토로 이어갑니다."
             )}
           </p>
         </div>
         <div className="pluginHeroActions">
-          <button className="primary" type="button" onClick={() => void generatePlugin()} disabled={!selectedTemplate || !canAuthorJobs || busy !== null}>
-            <Sparkles aria-hidden="true" size={17} />
-            {busy === "generate" ? localize(t, "Generating...", "생성 중...") : localize(t, "Create custom plugin", "커스텀 플러그인 생성")}
+          <button className="primary" type="button" onClick={focusFactoryChat} disabled={busy === "load"}>
+            <MessageSquare aria-hidden="true" size={17} />
+            {localize(t, "Ask AI to create a plugin", "AI로 플러그인 요청")}
           </button>
           <button
             className="primaryGhost"
             type="button"
-            onClick={() => void applyPlugin()}
-            disabled={!generated || !canApply || busy !== null || !artifactSha256 || !preflightPassed}
-            title={canApply ? undefined : localize(t, "Vault admin role required", "Vault 관리자 권한이 필요합니다.")}
+            onClick={() => setActiveFactoryTab("deploy")}
+            disabled={!generated}
           >
-            <Upload aria-hidden="true" size={17} />
-            {busy === "apply" ? localize(t, "Applying...", "적용 중...") : localize(t, "Apply to Vault", "Vault에 적용")}
+            <Rocket aria-hidden="true" size={17} />
+            {localize(t, "Deployment review", "배포 검토")}
           </button>
         </div>
       </section>
@@ -3369,20 +3398,12 @@ function PluginFactory({
           <div className="chatQuickActions">
             <button
               type="button"
-              className={activeChatPrompt === "selected-template-generate" ? "launching" : undefined}
-              onClick={() => void generateSelectedTemplateFromChat()}
-              disabled={!selectedTemplate || !canAuthorJobs || busy !== null}
-            >
-              {localize(t, "Generate selected template", "선택 템플릿 생성")}
-            </button>
-            <button
-              type="button"
               className={activeChatPrompt === localize(t, "Apply it to Vault", "Vault에 적용해줘") ? "launching" : undefined}
               onClick={() => void submitChatPrompt(localize(t, "Apply it to Vault", "Vault에 적용해줘"))}
               disabled={busy !== null || !generated || !canApply}
               title={canApply ? undefined : localize(t, "Vault admin role required", "Vault 관리자 권한이 필요합니다.")}
             >
-              {localize(t, "Apply to Vault", "Vault 적용")}
+              {localize(t, "Request Vault apply", "Vault 적용 요청")}
             </button>
           </div>
         </div>
@@ -3433,6 +3454,8 @@ function PluginFactory({
         </div>
         <form className="chatComposer" onSubmit={handleChatSubmit}>
           <input
+            id="factory-chat-input"
+            ref={chatInputRef}
             value={chatInput}
             onChange={(event) => setChatInput(event.target.value)}
             placeholder={localize(t, "Create a GitHub App plugin", "깃허브 앱 플러그인 만들어줘")}
@@ -3450,7 +3473,7 @@ function PluginFactory({
         </form>
       </section>
 
-      {status ? <div className={status.includes("Unable") || status.includes("required") ? "error" : "success"}>{status}</div> : null}
+      {status ? <div className={factoryStatusClassName(status)}>{status}</div> : null}
 
       <section className="factoryViewLauncher" aria-label={localize(t, "Factory views", "Factory 메뉴")}>
         <div className="factoryLauncherHeader">
@@ -3677,6 +3700,19 @@ function PluginFactory({
                   </div>
                 </div>
               ) : null}
+
+              <div className="builderActions">
+                <span>
+                  {localize(t, "Selected template", "선택 템플릿")}
+                  <strong>{selectedTemplate.displayName}</strong>
+                </span>
+                <button className="primary" disabled={!canAuthorJobs || busy !== null} onClick={() => void generatePlugin()} type="button">
+                  <Sparkles aria-hidden="true" size={16} />
+                  {busy === "generate"
+                    ? localize(t, "Generating...", "생성 중...")
+                    : localize(t, "Generate from this template", "이 템플릿으로 생성")}
+                </button>
+              </div>
             </>
           ) : (
             <div className="empty compact">{busy === "load" ? t.loading : t.table.noData}</div>
@@ -5222,11 +5258,34 @@ function factoryGeneratedMessage(result: VaultPluginGenerateResult, wantsApply: 
   return localize(
     t,
     wantsApply
-      ? `The scaffold is ready: ${result.files.length} files were generated for ${result.pluginName}, mounted at ${result.mountPath}/ with version ${result.version}. I am moving on to the Vault apply step now.`
+      ? `The scaffold is ready: ${result.files.length} files were generated for ${result.pluginName}, mounted at ${result.mountPath}/ with version ${result.version}. I will now check the approval and preflight gates before Vault apply.`
       : `The scaffold is ready. I generated ${result.files.length} files for ${result.pluginName}, set the default mount to ${result.mountPath}/, and prepared version ${result.version}. If this looks right, tell me "Apply it to Vault" and I will register and enable it.`,
     wantsApply
-      ? `스캐폴드가 준비됐습니다. ${result.pluginName} 기준으로 ${result.files.length}개 파일을 만들었고, mount는 ${result.mountPath}/, version은 ${result.version}으로 잡았습니다. 이제 바로 Vault 적용 단계로 넘어갈게요.`
+      ? `스캐폴드가 준비됐습니다. ${result.pluginName} 기준으로 ${result.files.length}개 파일을 만들었고, mount는 ${result.mountPath}/, version은 ${result.version}으로 잡았습니다. 이제 Vault 적용 전 승인과 사전 검증 상태를 확인하겠습니다.`
       : `스캐폴드가 준비됐습니다. ${result.pluginName} 기준으로 ${result.files.length}개 파일을 만들었고, 기본 mount는 ${result.mountPath}/, version은 ${result.version}으로 잡았습니다. 괜찮으면 "Vault에 적용해줘"라고 말해주세요. 제가 등록과 활성화까지 이어가겠습니다.`
+  );
+}
+
+function factoryApplyAttemptMessage(attempt: PluginApplyAttempt, pluginName: string, t: Copy): string {
+  if (attempt.status === "applied") return factoryAppliedMessage(attempt.result, t);
+  if (attempt.status === "approval-required") {
+    return localize(
+      t,
+      `The ${pluginName} scaffold is generated. Vault apply is paused at the approval gate; open Deployment review, request approval, then ask me to apply it again.`,
+      `${pluginName} 스캐폴드 생성은 완료했습니다. Vault 적용은 승인 단계에서 안전하게 멈췄습니다. 배포 검토에서 승인을 요청한 뒤 다시 적용해달라고 말씀해주세요.`
+    );
+  }
+  if (attempt.status === "preflight-blocked") {
+    return localize(
+      t,
+      `${pluginName} is ready, but Vault apply is paused because a preflight check is incomplete. Open Deployment review to resolve the blocked item.`,
+      `${pluginName} 생성은 완료했지만 사전 검증 항목이 남아 있어 Vault 적용을 멈췄습니다. 배포 검토에서 대기 항목을 확인해주세요.`
+    );
+  }
+  return localize(
+    t,
+    `I understood the apply request, but the Vault operation returned an error${attempt.detail ? `: ${attempt.detail}` : "."}`,
+    `적용 요청은 이해했지만 Vault 작업 중 오류가 발생했습니다${attempt.detail ? `: ${attempt.detail}` : "."}`
   );
 }
 
@@ -5240,6 +5299,12 @@ function factoryAppliedMessage(result: VaultPluginApplyResult, t: Copy): string 
 
 function localize(t: Copy, en: string, ko: string): string {
   return t === copy.ko ? ko : en;
+}
+
+function factoryStatusClassName(status: string): "error" | "success" | "warningLine" {
+  if (/unable|failed|error|forbidden|실패|오류|못했습니다/i.test(status)) return "error";
+  if (/required|blocked|resolve|필요|대기|해결/i.test(status)) return "warningLine";
+  return "success";
 }
 
 function toLocalDateTimeInputValue(date: Date): string {

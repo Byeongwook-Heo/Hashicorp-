@@ -184,8 +184,8 @@ export class FactoryAssistant {
       : undefined;
     const template =
       findTemplate(prompt, this.templates) ??
-      this.templates.find((item) => item.id === context.selectedTemplateId) ??
-      modelTemplate;
+      modelTemplate ??
+      this.templates.find((item) => item.id === context.selectedTemplateId);
     let action: FactoryChatAction = { type: "none" };
 
     if (intent.wantsList) {
@@ -320,6 +320,8 @@ export class FactoryAssistant {
       "Use generate only when the user explicitly asks to create or make a plugin.",
       "Use generate-and-apply only when the user explicitly asks to both create and apply the same plugin.",
       "Use apply only when the user explicitly asks to apply/register/enable an already generated plugin.",
+      "The latest user message has priority over the selected template and generated plugin context.",
+      "When the latest message names a different catalog target and asks to create it, never apply the previously generated plugin.",
       "Never claim that apply succeeded; the backend executes and reports that separately.",
       "Never request, reveal, or repeat Vault tokens, credentials, API keys, or secrets.",
       "Return JSON only: {\"reply\":string,\"action\":{\"type\":string,\"templateId\":string|null,\"filter\":string|null}}.",
@@ -504,9 +506,13 @@ function inferExplicitIntent(prompt: string): {
   return {
     wantsList: !conversationalQuestion && (categoryList || explicitList),
     wantsCreate:
-      /만들어|생성해|제작해|스캐폴드.*(?:만들|생성)|\b(?:create|generate|scaffold)\b/.test(normalized),
+      /만들(?:어|고|어서|자|기)|만든\s*(?:다음|후)|생성(?:해|하고|해서)|제작(?:해|하고|해서)|스캐폴드.*(?:만들|생성)|\b(?:create|make|generate|scaffold|build)\b/.test(
+        normalized
+      ),
     wantsApply:
-      /적용해|등록해|활성화해|배포해|\bapply\b|\bregister\b|\benable\b|\bdeploy\b/.test(normalized),
+      /적용(?:해|하고|해서|까지)|등록(?:해|하고|해서)|활성화(?:해|하고|해서)|배포(?:해|하고|해서)|\bapply\b|\bregister\b|\benable\b|\bdeploy\b/.test(
+        normalized
+      ),
     wantsRollback:
       /롤백해|되돌려|등록.*해제|비활성화해|\brollback\b|\bundo\b|\bderegister\b|\bdisable\b/.test(normalized),
     wantsSelect:
