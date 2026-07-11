@@ -2155,13 +2155,6 @@ textarea {
   white-space: nowrap;
 }
 
-.pluginOutputGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  align-items: start;
-}
-
 .factoryOpsPanel {
   display: grid;
   gap: 14px;
@@ -2933,7 +2926,6 @@ textarea {
   .approvalFooter,
   .userManagementGrid,
   .pluginWorkspace,
-  .pluginOutputGrid,
   .templateMeta,
   .accessEditor {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3038,7 +3030,6 @@ textarea {
   }
 
   .pluginWorkspace,
-  .pluginOutputGrid,
   .factoryOpsGrid {
     grid-template-columns: 1fr;
   }
@@ -3216,7 +3207,6 @@ textarea {
   .templateMeta,
   .builderGrid,
   .capabilityGrid,
-  .chatComposer,
   .passwordPanel,
   .sessionGrid {
     grid-template-columns: 1fr;
@@ -3224,6 +3214,10 @@ textarea {
 
   .grid {
     grid-template-columns: 1fr;
+  }
+
+  .chatComposer {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .pluginRow {
@@ -4312,59 +4306,134 @@ tbody tr:hover {
   font-size: 22px;
 }
 
-.factoryTabs {
+.factoryViewLauncher {
   display: grid;
-  grid-template-columns: repeat(6, minmax(112px, 1fr));
-  gap: 4px;
-  padding: 4px;
-  overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--panel-soft);
-  scrollbar-width: thin;
+  gap: 10px;
+  padding: 15px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
-.factoryTabs button {
+.factoryLauncherHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+}
+
+.factoryLauncherHeader span,
+.factoryLauncherHeader strong {
+  display: block;
+}
+
+.factoryLauncherHeader span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.factoryLauncherHeader strong {
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.factoryLauncherHeader .iconButton {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+
+.factoryLauncherGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 7px;
+}
+
+.factoryLauncherGrid > button {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 62px;
+  padding: 9px 11px;
+  border-color: var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: none;
+  color: var(--ink);
+  text-align: left;
+  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease, box-shadow var(--motion-fast) ease;
+}
+
+.factoryLauncherGrid > button:hover:not(:disabled) {
+  border-color: rgba(217, 168, 0, 0.65);
+  background: color-mix(in srgb, var(--panel) 94%, var(--vault));
+  box-shadow: none;
+  transform: none;
+}
+
+.factoryLauncherGrid > button.active {
+  border-color: rgba(217, 168, 0, 0.82);
+  background: color-mix(in srgb, var(--panel) 89%, var(--vault));
+  box-shadow: inset 3px 0 0 var(--vault);
+}
+
+.factoryLauncherIcon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.factoryLauncherGrid > button.active .factoryLauncherIcon {
+  background: var(--vault);
+  color: #111318;
+}
+
+.factoryLauncherGrid strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.factoryLauncherGrid small {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  min-width: 112px;
-  min-height: 42px;
-  padding: 0 10px;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.factoryTabs button:hover:not(:disabled) {
-  transform: none;
-  box-shadow: none;
-}
-
-.factoryTabs button.active {
-  border-color: var(--line);
-  background: var(--panel);
-  color: var(--ink);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-}
-
-.factoryTabs button.active svg {
-  color: var(--vault-deep);
-}
-
-.factoryTabs button small {
-  display: grid;
-  min-width: 19px;
-  height: 19px;
-  place-items: center;
-  padding: 0 5px;
+  min-width: 28px;
+  min-height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--ink);
-  color: var(--panel);
+  background: var(--panel-soft);
+  color: var(--muted);
   font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.factoryViewPanel {
+  scroll-margin-top: 16px;
+  animation: factoryViewIn 220ms ease-out both;
+}
+
+@keyframes factoryViewIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .factoryJobTimeline {
@@ -4889,6 +4958,48 @@ tbody tr:hover {
   margin-top: 2px;
 }
 
+.applyResultSection {
+  display: grid;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.resultSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.resultSectionHeader span,
+.resultSectionHeader h3 {
+  display: block;
+}
+
+.resultSectionHeader span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.resultSectionHeader h3 {
+  margin: 3px 0 0;
+  font-size: 15px;
+}
+
+.resultSectionHeader > strong {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(22, 101, 52, 0.28);
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 11px;
+}
+
 .rollbackZone {
   display: grid;
   gap: 10px;
@@ -5047,8 +5158,7 @@ tbody tr:hover {
 }
 
 :root[data-theme="dark"] .factoryRoleHome,
-:root[data-theme="dark"] .factoryTabs,
-:root[data-theme="dark"] .factoryTabs button.active,
+:root[data-theme="dark"] .factoryLauncherGrid > button,
 :root[data-theme="dark"] .factoryJobTimeline .workflowStep,
 :root[data-theme="dark"] .pluginSearchToolbar > label,
 :root[data-theme="dark"] .generatedFileToolbar > label,
@@ -5070,9 +5180,22 @@ tbody tr:hover {
 }
 
 :root[data-theme="dark"] .factoryRoleIcon,
-:root[data-theme="dark"] .factoryTabs button small {
+:root[data-theme="dark"] .factoryLauncherGrid > button.active .factoryLauncherIcon {
   background: #090b0f;
   color: var(--vault);
+}
+
+:root[data-theme="dark"] .factoryLauncherIcon,
+:root[data-theme="dark"] .factoryLauncherGrid small {
+  border-color: var(--line);
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .resultSectionHeader > strong {
+  border-color: rgba(74, 222, 128, 0.3);
+  background: rgba(22, 101, 52, 0.28);
+  color: #86efac;
 }
 
 :root[data-theme="dark"] .codeEditor,
@@ -5104,12 +5227,8 @@ tbody tr:hover {
 }
 
 @media (max-width: 900px) {
-  .factoryTabs {
-    display: flex;
-  }
-
-  .factoryTabs button {
-    flex: 1 0 122px;
+  .factoryLauncherGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .deploymentReviewGrid,
@@ -5138,6 +5257,18 @@ tbody tr:hover {
   .factoryRoleHome > button {
     grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .factoryLauncherGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .factoryLauncherGrid > button {
+    min-height: 58px;
+  }
+
+  .resultSectionHeader {
+    align-items: flex-start;
   }
 
   .factoryTimelineHeader {

@@ -49,7 +49,6 @@ import {
   LogOut,
   Maximize2,
   Menu,
-  MessageSquare,
   Minimize2,
   Moon,
   PackageSearch,
@@ -2063,7 +2062,7 @@ type PluginFactoryHistoryItem = {
   createdAt: string;
   status: "success" | "warning";
 };
-type FactoryTab = "workspace" | "discover" | "files" | "review" | "deploy" | "history";
+type FactoryTab = "workspace" | "discover" | "files" | "review" | "build" | "deploy" | "history";
 type FileEditorMode = "preview" | "edit" | "diff";
 type FactoryWorkspaceSnapshot = {
   activeTab?: FactoryTab;
@@ -2076,6 +2075,8 @@ type FactoryWorkspaceSnapshot = {
   artifactSha256?: string;
   chatMessages?: PluginChatMessage[];
   generated?: VaultPluginGenerateResult;
+  applyResult?: VaultPluginApplyResult;
+  rollbackResult?: VaultPluginRollbackResult;
   draftFiles?: VaultPluginGeneratedFile[];
   activeFilePath?: string;
   savedBlueprints?: string[];
@@ -2324,14 +2325,55 @@ function PluginFactory({
     { id: "deploy", label: localize(t, "Deploy", "배포"), complete: Boolean(applyResult?.applied) }
   ];
   const roleHome = factoryRoleHome(currentUser, factoryJobs, generated, favoriteTemplateIds.length, t);
-  const factoryTabs: Array<{ id: FactoryTab; icon: LucideIcon; label: string }> = [
-    { id: "workspace", icon: MessageSquare, label: localize(t, "Workspace", "작업공간") },
-    { id: "discover", icon: PackageSearch, label: localize(t, "Discover", "탐색") },
-    { id: "files", icon: Files, label: localize(t, "Files", "파일") },
-    { id: "review", icon: ListChecks, label: localize(t, "Review", "검토") },
-    { id: "deploy", icon: Rocket, label: localize(t, "Deploy", "배포") },
-    { id: "history", icon: History, label: localize(t, "History", "이력") }
+  const factoryLaunchers: Array<{ id: Exclude<FactoryTab, "workspace">; icon: LucideIcon; label: string; status: string }> = [
+    {
+      id: "discover",
+      icon: PackageSearch,
+      label: localize(t, "View plugin catalog", "플러그인 카탈로그 보기"),
+      status: `${templates.length}`
+    },
+    {
+      id: "review",
+      icon: ListChecks,
+      label: localize(t, "View Factory operations", "Factory 운영 패널 보기"),
+      status: "10"
+    },
+    ...(generated
+      ? [
+          {
+            id: "files" as const,
+            icon: Files,
+            label: localize(t, "View generated files", "생성 파일 보기"),
+            status: `${draftFiles.length}`
+          },
+          {
+            id: "build" as const,
+            icon: Code2,
+            label: localize(t, "View build and apply plan", "빌드 및 적용 계획 보기"),
+            status: generated.buildTest.status
+          },
+          {
+            id: "deploy" as const,
+            icon: rollbackResult?.rolledBack ? Undo2 : applyResult?.applied ? CheckCircle2 : Rocket,
+            label: applyResult
+              ? localize(t, "View apply result", "적용 결과 보기")
+              : localize(t, "View deployment review", "배포 검토 보기"),
+            status: rollbackResult?.rolledBack
+              ? localize(t, "Rolled back", "롤백됨")
+              : applyResult?.applied
+                ? localize(t, "Applied", "적용됨")
+                : currentJob?.approval.status ?? localize(t, "Draft", "초안")
+          }
+        ]
+      : []),
+    {
+      id: "history",
+      icon: History,
+      label: localize(t, "View job history", "작업 이력 보기"),
+      status: `${factoryJobs.length}`
+    }
   ];
+  const activeFactoryLauncher = factoryLaunchers.find((launcher) => launcher.id === activeFactoryTab);
   const capabilityCards = [
     ["1", localize(t, "Dry-run diff", "Dry-run 변경점"), generated ? generated.dryRun.changes.length : 0],
     ["2", localize(t, "AI spec interview", "AI 질문형 설계"), generated ? generated.blueprint.questions.length : 0],
@@ -2367,6 +2409,8 @@ function PluginFactory({
     artifactSha256,
     chatMessages,
     generated,
+    applyResult,
+    rollbackResult,
     draftFiles,
     activeFilePath,
     savedBlueprints,
@@ -2388,6 +2432,8 @@ function PluginFactory({
       artifactSha256,
       chatMessages: chatMessages.slice(-40),
       generated: generated ?? undefined,
+      applyResult: applyResult ?? undefined,
+      rollbackResult: rollbackResult ?? undefined,
       draftFiles,
       activeFilePath,
       savedBlueprints,
@@ -2408,10 +2454,12 @@ function PluginFactory({
       setCommand(snapshot.command ?? template.defaultCommand);
       setDescription(snapshot.description ?? template.description);
     }
-    setActiveFactoryTab(snapshot.activeTab ?? "workspace");
+    setActiveFactoryTab("workspace");
     setArtifactSha256(snapshot.artifactSha256 ?? snapshot.generated?.scaffoldSha256 ?? "");
     setChatMessages(snapshot.chatMessages?.length ? snapshot.chatMessages : [{ id: "welcome", role: "assistant", content: welcomeMessage }]);
     setGenerated(snapshot.generated ?? null);
+    setApplyResult(snapshot.applyResult ?? null);
+    setRollbackResult(snapshot.rollbackResult ?? null);
     setDraftFiles(snapshot.draftFiles?.length ? snapshot.draftFiles : snapshot.generated?.files ?? []);
     setActiveFilePath(snapshot.activeFilePath ?? snapshot.draftFiles?.[0]?.path ?? snapshot.generated?.files[0]?.path ?? "");
     setSavedBlueprints(snapshot.savedBlueprints ?? []);
@@ -2468,7 +2516,7 @@ function PluginFactory({
   }
 
   async function persistFactoryWorkspace() {
-    if (!workspaceReady || !selectedTemplate) return;
+    if (!workspaceReady || !selectedTemplate || !canAuthorJobs) return;
     if (currentJob && currentJob.ownerId !== currentUser?.id) return;
     setWorkspaceSaving(true);
     try {
@@ -2500,6 +2548,7 @@ function PluginFactory({
     setDraftFiles([]);
     setActiveFilePath("");
     setApplyResult(null);
+    setRollbackResult(null);
   }
 
   function chooseTemplate(template: VaultPluginTemplate) {
@@ -2603,7 +2652,7 @@ function PluginFactory({
       });
       setRollbackResult(response.result);
       setRollbackConfirmed(false);
-      setApplyResult(null);
+      setActiveFactoryTab("deploy");
       finishFactoryJob("complete", localize(t, "✓ rollback completed", "✓ 롤백 완료"));
       setStatus(localize(t, "Vault plugin rollback completed.", "Vault 플러그인 롤백이 완료되었습니다."));
       await refreshFactoryJobs();
@@ -2628,6 +2677,10 @@ function PluginFactory({
       return;
     }
     setActiveFactoryTab(roleHome.tab);
+  }
+
+  function toggleFactoryView(tab: Exclude<FactoryTab, "workspace">) {
+    setActiveFactoryTab((current) => (current === tab ? "workspace" : tab));
   }
 
   function updateActiveFileContent(content: string) {
@@ -2694,6 +2747,7 @@ function PluginFactory({
       setGenerated(nextGenerated);
       setDraftFiles(response.files);
       setArtifactSha256(response.scaffoldSha256);
+      setActiveFactoryTab("build");
       finishFactoryJob("complete", localize(t, "✓ edited scaffold rebuilt and verified", "✓ 수정된 스캐폴드 재생성 및 검증 완료"));
       await patchFactoryJobById(job.id, { status: "running", stage: "security-review", progress: 70 });
       recordFactoryHistory({
@@ -2804,6 +2858,7 @@ function PluginFactory({
     setBusy("generate");
     setStatus(null);
     setApplyResult(null);
+    setRollbackResult(null);
     let job: VaultPluginFactoryJob | null = null;
     try {
       const activeJob = await ensureFactoryJob();
@@ -2932,6 +2987,7 @@ function PluginFactory({
     startFactoryJob("apply", localize(t, `Applying ${target.pluginName}`, `${target.pluginName} Vault 적용 중`));
     setBusy("apply");
     setStatus(null);
+    setRollbackResult(null);
     try {
       await playFactoryJobLines([
       `$ vault health`,
@@ -2956,6 +3012,7 @@ function PluginFactory({
         })
       });
       setApplyResult(response.result);
+      setActiveFactoryTab("deploy");
       setStatus(localize(t, "Vault apply completed.", "Vault 적용이 완료되었습니다."));
       await onChanged();
       await waitForFactoryMotion(220);
@@ -3263,24 +3320,6 @@ function PluginFactory({
         </button>
       </section>
 
-      <nav className="factoryTabs" aria-label={localize(t, "Factory workspace views", "Factory 작업 화면")} role="tablist">
-        {factoryTabs.map(({ id: tabId, icon: Icon, label }) => (
-          <button
-            key={tabId}
-            aria-selected={activeFactoryTab === tabId}
-            className={activeFactoryTab === tabId ? "active" : ""}
-            onClick={() => setActiveFactoryTab(tabId)}
-            role="tab"
-            type="button"
-          >
-            <Icon aria-hidden="true" size={17} />
-            <span>{label}</span>
-            {tabId === "files" && draftFiles.length ? <small>{draftFiles.length}</small> : null}
-            {tabId === "history" && factoryJobs.length ? <small>{factoryJobs.length}</small> : null}
-          </button>
-        ))}
-      </nav>
-
       <section className="factoryJobTimeline" aria-label={localize(t, "Factory job progress", "Factory 작업 진행률")}>
         <div className="factoryTimelineHeader">
           <div>
@@ -3304,8 +3343,7 @@ function PluginFactory({
         </div>
       </section>
 
-      {activeFactoryTab === "workspace" ? (
-        <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "apply" ? "running" : ""}`}>
+      <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "apply" ? "running" : ""}`}>
         <div className="panelHeader">
           <div>
             <h2>{localize(t, "Factory chat", "Factory 채팅")}</h2>
@@ -3410,13 +3448,48 @@ function PluginFactory({
             <Send aria-hidden="true" size={18} />
           </button>
         </form>
-        </section>
-      ) : null}
+      </section>
 
       {status ? <div className={status.includes("Unable") || status.includes("required") ? "error" : "success"}>{status}</div> : null}
 
+      <section className="factoryViewLauncher" aria-label={localize(t, "Factory views", "Factory 메뉴")}>
+        <div className="factoryLauncherHeader">
+          <div>
+            <span>{localize(t, "Factory views", "Factory 메뉴")}</span>
+            <strong>{activeFactoryLauncher?.label ?? localize(t, "Workspace", "작업 공간")}</strong>
+          </div>
+          {activeFactoryLauncher ? (
+            <button
+              aria-label={localize(t, "Close current view", "현재 화면 닫기")}
+              className="iconButton"
+              onClick={() => setActiveFactoryTab("workspace")}
+              title={localize(t, "Close current view", "현재 화면 닫기")}
+              type="button"
+            >
+              <X aria-hidden="true" size={16} />
+            </button>
+          ) : null}
+        </div>
+        <div className="factoryLauncherGrid">
+          {factoryLaunchers.map(({ id: launcherId, icon: Icon, label, status: launcherStatus }) => (
+            <button
+              aria-controls={`factory-view-${launcherId}`}
+              aria-expanded={activeFactoryTab === launcherId}
+              className={activeFactoryTab === launcherId ? "active" : ""}
+              key={launcherId}
+              onClick={() => toggleFactoryView(launcherId)}
+              type="button"
+            >
+              <span className="factoryLauncherIcon"><Icon aria-hidden="true" size={18} /></span>
+              <strong>{label}</strong>
+              <small>{launcherStatus}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+
       {activeFactoryTab === "discover" ? (
-      <div className="pluginWorkspace">
+      <div className="pluginWorkspace factoryViewPanel" id="factory-view-discover">
         <section className="pluginCatalogPanel">
           <div className="panelHeader">
             <div>
@@ -3613,7 +3686,7 @@ function PluginFactory({
       ) : null}
 
       {activeFactoryTab === "review" ? (
-      <section className="tablePanel factoryOpsPanel">
+      <section className="tablePanel factoryOpsPanel factoryViewPanel" id="factory-view-review">
         <div className="panelHeader">
           <div>
             <h2>{localize(t, "Factory operations cockpit", "Factory 운영 패널")}</h2>
@@ -3733,9 +3806,8 @@ function PluginFactory({
       </section>
       ) : null}
 
-      <div className="pluginOutputGrid">
-        {activeFactoryTab === "files" ? (
-        <section className="tablePanel commandPanel generatedFilesPanel">
+      {activeFactoryTab === "files" && generated ? (
+        <section className="tablePanel commandPanel generatedFilesPanel factoryViewPanel" id="factory-view-files">
           <div className="panelHeader">
             <div>
               <h2>{localize(t, "Generated files", "생성 파일")}</h2>
@@ -3744,7 +3816,7 @@ function PluginFactory({
             <div className="fileHeaderActions">
               <button disabled={!generated || !canAuthorJobs || busy !== null} onClick={() => void rebuildEditedFiles()} type="button">
                 <RefreshCw aria-hidden="true" size={16} />
-                {localize(t, "Rebuild edits", "수정본 재생성")}
+                {localize(t, "Build and verify edits", "수정본 빌드 및 검증")}
               </button>
               {scaffoldDownload ? (
                 <a className="downloadLink" href={scaffoldDownload.href} download={scaffoldDownload.filename}>
@@ -3854,10 +3926,10 @@ function PluginFactory({
             <div className="empty compact">{localize(t, "No generated scaffold yet.", "아직 생성된 스캐폴드가 없습니다.")}</div>
           )}
         </section>
-        ) : null}
+      ) : null}
 
-        {activeFactoryTab === "review" ? (
-        <section className="tablePanel commandPanel">
+      {activeFactoryTab === "build" && generated ? (
+        <section className="tablePanel commandPanel factoryViewPanel" id="factory-view-build">
           <h2>{localize(t, "Build and apply plan", "빌드 및 적용 계획")}</h2>
           {generated ? (
             <>
@@ -3905,11 +3977,11 @@ function PluginFactory({
             <div className="empty compact">{localize(t, "Generate a plugin to see commands.", "플러그인을 생성하면 명령을 확인할 수 있습니다.")}</div>
           )}
         </section>
-        ) : null}
+      ) : null}
 
-        {activeFactoryTab === "deploy" ? (
-        <section className="tablePanel commandPanel">
-          <h2>{localize(t, "Apply result", "적용 결과")}</h2>
+      {activeFactoryTab === "deploy" && generated ? (
+        <section className="tablePanel commandPanel factoryViewPanel" id="factory-view-deploy">
+          <h2>{localize(t, "Deployment review", "배포 검토")}</h2>
           <div className="deploymentReviewGrid">
             <section className="preflightPanel">
               <div className="panelHeader">
@@ -4029,29 +4101,32 @@ function PluginFactory({
             </div>
           ) : null}
           {applyResult ? (
-            <div className="applyResult">
-              <div className="resultBanner">
-                <strong>{applyResult.applied ? localize(t, "Applied", "적용됨") : localize(t, "Pending", "대기")}</strong>
-                <span>{applyResult.mode}</span>
-              </div>
-              {applyResult.steps.map((step) => (
-                <div className="applyStep" key={`${step.label}-${step.detail}`}>
-                  <span className={step.status}>{step.status}</span>
-                  <div>
-                    <strong>{step.label}</strong>
-                    <small>{step.detail}</small>
-                  </div>
+            <section className="applyResultSection">
+              <div className="resultSectionHeader">
+                <div>
+                  <span>{localize(t, "Deployment output", "배포 실행 결과")}</span>
+                  <h3>{localize(t, "Apply result", "적용 결과")}</h3>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="empty compact">
-              {canApply
-                ? localize(t, "No Vault apply result yet.", "아직 Vault 적용 결과가 없습니다.")
-                : localize(t, "Vault admin role required for apply.", "적용에는 Vault 관리자 권한이 필요합니다.")}
-            </div>
-          )}
-          {generated?.rollbackPlan.available ? (
+                <strong>{applyResult.applied ? localize(t, "Applied", "적용됨") : localize(t, "Pending", "대기")}</strong>
+              </div>
+              <div className="applyResult">
+                <div className="resultBanner">
+                  <strong>{applyResult.pluginName}</strong>
+                  <span>{applyResult.mode}</span>
+                </div>
+                {applyResult.steps.map((step) => (
+                  <div className="applyStep" key={`${step.label}-${step.detail}`}>
+                    <span className={step.status}>{step.status}</span>
+                    <div>
+                      <strong>{step.label}</strong>
+                      <small>{step.detail}</small>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+          {applyResult?.applied && generated.rollbackPlan.available ? (
             <section className="rollbackZone">
               <div className="panelHeader">
                 <div><h3>{localize(t, "Rollback", "롤백")}</h3><p>{generated.rollbackPlan.summary}</p></div>
@@ -4079,11 +4154,10 @@ function PluginFactory({
             </section>
           ) : null}
         </section>
-        ) : null}
-      </div>
+      ) : null}
 
       {activeFactoryTab === "history" ? (
-        <section className="tablePanel factoryHistoryPanel">
+        <section className="tablePanel factoryHistoryPanel factoryViewPanel" id="factory-view-history">
           <div className="panelHeader">
             <div>
               <h2>{localize(t, "Saved Factory jobs", "저장된 Factory 작업")}</h2>
@@ -4909,26 +4983,36 @@ function factoryRoleHome(
   const approvalQueue = jobs.filter((job) => job.approval.status === "requested");
 
   if (user?.roles.includes("vault-admin")) {
+    const hasDeploymentWork = approvalQueue.length > 0 || Boolean(generated);
     return {
       eyebrow: localize(t, "Vault administrator", "Vault 관리자"),
-      title: localize(t, "Review the release gate", "배포 게이트를 검토하세요"),
-      detail: localize(t, "Confirm security evidence, approval, rollout mode, and rollback readiness before apply.", "적용 전 보안 근거, 승인, 배포 방식과 롤백 준비 상태를 확인합니다."),
+      title: hasDeploymentWork
+        ? localize(t, "Review the release gate", "배포 게이트를 검토하세요")
+        : localize(t, "Review Factory activity", "Factory 작업 이력을 확인하세요"),
+      detail: hasDeploymentWork
+        ? localize(t, "Confirm security evidence, approval, rollout mode, and rollback readiness before apply.", "적용 전 보안 근거, 승인, 배포 방식과 롤백 준비 상태를 확인합니다.")
+        : localize(t, "Open saved jobs to inspect prior decisions and deployment events.", "저장된 작업에서 이전 결정과 배포 이벤트를 확인합니다."),
       metricLabel: localize(t, "Awaiting approval", "승인 대기"),
       metricValue: approvalQueue.length,
-      action: localize(t, "Open deployment", "배포 열기"),
-      tab: "deploy"
+      action: hasDeploymentWork ? localize(t, "Open deployment review", "배포 검토 열기") : localize(t, "Open history", "이력 열기"),
+      tab: hasDeploymentWork ? "deploy" : "history"
     };
   }
 
   if (user?.roles.includes("security-approver")) {
+    const hasApprovalWork = approvalQueue.length > 0;
     return {
       eyebrow: localize(t, "Security approver", "보안 승인자"),
-      title: localize(t, "Decide with evidence", "근거를 보고 승인하세요"),
-      detail: localize(t, "Use the build, security, checksum, and impact summary together before making a decision.", "빌드, 보안, 체크섬과 영향도 요약을 함께 확인한 뒤 결정합니다."),
+      title: hasApprovalWork
+        ? localize(t, "Decide with evidence", "근거를 보고 승인하세요")
+        : localize(t, "Review prior decisions", "이전 승인 이력을 확인하세요"),
+      detail: hasApprovalWork
+        ? localize(t, "Use the build, security, checksum, and impact summary together before making a decision.", "빌드, 보안, 체크섬과 영향도 요약을 함께 확인한 뒤 결정합니다.")
+        : localize(t, "There are no pending requests. Saved jobs remain available in history.", "대기 중인 요청이 없습니다. 저장된 작업은 이력에서 확인할 수 있습니다."),
       metricLabel: localize(t, "Review queue", "검토 대기"),
       metricValue: approvalQueue.length,
-      action: localize(t, "Review requests", "요청 검토"),
-      tab: "deploy"
+      action: hasApprovalWork ? localize(t, "Review requests", "요청 검토") : localize(t, "Open history", "이력 열기"),
+      tab: hasApprovalWork ? "deploy" : "history"
     };
   }
 
