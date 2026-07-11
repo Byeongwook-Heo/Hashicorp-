@@ -3182,11 +3182,11 @@ function PluginFactory({
     learning: templates.filter((template) => template.source === "learning").length
   };
   const chatExamples = [
-    localize(t, "Create a GitHub App plugin", "깃허브 앱 플러그인 만들어줘"),
-    localize(t, "Create a Sectigo PKI plugin", "섹티고 PKI 플러그인 만들어줘"),
-    localize(t, "Create a ClickHouse database plugin", "클릭하우스 데이터베이스 플러그인 만들어줘"),
-    localize(t, "Create an OpenAI plugin and apply it to Vault", "OpenAI 플러그인 만들고 Vault에 적용해줘"),
-    localize(t, "List every plugin you can make", "만들 수 있는 플러그인 전부 알려줘"),
+    localize(t, "Create a GitHub App plugin", "GitHub App Plugin 만들어줘"),
+    localize(t, "Create a Sectigo PKI plugin", "Sectigo PKI Plugin 만들어줘"),
+    localize(t, "Create a ClickHouse database plugin", "ClickHouse Database Plugin 만들어줘"),
+    localize(t, "Create an OpenAI plugin and apply it to Vault", "OpenAI Plugin 만들고 Vault에 적용해줘"),
+    localize(t, "List every plugin you can make", "만들 수 있는 Plugin 전부 알려줘"),
     localize(t, "Compare Sectigo and DigiCert", "Sectigo와 DigiCert를 비교해줘")
   ];
   const currentJob = factoryJobs.find((job) => job.id === activeJobId);
