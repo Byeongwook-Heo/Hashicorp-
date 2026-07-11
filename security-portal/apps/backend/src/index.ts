@@ -50,6 +50,14 @@ const requestSchema = z.object({
   payload: z.record(z.unknown()).default({})
 });
 
+const bulkRequestSchema = z.object({
+  requests: z.array(requestSchema).min(1).max(50)
+});
+
+const bulkCredentialActionSchema = z.object({
+  credentialIds: z.array(z.string().uuid()).min(1).max(50)
+});
+
 const userAccessSchema = z
   .object({
     roles: z.array(z.enum(userRoles)).min(1).optional(),
@@ -439,6 +447,15 @@ async function main(): Promise<void> {
     }
   });
 
+  app.post("/requests/bulk", requireUser(store, config.sessionCookieName), async (req, res, next) => {
+    try {
+      const body = bulkRequestSchema.parse(req.body);
+      res.status(201).json({ result: await workflow.createRequests(req.user, body.requests) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/requests", requireUser(store, config.sessionCookieName), async (_req, res, next) => {
     try {
       const requests = await store.listRequests();
@@ -521,6 +538,15 @@ async function main(): Promise<void> {
   app.post("/credentials/:id/revoke", requireUser(store, config.sessionCookieName), async (req, res, next) => {
     try {
       res.json({ credential: await workflow.revokeCredential(req.user, requiredParam(req, "id")) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/credentials/bulk-revoke", requireUser(store, config.sessionCookieName), async (req, res, next) => {
+    try {
+      const body = bulkCredentialActionSchema.parse(req.body);
+      res.json({ result: await workflow.revokeCredentials(req.user, body.credentialIds) });
     } catch (error) {
       next(error);
     }

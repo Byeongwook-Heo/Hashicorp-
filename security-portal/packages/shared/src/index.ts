@@ -121,6 +121,26 @@ export interface IssuedCredential {
   revokedAt?: string;
 }
 
+export interface BulkRequestFailure {
+  index: number;
+  error: string;
+}
+
+export interface BulkRequestResult {
+  created: AccessRequest[];
+  failures: BulkRequestFailure[];
+}
+
+export interface BulkCredentialActionFailure {
+  credentialId: string;
+  error: string;
+}
+
+export interface BulkCredentialActionResult {
+  revoked: IssuedCredential[];
+  failures: BulkCredentialActionFailure[];
+}
+
 export interface AuditEvent {
   id: string;
   actorId: string;

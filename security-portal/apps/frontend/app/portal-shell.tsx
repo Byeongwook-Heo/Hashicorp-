@@ -6,6 +6,8 @@ import {
   userStatuses,
   type AccessRequest,
   type AuditEvent,
+  type BulkCredentialActionResult,
+  type BulkRequestResult,
   type IssuedCredential,
   type ManagedUser,
   type PortalUser,
@@ -27,11 +29,14 @@ import {
   type VaultMappingHealth
 } from "@security-portal/shared";
 import Link from "next/link";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Activity,
   AlertTriangle,
+  ArrowRight,
   BadgeCheck,
+  Bell,
   Boxes,
   CalendarClock,
   CheckCircle2,
@@ -40,6 +45,7 @@ import {
   ClipboardCheck,
   Code2,
   Database,
+  Download,
   FileDiff,
   Files,
   GitCompare,
@@ -69,6 +75,7 @@ import {
   Sparkles,
   Star,
   Sun,
+  Upload,
   Undo2,
   UserCheck,
   Users,
@@ -77,6 +84,7 @@ import {
   X,
   type LucideIcon
 } from "lucide-react";
+import { SavedViewControls, usePortalFilters } from "./portal-list-tools";
 
 type View =
   | "dashboard"
@@ -105,6 +113,22 @@ type VaultHealthResponse = {
   healthy: boolean;
   detail: Record<string, unknown>;
 };
+type GlobalSearchItem = {
+  id: string;
+  category: "system" | "request" | "credential";
+  title: string;
+  detail: string;
+  href: string;
+  keywords: string;
+};
+type PortalTask = {
+  id: string;
+  kind: "approval" | "request" | "expiry" | "failure";
+  title: string;
+  detail: string;
+  href: string;
+  dueAt?: string;
+};
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -113,7 +137,7 @@ const navItems: Array<{ view: View; href: string; icon: LucideIcon; roles?: User
   { view: "secrets", href: "/secrets", icon: Database },
   { view: "systems", href: "/systems", icon: Boxes },
   { view: "requests", href: "/requests", icon: ClipboardCheck, roles: ["developer", "app-owner", "vault-admin"] },
-  { view: "approvals", href: "/approvals", icon: ShieldCheck, roles: ["security-approver", "vault-admin"] },
+  { view: "approvals", href: "/approvals", icon: ShieldCheck, roles: ["security-approver", "app-owner", "vault-admin"] },
   { view: "credentials", href: "/credentials", icon: KeyRound, roles: ["developer", "app-owner", "vault-admin"] },
   { view: "audit", href: "/audit", icon: ScrollText, roles: ["auditor", "vault-admin"] },
   { view: "health", href: "/health", icon: HeartPulse, roles: ["auditor", "vault-admin"] },
@@ -124,6 +148,11 @@ const navItems: Array<{ view: View; href: string; icon: LucideIcon; roles?: User
 
 function canUseNavItem(roles: UserRole[], item: (typeof navItems)[number]): boolean {
   return !item.roles || item.roles.some((role) => roles.includes(role));
+}
+
+function canUseView(roles: UserRole[], view: View): boolean {
+  const item = navItems.find((candidate) => candidate.view === view);
+  return item ? canUseNavItem(roles, item) : false;
 }
 
 const copy = {
@@ -460,6 +489,8 @@ export default function PortalShell({ view }: { view: View }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const t = copy[language];
 
   function setPortalLanguage(nextLanguage: Language) {
@@ -541,11 +572,22 @@ export default function PortalShell({ view }: { view: View }) {
 
   useEffect(() => {
     setMobileNavOpen(false);
+    setGlobalSearchOpen(false);
+    setTaskCenterOpen(false);
   }, [view]);
 
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setMobileNavOpen(false);
+      if (event.key === "Escape") {
+        setMobileNavOpen(false);
+        setGlobalSearchOpen(false);
+        setTaskCenterOpen(false);
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setTaskCenterOpen(false);
+        setGlobalSearchOpen(true);
+      }
     }
 
     document.addEventListener("keydown", closeOnEscape);
@@ -602,6 +644,90 @@ export default function PortalShell({ view }: { view: View }) {
     }),
     [systems, requests, credentials]
   );
+
+  const globalSearchItems = useMemo<GlobalSearchItem[]>(() => {
+    const requestView = user && canUseView(user.roles, "approvals")
+      ? "approvals"
+      : "requests";
+    const credentialView = user && canUseView(user.roles, "credentials") ? "credentials" : "secrets";
+    return [
+      ...systems.map((system) => ({
+        id: `system-${system.id}`,
+        category: "system" as const,
+        title: system.name,
+        detail: `${system.environment} · ${system.ownerGroup} · ${system.vaultNamespace}`,
+        href: `/systems?q=${encodeURIComponent(system.name)}`,
+        keywords: `${system.name} ${system.description} ${system.environment} ${system.ownerGroup} ${system.vaultNamespace}`.toLowerCase()
+      })),
+      ...requests.map((request) => ({
+        id: `request-${request.id}`,
+        category: "request" as const,
+        title: request.systemName,
+        detail: `${request.requestType} · ${request.status} · ${request.requesterEmail}`,
+        href: `/${requestView}?q=${encodeURIComponent(request.systemName)}&status=${request.status}`,
+        keywords: `${request.systemName} ${request.requestType} ${request.status} ${request.requesterEmail} ${request.reason}`.toLowerCase()
+      })),
+      ...credentials.map((credential) => ({
+        id: `credential-${credential.id}`,
+        category: "credential" as const,
+        title: credential.systemName,
+        detail: `${credential.requestType} · ${credential.status} · ${shortId(credential.vaultLeaseId)}`,
+        href: `/${credentialView}?q=${encodeURIComponent(credential.systemName)}&status=${credential.status}`,
+        keywords: `${credential.systemName} ${credential.requestType} ${credential.status} ${credential.vaultMount} ${credential.vaultRole} ${credential.vaultLeaseId}`.toLowerCase()
+      }))
+    ];
+  }, [credentials, requests, systems, user]);
+
+  const portalTasks = useMemo<PortalTask[]>(() => {
+    if (!user) return [];
+    const canReview = canUseView(user.roles, "approvals");
+    const canOpenCredentials = canUseView(user.roles, "credentials");
+    const requestRoute = canReview ? "/approvals" : "/requests";
+    const credentialRoute = canOpenCredentials ? "/credentials" : "/secrets";
+    const requestTasks = requests
+      .filter((request) => request.status === "pending" && (canReview || request.requesterId === user.id))
+      .map((request) => {
+        const slaHours = request.riskLevel === "high" ? 1 : request.riskLevel === "medium" ? 4 : 8;
+        return {
+          id: `request-${request.id}`,
+          kind: canReview ? ("approval" as const) : ("request" as const),
+          title: request.systemName,
+          detail: `${request.requestType} · ${request.riskLevel}`,
+          href: `${requestRoute}?q=${encodeURIComponent(request.systemName)}&status=pending`,
+          dueAt: new Date(new Date(request.createdAt).getTime() + slaHours * 60 * 60 * 1000).toISOString()
+        };
+      });
+    const credentialTasks = credentials.flatMap<PortalTask>((credential) => {
+      if (credential.status === "revoke_failed") {
+        return [
+          {
+            id: `failure-${credential.id}`,
+            kind: "failure",
+            title: credential.systemName,
+            detail: `${credential.requestType} · ${localize(t, "Revoke retry required", "폐기 재시도 필요")}`,
+            href: `${credentialRoute}?q=${encodeURIComponent(credential.systemName)}&status=revoke_failed`
+          }
+        ];
+      }
+      const expiresAt = new Date(credential.expiresAt).getTime();
+      if (credential.status === "active" && expiresAt > Date.now() && expiresAt - Date.now() <= 24 * 60 * 60 * 1000) {
+        return [
+          {
+            id: `expiry-${credential.id}`,
+            kind: "expiry",
+            title: credential.systemName,
+            detail: `${credential.requestType} · ${localize(t, "Expires soon", "만료 임박")}`,
+            href: `${credentialRoute}?q=${encodeURIComponent(credential.systemName)}&status=active`,
+            dueAt: credential.expiresAt
+          }
+        ];
+      }
+      return [];
+    });
+    return [...credentialTasks, ...requestTasks]
+      .sort((left, right) => (left.dueAt ?? "").localeCompare(right.dueAt ?? ""))
+      .slice(0, 30);
+  }, [credentials, requests, t, user]);
 
   if (!user) {
     return (
@@ -697,6 +823,35 @@ export default function PortalShell({ view }: { view: View }) {
             </div>
           </div>
           <div className="topbarTools">
+            <button
+              aria-expanded={globalSearchOpen}
+              aria-haspopup="dialog"
+              aria-label={localize(t, "Search systems, requests, and credentials", "시스템, 요청, Credential 통합 검색")}
+              className="iconButton topbarAction"
+              onClick={() => {
+                setTaskCenterOpen(false);
+                setGlobalSearchOpen(true);
+              }}
+              title={localize(t, "Global search", "통합 검색")}
+              type="button"
+            >
+              <Search aria-hidden="true" size={18} />
+            </button>
+            <button
+              aria-expanded={taskCenterOpen}
+              aria-haspopup="dialog"
+              aria-label={localize(t, "Open my work queue", "내 작업함 열기")}
+              className="iconButton topbarAction taskCenterTrigger"
+              onClick={() => {
+                setGlobalSearchOpen(false);
+                setTaskCenterOpen(true);
+              }}
+              title={localize(t, "My work queue", "내 작업함")}
+              type="button"
+            >
+              <Bell aria-hidden="true" size={18} />
+              {portalTasks.length ? <span className="actionBadge">{Math.min(portalTasks.length, 99)}</span> : null}
+            </button>
             <div className="languageSwitch" aria-label={t.languageLabel}>
               <button aria-pressed={language === "en"} className={language === "en" ? "active" : ""} onClick={() => setPortalLanguage("en")}>
                 EN
@@ -732,6 +887,21 @@ export default function PortalShell({ view }: { view: View }) {
           </div>
         </header>
 
+        {globalSearchOpen ? (
+          <GlobalSearchDialog
+            items={globalSearchItems}
+            onClose={() => setGlobalSearchOpen(false)}
+            t={t}
+          />
+        ) : null}
+        {taskCenterOpen ? (
+          <TaskCenterDrawer
+            onClose={() => setTaskCenterOpen(false)}
+            tasks={portalTasks}
+            t={t}
+          />
+        ) : null}
+
         {error ? <PortalState detail={error} kind="error" title={localize(t, "Unable to load this view", "화면을 불러오지 못했습니다")} /> : null}
         {loading ? <PortalState kind="loading" title={t.loading} /> : null}
         {!loading && !canAccessView ? (
@@ -745,6 +915,7 @@ export default function PortalShell({ view }: { view: View }) {
         <div className="pageSurface" key={view}>
         {!loading && canAccessView && view === "dashboard" ? (
           <Dashboard
+            currentUser={user}
             t={t}
             stats={stats}
             systems={systems}
@@ -758,7 +929,9 @@ export default function PortalShell({ view }: { view: View }) {
           <SecretInventory t={t} systems={systems} requests={requests} credentials={credentials} />
         ) : null}
         {!loading && canAccessView && view === "systems" ? <Systems t={t} systems={systems} /> : null}
-        {!loading && canAccessView && view === "requests" ? <RequestForm t={t} systems={systems} onChanged={refresh} /> : null}
+        {!loading && canAccessView && view === "requests" ? (
+          <RequestForm currentUser={user} requests={requests} t={t} systems={systems} onChanged={refresh} />
+        ) : null}
         {!loading && canAccessView && view === "approvals" ? (
           <Approvals t={t} currentUser={user} requests={requests} auditEvents={auditEvents} onChanged={refresh} />
         ) : null}
@@ -779,6 +952,179 @@ export default function PortalShell({ view }: { view: View }) {
         </div>
       </main>
     </div>
+  );
+}
+
+function PortalOverlay({
+  children,
+  className = "",
+  onDismiss
+}: {
+  children: ReactNode;
+  className?: string;
+  onDismiss: () => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+
+  useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusableSelector = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
+    const focusable = Array.from(overlayRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+    focusable[0]?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        dismissRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const controls = Array.from(overlayRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? []);
+      if (!controls.length) return;
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (!first || !last) return;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousFocus?.focus();
+    };
+  }, []);
+
+  return createPortal(
+    <div className={`portalOverlay ${className}`} onMouseDown={(event) => event.target === event.currentTarget && onDismiss()} ref={overlayRef}>
+      {children}
+    </div>,
+    document.body
+  );
+}
+
+function GlobalSearchDialog({
+  t,
+  items,
+  onClose
+}: {
+  t: Copy;
+  items: GlobalSearchItem[];
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
+  const inputRef = useRef<HTMLInputElement>(null);
+  const results = deferredQuery
+    ? items.filter((item) => `${item.title} ${item.detail} ${item.keywords}`.toLowerCase().includes(deferredQuery)).slice(0, 18)
+    : items.slice(0, 9);
+  const labels: Record<GlobalSearchItem["category"], string> = {
+    system: localize(t, "System", "시스템"),
+    request: localize(t, "Request", "요청"),
+    credential: "Credential"
+  };
+  const icons: Record<GlobalSearchItem["category"], LucideIcon> = {
+    system: Boxes,
+    request: ClipboardCheck,
+    credential: KeyRound
+  };
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return (
+    <PortalOverlay onDismiss={onClose}>
+      <section aria-label={localize(t, "Global search", "통합 검색")} aria-modal="true" className="globalSearchDialog" role="dialog">
+        <div className="globalSearchInput">
+          <Search aria-hidden="true" size={19} />
+          <input
+            aria-label={localize(t, "Search portal resources", "포탈 리소스 검색")}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={localize(t, "Search system, request, credential", "시스템, 요청, Credential 검색")}
+            ref={inputRef}
+            value={query}
+          />
+          <button aria-label={localize(t, "Close search", "검색 닫기")} className="iconButton" onClick={onClose} title={localize(t, "Close", "닫기")} type="button">
+            <X aria-hidden="true" size={18} />
+          </button>
+        </div>
+        <div className="globalSearchResults">
+          {results.map((item) => {
+            const Icon = icons[item.category];
+            return (
+              <Link href={item.href} key={item.id} onClick={onClose}>
+                <span className={`searchResultIcon ${item.category}`}><Icon aria-hidden="true" size={17} /></span>
+                <span>
+                  <small>{labels[item.category]}</small>
+                  <strong>{item.title}</strong>
+                  <em>{item.detail}</em>
+                </span>
+                <ArrowRight aria-hidden="true" size={16} />
+              </Link>
+            );
+          })}
+          {results.length === 0 ? (
+            <div className="empty compact">{localize(t, "No matching resource.", "일치하는 리소스가 없습니다.")}</div>
+          ) : null}
+        </div>
+      </section>
+    </PortalOverlay>
+  );
+}
+
+function TaskCenterDrawer({
+  t,
+  tasks,
+  onClose
+}: {
+  t: Copy;
+  tasks: PortalTask[];
+  onClose: () => void;
+}) {
+  return (
+    <PortalOverlay className="taskOverlay" onDismiss={onClose}>
+      <aside aria-label={localize(t, "My work queue", "내 작업함")} aria-modal="true" className="taskCenterDrawer" role="dialog">
+        <header>
+          <div>
+            <span>{localize(t, "Work queue", "업무 대기열")}</span>
+            <h2>{localize(t, "My work queue", "내 작업함")}</h2>
+          </div>
+          <div className="taskDrawerHeaderActions">
+            <strong>{tasks.length}</strong>
+            <button aria-label={localize(t, "Close work queue", "작업함 닫기")} className="iconButton" onClick={onClose} title={localize(t, "Close", "닫기")} type="button">
+              <X aria-hidden="true" size={18} />
+            </button>
+          </div>
+        </header>
+        <div className="taskList">
+          {tasks.map((task) => (
+            <Link className={`taskItem ${task.kind}`} href={task.href} key={task.id} onClick={onClose}>
+              <span className="taskTone" />
+              <span>
+                <small>{taskKindLabel(task.kind, t)}</small>
+                <strong>{task.title}</strong>
+                <em>{task.detail}</em>
+              </span>
+              <span className="taskSla">{task.dueAt ? formatTaskSla(task.dueAt, t) : localize(t, "Action", "조치")}</span>
+            </Link>
+          ))}
+          {tasks.length === 0 ? (
+            <div className="empty">{localize(t, "No action is waiting for you.", "현재 처리할 작업이 없습니다.")}</div>
+          ) : null}
+        </div>
+      </aside>
+    </PortalOverlay>
   );
 }
 
@@ -880,6 +1226,7 @@ function PortalState({
 
 function Dashboard({
   t,
+  currentUser,
   stats,
   systems,
   requests,
@@ -888,6 +1235,7 @@ function Dashboard({
   vaultHealth
 }: {
   t: Copy;
+  currentUser: PortalUser;
   stats: DashboardStats;
   systems: SystemSummary[];
   requests: AccessRequest[];
@@ -938,6 +1286,8 @@ function Dashboard({
   const recentSecurityEvents = auditEvents
     .filter((event) => /approve|reject|revoke|expire|execute/i.test(event.action))
     .slice(0, 6);
+  const pendingHref = canUseView(currentUser.roles, "approvals") ? "/approvals?status=pending&sort=oldest" : "/requests?status=pending&sort=oldest";
+  const credentialsHref = canUseView(currentUser.roles, "credentials") ? "/credentials" : "/secrets";
 
   return (
     <div className="stack">
@@ -980,23 +1330,25 @@ function Dashboard({
         <Metric
           label={t.dashboard.metrics.systems}
           value={stats.systems}
+          href="/systems"
           detail={
             t === copy.ko
               ? `${stats.secretSurfaces}${t.dashboard.metrics.mapped}`
               : `${stats.secretSurfaces} ${t.dashboard.metrics.mapped}`
           }
         />
-        <Metric label={t.dashboard.metrics.pending} value={stats.pending} detail={t.dashboard.metrics.waiting} />
+        <Metric href={pendingHref} label={t.dashboard.metrics.pending} value={stats.pending} detail={t.dashboard.metrics.waiting} />
         <Metric
           label={t.dashboard.metrics.active}
           value={stats.active}
+          href={`${credentialsHref}?status=active`}
           detail={
             t === copy.ko
               ? `${stats.expiringSoon}${t.dashboard.metrics.expiring}`
               : `${stats.expiringSoon} ${t.dashboard.metrics.expiring}`
           }
         />
-        <Metric label={t.dashboard.metrics.failures} value={stats.failures} detail={t.dashboard.metrics.operator} tone="risk" />
+        <Metric href={`${credentialsHref}?status=revoke_failed`} label={t.dashboard.metrics.failures} value={stats.failures} detail={t.dashboard.metrics.operator} tone="risk" />
       </div>
       <div className="dashboardGrid">
         <section className="insightPanel">
@@ -1454,10 +1806,51 @@ function DependencyDetail({
 }
 
 function Systems({ t, systems }: { t: Copy; systems: SystemSummary[] }) {
-  if (systems.length === 0) return <div className="empty">{t.systems.empty}</div>;
+  const { filters, replace, reset, update } = usePortalFilters({ q: "", environment: "all", sort: "name" });
+  const filteredSystems = [...systems]
+    .filter((system) => {
+      const query = filters.q.toLowerCase();
+      return (
+        (filters.environment === "all" || system.environment === filters.environment) &&
+        `${system.name} ${system.description} ${system.ownerGroup} ${system.vaultNamespace}`.toLowerCase().includes(query)
+      );
+    })
+    .sort((left, right) => {
+      if (filters.sort === "environment") return left.environment.localeCompare(right.environment) || left.name.localeCompare(right.name);
+      if (filters.sort === "owner") return left.ownerGroup.localeCompare(right.ownerGroup) || left.name.localeCompare(right.name);
+      return left.name.localeCompare(right.name);
+    });
   return (
-    <div className="grid">
-      {systems.map((system) => (
+    <div className="stack">
+      <section className="listToolbar">
+        <div className="listFilterGrid">
+          <label>
+            {localize(t, "Search", "검색")}
+            <input onChange={(event) => update("q", event.target.value)} placeholder={localize(t, "System, owner, namespace", "시스템, 소유자, Namespace")} value={filters.q} />
+          </label>
+          <label>
+            {localize(t, "Environment", "환경")}
+            <select onChange={(event) => update("environment", event.target.value)} value={filters.environment}>
+              <option value="all">{localize(t, "All", "전체")}</option>
+              <option value="dev">dev</option>
+              <option value="staging">staging</option>
+              <option value="prod">prod</option>
+            </select>
+          </label>
+          <label>
+            {localize(t, "Sort", "정렬")}
+            <select onChange={(event) => update("sort", event.target.value)} value={filters.sort}>
+              <option value="name">{localize(t, "Name", "이름")}</option>
+              <option value="environment">{localize(t, "Environment", "환경")}</option>
+              <option value="owner">{localize(t, "Owner", "소유자")}</option>
+            </select>
+          </label>
+        </div>
+        <SavedViewControls filters={filters} labels={savedViewLabels(t)} onApply={(saved) => replace({ ...filters, ...saved })} onReset={reset} scope="systems" />
+      </section>
+      {filteredSystems.length === 0 ? <div className="empty">{t.systems.empty}</div> : null}
+      <div className="grid">
+      {filteredSystems.map((system) => (
         <article className="card" key={system.id}>
           <div className="cardHeader">
             <div>
@@ -1478,11 +1871,42 @@ function Systems({ t, systems }: { t: Copy; systems: SystemSummary[] }) {
           </details>
         </article>
       ))}
+      </div>
     </div>
   );
 }
 
-function RequestForm({ t, systems, onChanged }: { t: Copy; systems: SystemSummary[]; onChanged: () => Promise<void> }) {
+type CsvRequestPreviewRow = {
+  rowNumber: number;
+  systemName: string;
+  requestType: string;
+  ttl: string;
+  scope: string;
+  reason: string;
+  error?: string;
+  input?: {
+    systemId: string;
+    requestType: RequestType;
+    reason: string;
+    ttl: string;
+    riskLevel: AccessRequest["riskLevel"];
+    payload: Record<string, unknown>;
+  };
+};
+
+function RequestForm({
+  t,
+  currentUser,
+  systems,
+  requests,
+  onChanged
+}: {
+  t: Copy;
+  currentUser: PortalUser;
+  systems: SystemSummary[];
+  requests: AccessRequest[];
+  onChanged: () => Promise<void>;
+}) {
   const [systemId, setSystemId] = useState(systems[0]?.id ?? "");
   const [requestType, setRequestType] = useState<RequestType>(systems[0]?.allowedRequestTypes[0] ?? "CUSTOM_GITLAB_TOKEN");
   const [reason, setReason] = useState(t.request.defaultReason);
@@ -1492,6 +1916,11 @@ function RequestForm({ t, systems, onChanged }: { t: Copy; systems: SystemSummar
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
+  const [csvPreview, setCsvPreview] = useState<CsvRequestPreviewRow[] | null>(null);
+  const [csvBusy, setCsvBusy] = useState(false);
+  const [csvError, setCsvError] = useState<string | null>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const { filters, replace, reset, update } = usePortalFilters({ q: "", status: "all", risk: "all", sort: "newest" });
   const selectedSystem = systems.find((system) => system.id === systemId);
   const allowedTypes = selectedSystem?.allowedRequestTypes.length ? selectedSystem.allowedRequestTypes : requestTypes;
   const risk = scoreRisk({
@@ -1501,6 +1930,27 @@ function RequestForm({ t, systems, onChanged }: { t: Copy; systems: SystemSummar
     scope,
     riskLevel: "medium"
   });
+  const canReview = currentUser.roles.some((role) => role === "security-approver" || role === "vault-admin" || role === "app-owner");
+  const visibleHistory = requests.filter((request) => canReview || request.requesterId === currentUser.id);
+  const riskOrder: Record<AccessRequest["riskLevel"], number> = { high: 0, medium: 1, low: 2 };
+  const filteredHistory = [...visibleHistory]
+    .filter((request) => {
+      const query = filters.q.toLowerCase();
+      return (
+        (filters.status === "all" || request.status === filters.status) &&
+        (filters.risk === "all" || request.riskLevel === filters.risk) &&
+        `${request.systemName} ${request.requestType} ${request.reason} ${request.requesterEmail}`.toLowerCase().includes(query)
+      );
+    })
+    .sort((left, right) => {
+      if (filters.sort === "oldest") return left.createdAt.localeCompare(right.createdAt);
+      if (filters.sort === "risk") return riskOrder[left.riskLevel] - riskOrder[right.riskLevel] || right.createdAt.localeCompare(left.createdAt);
+      return right.createdAt.localeCompare(left.createdAt);
+    });
+  const csvTemplate = buildCsv(
+    ["system", "requestType", "ttl", "scope", "reason"],
+    [[systems[0]?.name ?? "TANGO-EC", systems[0]?.allowedRequestTypes[0] ?? "CUSTOM_GITLAB_TOKEN", "1h", "read_api", "Release validation"]]
+  );
 
   async function submit() {
     setBusy(true);
@@ -1528,7 +1978,104 @@ function RequestForm({ t, systems, onChanged }: { t: Copy; systems: SystemSummar
     }
   }
 
+  async function readCsv(file: File) {
+    setCsvError(null);
+    if (file.size > 1024 * 1024) {
+      setCsvError(localize(t, "CSV files must be 1 MB or smaller.", "CSV 파일은 1MB 이하여야 합니다."));
+      return;
+    }
+    const Papa = (await import("papaparse")).default;
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: "greedy",
+      transformHeader: (header) => header.trim().toLowerCase().replace(/[\s_-]+/g, ""),
+      complete: (result) => {
+        if (result.errors.length) {
+          setCsvError(result.errors[0]?.message ?? localize(t, "Unable to parse CSV.", "CSV를 읽지 못했습니다."));
+          return;
+        }
+        if (result.data.length > 50) {
+          setCsvError(localize(t, "A single import can contain up to 50 requests.", "한 번에 최대 50개 요청을 가져올 수 있습니다."));
+          return;
+        }
+        const preview = result.data.map<CsvRequestPreviewRow>((row, index) => {
+          const systemToken = row.system?.trim() ?? "";
+          const system = systems.find(
+            (candidate) => candidate.id.toLowerCase() === systemToken.toLowerCase() || candidate.name.toLowerCase() === systemToken.toLowerCase()
+          );
+          const requestTypeValue = row.requesttype?.trim().toUpperCase() ?? "";
+          const parsedType = requestTypes.includes(requestTypeValue as RequestType) ? (requestTypeValue as RequestType) : undefined;
+          const ttlValue = row.ttl?.trim() ?? "";
+          const scopeValue = row.scope?.trim() ?? "";
+          const reasonValue = row.reason?.trim() ?? "";
+          const errors = [
+            !system ? localize(t, "Unknown system", "알 수 없는 시스템") : "",
+            !parsedType ? localize(t, "Invalid request type", "잘못된 요청 유형") : "",
+            system && parsedType && !system.allowedRequestTypes.includes(parsedType)
+              ? localize(t, "Type is not allowed for this system", "이 시스템에서 허용되지 않은 유형")
+              : "",
+            !/^\d+[smhd]$/.test(ttlValue) ? localize(t, "Invalid TTL", "잘못된 TTL") : "",
+            reasonValue.length < 3 ? localize(t, "Reason is too short", "요청 사유가 너무 짧음") : ""
+          ].filter(Boolean);
+          const input = !errors.length && system && parsedType
+            ? {
+                systemId: system.id,
+                requestType: parsedType,
+                reason: reasonValue,
+                ttl: ttlValue,
+                riskLevel: scoreRisk({
+                  requestType: parsedType,
+                  ttl: ttlValue,
+                  environment: system.environment,
+                  scope: scopeValue,
+                  riskLevel: "medium"
+                }).level,
+                payload: { project: system.name, scope: scopeValue, approvalModel: "csv-import" }
+              }
+            : undefined;
+          return {
+            rowNumber: index + 2,
+            systemName: system?.name ?? (systemToken || "-"),
+            requestType: requestTypeValue || "-",
+            ttl: ttlValue || "-",
+            scope: scopeValue || "-",
+            reason: reasonValue || "-",
+            error: errors.join(" · ") || undefined,
+            input
+          };
+        });
+        setCsvPreview(preview);
+      }
+    });
+  }
+
+  async function submitCsv() {
+    if (!csvPreview?.length || csvPreview.some((row) => row.error || !row.input)) return;
+    setCsvBusy(true);
+    setCsvError(null);
+    try {
+      const response = await api<{ result: BulkRequestResult }>("/requests/bulk", {
+        method: "POST",
+        body: JSON.stringify({ requests: csvPreview.flatMap((row) => (row.input ? [row.input] : [])) })
+      });
+      setSubmitMessage(
+        localize(
+          t,
+          `${response.result.created.length} requests imported${response.result.failures.length ? `, ${response.result.failures.length} failed` : ""}.`,
+          `${response.result.created.length}개 요청을 등록했습니다${response.result.failures.length ? `, ${response.result.failures.length}개 실패` : ""}.`
+        )
+      );
+      setCsvPreview(null);
+      await onChanged();
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : localize(t, "Unable to import requests.", "요청을 가져오지 못했습니다."));
+    } finally {
+      setCsvBusy(false);
+    }
+  }
+
   return (
+    <div className="stack">
     <section className="formPanel wizardPanel">
       <div className="wizardHeader">
         <div>
@@ -1542,7 +2089,34 @@ function RequestForm({ t, systems, onChanged }: { t: Copy; systems: SystemSummar
             )}
           </p>
         </div>
-        <RiskBadge risk={risk} />
+        <div className="requestHeaderTools">
+          <RiskBadge risk={risk} />
+          <div className="requestBatchActions">
+            <a
+              aria-label={localize(t, "Download CSV template", "CSV 템플릿 다운로드")}
+              className="iconButton"
+              download="vault-request-template.csv"
+              href={dataDownloadHref("text/csv;charset=utf-8", csvTemplate)}
+              title={localize(t, "Download CSV template", "CSV 템플릿 다운로드")}
+            >
+              <Download aria-hidden="true" size={17} />
+            </a>
+            <button aria-label={localize(t, "Import request CSV", "요청 CSV 가져오기")} className="iconButton" onClick={() => csvInputRef.current?.click()} title={localize(t, "Import request CSV", "요청 CSV 가져오기")} type="button">
+              <Upload aria-hidden="true" size={17} />
+            </button>
+            <input
+              accept=".csv,text/csv"
+              className="visuallyHidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void readCsv(file);
+                event.target.value = "";
+              }}
+              ref={csvInputRef}
+              type="file"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="wizardSteps" aria-label="Request wizard steps">
@@ -1675,6 +2249,89 @@ function RequestForm({ t, systems, onChanged }: { t: Copy; systems: SystemSummar
         )}
       </div>
     </section>
+    <section className="listToolbar">
+      <div className="listFilterGrid">
+        <label>
+          {localize(t, "Search", "검색")}
+          <input onChange={(event) => update("q", event.target.value)} placeholder={localize(t, "System, type, reason", "시스템, 유형, 사유")} value={filters.q} />
+        </label>
+        <label>
+          {t.table.status}
+          <select onChange={(event) => update("status", event.target.value)} value={filters.status}>
+            <option value="all">{localize(t, "All", "전체")}</option>
+            <option value="pending">pending</option>
+            <option value="approved">approved</option>
+            <option value="rejected">rejected</option>
+            <option value="executed">executed</option>
+            <option value="expired">expired</option>
+          </select>
+        </label>
+        <label>
+          {t.table.risk}
+          <select onChange={(event) => update("risk", event.target.value)} value={filters.risk}>
+            <option value="all">{localize(t, "All", "전체")}</option>
+            <option value="high">high</option>
+            <option value="medium">medium</option>
+            <option value="low">low</option>
+          </select>
+        </label>
+        <label>
+          {localize(t, "Sort", "정렬")}
+          <select onChange={(event) => update("sort", event.target.value)} value={filters.sort}>
+            <option value="newest">{localize(t, "Newest first", "최신 순")}</option>
+            <option value="oldest">{localize(t, "Oldest first", "오래된 순")}</option>
+            <option value="risk">{localize(t, "Highest risk", "고위험 순")}</option>
+          </select>
+        </label>
+      </div>
+      <SavedViewControls filters={filters} labels={savedViewLabels(t)} onApply={(saved) => replace({ ...filters, ...saved })} onReset={reset} scope="requests" />
+    </section>
+    <Table
+      columns={[t.table.system, t.table.type, t.table.status, t.table.ttl, t.table.risk, t.table.time]}
+      emptyLabel={t.table.noData}
+      rows={filteredHistory.map((request) => [request.systemName, request.requestType, request.status, request.ttl, request.riskLevel, formatDate(request.createdAt)])}
+      title={localize(t, `Request history (${filteredHistory.length})`, `요청 이력 (${filteredHistory.length})`)}
+    />
+    {csvPreview ? (
+      <PortalOverlay onDismiss={() => setCsvPreview(null)}>
+        <section aria-label={localize(t, "CSV request preview", "CSV 요청 미리보기")} aria-modal="true" className="bulkPreviewDialog" role="dialog">
+          <header>
+            <div>
+              <span>{localize(t, "Bulk request", "일괄 요청")}</span>
+              <h2>{localize(t, "CSV request preview", "CSV 요청 미리보기")}</h2>
+            </div>
+            <button aria-label={localize(t, "Close preview", "미리보기 닫기")} className="iconButton" onClick={() => setCsvPreview(null)} title={localize(t, "Close", "닫기")} type="button"><X aria-hidden="true" size={18} /></button>
+          </header>
+          <div className="bulkPreviewSummary">
+            <MiniStat label={localize(t, "Rows", "전체 행")} value={csvPreview.length} />
+            <MiniStat label={localize(t, "Ready", "준비됨")} tone="good" value={csvPreview.filter((row) => !row.error).length} />
+            <MiniStat label={localize(t, "Errors", "오류")} tone="risk" value={csvPreview.filter((row) => row.error).length} />
+          </div>
+          <div className="tableScroll bulkPreviewTable">
+            <table>
+              <thead><tr><th>#</th><th>{t.table.system}</th><th>{t.table.type}</th><th>TTL</th><th>{localize(t, "Scope", "권한")}</th><th>{localize(t, "Validation", "검증")}</th></tr></thead>
+              <tbody>
+                {csvPreview.map((row) => (
+                  <tr className={row.error ? "invalid" : ""} key={row.rowNumber}>
+                    <td>{row.rowNumber}</td><td>{row.systemName}</td><td>{row.requestType}</td><td>{row.ttl}</td><td>{row.scope}</td><td>{row.error ?? localize(t, "Ready", "준비됨")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {csvError ? <div className="error">{csvError}</div> : null}
+          <footer className="actions">
+            <button onClick={() => setCsvPreview(null)} type="button">{localize(t, "Cancel", "취소")}</button>
+            <button className="primary" disabled={csvBusy || !csvPreview.length || csvPreview.some((row) => Boolean(row.error))} onClick={() => void submitCsv()} type="button">
+              <Upload aria-hidden="true" size={16} />
+              {localize(t, "Submit requests", "요청 등록")}
+            </button>
+          </footer>
+        </section>
+      </PortalOverlay>
+    ) : null}
+    {csvError && !csvPreview ? <div className="error">{csvError}</div> : null}
+    </div>
   );
 }
 
@@ -1696,9 +2353,25 @@ function Approvals({
   const [conditionNotes, setConditionNotes] = useState<Record<string, string>>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
+  const { filters, replace, reset, update } = usePortalFilters({ q: "", status: "pending", risk: "all", sort: "oldest" });
   const canReview = currentUser?.roles.some((role) =>
     (["security-approver", "vault-admin", "app-owner"] as UserRole[]).includes(role)
   ) ?? false;
+  const riskOrder: Record<AccessRequest["riskLevel"], number> = { high: 0, medium: 1, low: 2 };
+  const filteredRequests = [...requests]
+    .filter((request) => {
+      const query = filters.q.toLowerCase();
+      return (
+        (filters.status === "all" || request.status === filters.status) &&
+        (filters.risk === "all" || request.riskLevel === filters.risk) &&
+        `${request.systemName} ${request.requestType} ${request.requesterEmail} ${request.reason}`.toLowerCase().includes(query)
+      );
+    })
+    .sort((left, right) => {
+      if (filters.sort === "newest") return right.createdAt.localeCompare(left.createdAt);
+      if (filters.sort === "risk") return riskOrder[left.riskLevel] - riskOrder[right.riskLevel] || left.createdAt.localeCompare(right.createdAt);
+      return left.createdAt.localeCompare(right.createdAt);
+    });
 
   async function act(id: string, action: "approve" | "reject" | "execute", conditional = false) {
     setActionError(null);
@@ -1724,6 +2397,43 @@ function Approvals({
 
   return (
     <div className="stack">
+      <section className="listToolbar">
+        <div className="listFilterGrid">
+          <label>
+            {localize(t, "Search", "검색")}
+            <input onChange={(event) => update("q", event.target.value)} placeholder={localize(t, "System, requester, reason", "시스템, 요청자, 사유")} value={filters.q} />
+          </label>
+          <label>
+            {t.table.status}
+            <select onChange={(event) => update("status", event.target.value)} value={filters.status}>
+              <option value="all">{localize(t, "All", "전체")}</option>
+              <option value="pending">pending</option>
+              <option value="approved">approved</option>
+              <option value="rejected">rejected</option>
+              <option value="executed">executed</option>
+              <option value="expired">expired</option>
+            </select>
+          </label>
+          <label>
+            {t.table.risk}
+            <select onChange={(event) => update("risk", event.target.value)} value={filters.risk}>
+              <option value="all">{localize(t, "All", "전체")}</option>
+              <option value="high">high</option>
+              <option value="medium">medium</option>
+              <option value="low">low</option>
+            </select>
+          </label>
+          <label>
+            {localize(t, "Sort", "정렬")}
+            <select onChange={(event) => update("sort", event.target.value)} value={filters.sort}>
+              <option value="oldest">{localize(t, "Oldest first", "오래된 순")}</option>
+              <option value="newest">{localize(t, "Newest first", "최신 순")}</option>
+              <option value="risk">{localize(t, "Highest risk", "고위험 순")}</option>
+            </select>
+          </label>
+        </div>
+        <SavedViewControls filters={filters} labels={savedViewLabels(t)} onApply={(saved) => replace({ ...filters, ...saved })} onReset={reset} scope="approvals" />
+      </section>
       {!canReview ? (
         <div className="noticePanel">
           {localize(
@@ -1734,8 +2444,8 @@ function Approvals({
         </div>
       ) : null}
       {actionError ? <div className="error">{actionError}</div> : null}
-      {requests.length === 0 ? <div className="empty">{t.approvals.empty}</div> : null}
-      {requests.map((request) => (
+      {filteredRequests.length === 0 ? <div className="empty">{t.approvals.empty}</div> : null}
+      {filteredRequests.map((request) => (
         <article className="card approvalCard" key={request.id}>
           <div className="approvalMain">
             <div>
@@ -1881,32 +2591,149 @@ function Credentials({
   onChanged: () => Promise<void>;
 }) {
   const [actionError, setActionError] = useState<string | null>(null);
-  const [busyCredentialId, setBusyCredentialId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pendingActionIds, setPendingActionIds] = useState<string[]>([]);
+  const { filters, replace, reset, update } = usePortalFilters({ q: "", status: "all", system: "all", sort: "expiry" });
   const canManageAll = currentUser?.roles.some((role) =>
     (["security-approver", "vault-admin", "app-owner"] as UserRole[]).includes(role)
   ) ?? false;
+  const systemNames = Array.from(new Set(credentials.map((credential) => credential.systemName))).sort();
+  const requestById = new Map(requests.map((request) => [request.id, request]));
+  const canManage = (credential: IssuedCredential) => canManageAll || requestById.get(credential.requestId)?.requesterId === currentUser?.id;
+  const filteredCredentials = [...credentials]
+    .filter((credential) => {
+      const query = filters.q.toLowerCase();
+      return (
+        (filters.status === "all" || credential.status === filters.status) &&
+        (filters.system === "all" || credential.systemName === filters.system) &&
+        `${credential.systemName} ${credential.requestType} ${credential.vaultMount} ${credential.vaultRole} ${credential.vaultLeaseId}`.toLowerCase().includes(query)
+      );
+    })
+    .sort((left, right) => {
+      if (filters.sort === "newest") return right.createdAt.localeCompare(left.createdAt);
+      if (filters.sort === "system") return left.systemName.localeCompare(right.systemName) || left.expiresAt.localeCompare(right.expiresAt);
+      return left.expiresAt.localeCompare(right.expiresAt);
+    });
+  const actionableCredentials = filteredCredentials.filter(
+    (credential) => canManage(credential) && (credential.status === "active" || credential.status === "revoke_failed")
+  );
+  const pendingCredentials = pendingActionIds.flatMap((id) => {
+    const credential = credentials.find((item) => item.id === id);
+    return credential ? [credential] : [];
+  });
 
-  async function revoke(id: string) {
+  async function revokeSelected() {
+    if (!pendingActionIds.length) return;
     setActionError(null);
-    setBusyCredentialId(id);
+    setActionMessage(null);
+    setBusy(true);
     try {
-      await api(`/credentials/${id}/revoke`, { method: "POST" });
+      const response = await api<{ result: BulkCredentialActionResult }>("/credentials/bulk-revoke", {
+        method: "POST",
+        body: JSON.stringify({ credentialIds: pendingActionIds })
+      });
+      setActionMessage(
+        localize(
+          t,
+          `${response.result.revoked.length} credentials revoked${response.result.failures.length ? `, ${response.result.failures.length} failed` : ""}.`,
+          `${response.result.revoked.length}개 Credential을 폐기했습니다${response.result.failures.length ? `, ${response.result.failures.length}개 실패` : ""}.`
+        )
+      );
+      if (response.result.failures.length) {
+        setActionError(response.result.failures.map((failure) => `${shortId(failure.credentialId)}: ${failure.error}`).join(" · "));
+      }
+      setPendingActionIds([]);
+      setSelectedIds([]);
       await onChanged();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : localize(t, "Unable to revoke credential.", "Credential을 폐기하지 못했습니다."));
     } finally {
-      setBusyCredentialId(null);
+      setBusy(false);
     }
   }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  function toggleAll() {
+    const actionableIds = actionableCredentials.map((credential) => credential.id);
+    const allSelected = actionableIds.length > 0 && actionableIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? selectedIds.filter((id) => !actionableIds.includes(id)) : Array.from(new Set([...selectedIds, ...actionableIds])));
+  }
+
   return (
     <div className="stack">
+      <section className="listToolbar">
+        <div className="listFilterGrid">
+          <label>
+            {localize(t, "Search", "검색")}
+            <input onChange={(event) => update("q", event.target.value)} placeholder={localize(t, "System, role, lease", "시스템, Role, Lease")} value={filters.q} />
+          </label>
+          <label>
+            {t.table.status}
+            <select onChange={(event) => update("status", event.target.value)} value={filters.status}>
+              <option value="all">{localize(t, "All", "전체")}</option>
+              <option value="active">active</option>
+              <option value="expired">expired</option>
+              <option value="revoked">revoked</option>
+              <option value="revoke_failed">revoke_failed</option>
+            </select>
+          </label>
+          <label>
+            {t.table.system}
+            <select onChange={(event) => update("system", event.target.value)} value={filters.system}>
+              <option value="all">{localize(t, "All", "전체")}</option>
+              {systemNames.map((systemName) => <option key={systemName} value={systemName}>{systemName}</option>)}
+            </select>
+          </label>
+          <label>
+            {localize(t, "Sort", "정렬")}
+            <select onChange={(event) => update("sort", event.target.value)} value={filters.sort}>
+              <option value="expiry">{localize(t, "Expiry", "만료 순")}</option>
+              <option value="newest">{localize(t, "Newest", "최신 순")}</option>
+              <option value="system">{localize(t, "System", "시스템 순")}</option>
+            </select>
+          </label>
+        </div>
+        <SavedViewControls filters={filters} labels={savedViewLabels(t)} onApply={(saved) => replace({ ...filters, ...saved })} onReset={reset} scope="credentials" />
+      </section>
+      {actionableCredentials.length ? (
+        <section className="bulkActionBar">
+          <label className="bulkSelectAll">
+            <input
+              checked={actionableCredentials.every((credential) => selectedIds.includes(credential.id))}
+              onChange={toggleAll}
+              type="checkbox"
+            />
+            {localize(t, `Select visible (${actionableCredentials.length})`, `표시 항목 선택 (${actionableCredentials.length})`)}
+          </label>
+          <span>{localize(t, `${selectedIds.length} selected`, `${selectedIds.length}개 선택`)}</span>
+          <button className="primary" disabled={!selectedIds.length || busy} onClick={() => setPendingActionIds(selectedIds)} type="button">
+            {localize(t, "Review bulk revoke", "일괄 폐기 검토")}
+          </button>
+        </section>
+      ) : null}
       {actionError ? <div className="error">{actionError}</div> : null}
-      {credentials.length === 0 ? <div className="empty">{t.credentials.empty}</div> : null}
-      {credentials.map((credential) => {
-        const request = requests.find((item) => item.id === credential.requestId);
-        const canRevoke = canManageAll || request?.requesterId === currentUser?.id;
+      {actionMessage ? <div className="noticePanel compact">{actionMessage}</div> : null}
+      {filteredCredentials.length === 0 ? <div className="empty">{t.credentials.empty}</div> : null}
+      {filteredCredentials.map((credential) => {
+        const request = requestById.get(credential.requestId);
+        const canRevoke = canManage(credential);
+        const actionable = credential.status === "active" || credential.status === "revoke_failed";
         return (
-          <article className="card rowCard" key={credential.id}>
+          <article className={`card rowCard credentialRow ${selectedIds.includes(credential.id) ? "selected" : ""}`} key={credential.id}>
+          <label className="rowSelection" title={localize(t, "Select credential", "Credential 선택")}>
+            <input
+              aria-label={localize(t, `Select ${credential.systemName} credential`, `${credential.systemName} Credential 선택`)}
+              checked={selectedIds.includes(credential.id)}
+              disabled={!canRevoke || !actionable}
+              onChange={() => toggleSelected(credential.id)}
+              type="checkbox"
+            />
+          </label>
           <div>
             <h2>{credential.systemName}</h2>
             <p>
@@ -1937,36 +2764,71 @@ function Credentials({
             </details>
           </div>
           <button
-            disabled={!canRevoke || credential.status !== "active" || busyCredentialId === credential.id}
-            onClick={() => void revoke(credential.id)}
+            disabled={!canRevoke || !actionable || busy}
+            onClick={() => setPendingActionIds([credential.id])}
           >
-            {t.credentials.revoke}
+            {credential.status === "revoke_failed" ? localize(t, "Review retry", "재시도 검토") : localize(t, "Review revoke", "폐기 검토")}
           </button>
           </article>
         );
       })}
+      {pendingCredentials.length ? (
+        <PortalOverlay onDismiss={() => setPendingActionIds([])}>
+          <section aria-label={localize(t, "Credential impact review", "Credential 영향도 검토")} aria-modal="true" className="impactDialog" role="dialog">
+            <header>
+              <div>
+                <span>{localize(t, "Destructive action", "중요 작업")}</span>
+                <h2>{localize(t, "Credential impact review", "Credential 영향도 검토")}</h2>
+              </div>
+              <button aria-label={localize(t, "Close impact review", "영향도 검토 닫기")} className="iconButton" onClick={() => setPendingActionIds([])} title={localize(t, "Close", "닫기")} type="button"><X aria-hidden="true" size={18} /></button>
+            </header>
+            <div className="impactSummary">
+              <MiniStat label="Credential" value={pendingCredentials.length} />
+              <MiniStat label={localize(t, "Systems", "시스템")} value={new Set(pendingCredentials.map((credential) => credential.systemId)).size} />
+              <MiniStat label="Mounts" value={new Set(pendingCredentials.map((credential) => credential.vaultMount)).size} />
+              <MiniStat label={localize(t, "Retries", "재시도")} tone={pendingCredentials.some((credential) => credential.status === "revoke_failed") ? "risk" : "default"} value={pendingCredentials.filter((credential) => credential.status === "revoke_failed").length} />
+            </div>
+            <div className="impactDiffList">
+              {pendingCredentials.map((credential) => (
+                <div key={credential.id}>
+                  <span><strong>{credential.systemName}</strong><small>{credential.vaultMount} · {credential.vaultRole}</small></span>
+                  <code className="diffBefore">{credential.status}</code>
+                  <ArrowRight aria-hidden="true" size={15} />
+                  <code className="diffAfter">revoked</code>
+                </div>
+              ))}
+            </div>
+            <div className="impactNotice">
+              <ShieldAlert aria-hidden="true" size={18} />
+              <span>{localize(t, "Applications using these leases can lose access immediately. The action and every item result will be audited.", "해당 Lease를 사용하는 애플리케이션의 접근이 즉시 중단될 수 있습니다. 작업과 항목별 결과는 모두 감사 로그에 기록됩니다.")}</span>
+            </div>
+            <footer className="actions">
+              <button disabled={busy} onClick={() => setPendingActionIds([])} type="button">{localize(t, "Cancel", "취소")}</button>
+              <button className="dangerButton" disabled={busy} onClick={() => void revokeSelected()} type="button">
+                {pendingCredentials.some((credential) => credential.status === "revoke_failed") ? localize(t, "Retry and revoke", "재시도 후 폐기") : localize(t, "Revoke credentials", "Credential 폐기")}
+              </button>
+            </footer>
+          </section>
+        </PortalOverlay>
+      ) : null}
     </div>
   );
 }
 
 function Audit({ t, events }: { t: Copy; events: AuditEvent[] }) {
-  const [actorFilter, setActorFilter] = useState("");
-  const [targetFilter, setTargetFilter] = useState("");
-  const [actionFilter, setActionFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const { filters, replace, reset, update } = usePortalFilters({ actor: "", target: "", action: "", from: "", to: "", sort: "newest" });
   const filteredEvents = events.filter((event) => {
     const createdAt = new Date(event.createdAt).getTime();
-    const fromOk = fromDate ? createdAt >= new Date(fromDate).getTime() : true;
-    const toOk = toDate ? createdAt <= new Date(`${toDate}T23:59:59`).getTime() : true;
+    const fromOk = filters.from ? createdAt >= new Date(filters.from).getTime() : true;
+    const toOk = filters.to ? createdAt <= new Date(`${filters.to}T23:59:59`).getTime() : true;
     return (
       fromOk &&
       toOk &&
-      event.actorEmail.toLowerCase().includes(actorFilter.toLowerCase()) &&
-      `${event.targetType}:${event.targetId}`.toLowerCase().includes(targetFilter.toLowerCase()) &&
-      event.action.toLowerCase().includes(actionFilter.toLowerCase())
+      event.actorEmail.toLowerCase().includes(filters.actor.toLowerCase()) &&
+      `${event.targetType}:${event.targetId}`.toLowerCase().includes(filters.target.toLowerCase()) &&
+      event.action.toLowerCase().includes(filters.action.toLowerCase())
     );
-  });
+  }).sort((left, right) => filters.sort === "oldest" ? left.createdAt.localeCompare(right.createdAt) : right.createdAt.localeCompare(left.createdAt));
   const rows = filteredEvents.map((event) => [
     new Date(event.createdAt).toLocaleString(),
     event.actorEmail,
@@ -1988,26 +2850,35 @@ function Audit({ t, events }: { t: Copy; events: AuditEvent[] }) {
         <div className="filterGrid">
           <label>
             {localize(t, "From", "시작일")}
-            <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
+            <input type="date" value={filters.from} onChange={(event) => update("from", event.target.value)} />
           </label>
           <label>
             {localize(t, "To", "종료일")}
-            <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            <input type="date" value={filters.to} onChange={(event) => update("to", event.target.value)} />
           </label>
           <label>
             {t.table.actor}
-            <input value={actorFilter} onChange={(event) => setActorFilter(event.target.value)} placeholder="user@example.com" />
+            <input value={filters.actor} onChange={(event) => update("actor", event.target.value)} placeholder="user@example.com" />
           </label>
           <label>
             {t.table.target}
-            <input value={targetFilter} onChange={(event) => setTargetFilter(event.target.value)} placeholder="request / credential" />
+            <input value={filters.target} onChange={(event) => update("target", event.target.value)} placeholder="request / credential" />
           </label>
           <label>
             {t.table.action}
-            <input value={actionFilter} onChange={(event) => setActionFilter(event.target.value)} placeholder="approve / revoke" />
+            <input value={filters.action} onChange={(event) => update("action", event.target.value)} placeholder="approve / revoke" />
+          </label>
+          <label>
+            {localize(t, "Sort", "정렬")}
+            <select onChange={(event) => update("sort", event.target.value)} value={filters.sort}>
+              <option value="newest">{localize(t, "Newest first", "최신 순")}</option>
+              <option value="oldest">{localize(t, "Oldest first", "오래된 순")}</option>
+            </select>
           </label>
         </div>
-        <div className="actions">
+        <div className="filterPanelFooter">
+          <SavedViewControls filters={filters} labels={savedViewLabels(t)} onApply={(saved) => replace({ ...filters, ...saved })} onReset={reset} scope="audit" />
+          <div className="actions">
           <a
             className="downloadLink"
             download="security-portal-audit.csv"
@@ -2023,6 +2894,7 @@ function Audit({ t, events }: { t: Copy; events: AuditEvent[] }) {
           >
             PDF / Print
           </a>
+          </div>
         </div>
       </section>
       <Table
@@ -4623,6 +5495,7 @@ function UserManagement({
   const [revealPassword, setRevealPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [userAction, setUserAction] = useState<"save" | "reset" | null>(null);
+  const [policyReviewOpen, setPolicyReviewOpen] = useState(false);
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? users[0];
   const availableGroups = useMemo(
     () =>
@@ -4647,6 +5520,19 @@ function UserManagement({
         .slice(0, 5)
     : [];
   const canEdit = canManageUsers && Boolean(selectedUser);
+  const policyDiff = selectedUser
+    ? [
+        { label: localize(t, "Account status", "계정 상태"), before: selectedUser.status, after: draftStatus },
+        { label: localize(t, "Roles", "권한"), before: [...selectedUser.roles].sort().join(", "), after: [...draftRoles].sort().join(", ") },
+        { label: localize(t, "Groups", "그룹"), before: [...selectedUser.groups].sort().join(", "), after: [...draftGroups].sort().join(", ") },
+        { label: "MFA", before: String(selectedUser.mfaEnabled), after: String(draftMfaEnabled) },
+        {
+          label: localize(t, "Password reset required", "비밀번호 변경 필요"),
+          before: String(selectedUser.passwordResetRequired),
+          after: String(draftPasswordResetRequired)
+        }
+      ].filter((item) => item.before !== item.after)
+    : [];
 
   async function loadUsers() {
     setLoadingUsers(true);
@@ -4680,6 +5566,7 @@ function UserManagement({
     setTemporaryPassword("");
     setRevealPassword(false);
     setMessage("");
+    setPolicyReviewOpen(false);
   }, [selectedUser?.id]);
 
   async function saveAccess() {
@@ -4699,6 +5586,7 @@ function UserManagement({
       });
       setUsers((current) => current.map((user) => (user.id === response.user.id ? response.user : user)));
       setMessage(localize(t, "User access policy updated.", "사용자 접근 정책을 업데이트했습니다."));
+      setPolicyReviewOpen(false);
       await onChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : localize(t, "Unable to update user policy.", "사용자 정책을 업데이트하지 못했습니다."));
@@ -4977,8 +5865,8 @@ function UserManagement({
                 </button>
                 <button
                   className="primary"
-                  disabled={!canEdit || draftRoles.length === 0 || userAction !== null}
-                  onClick={() => void saveAccess()}
+                  disabled={!canEdit || draftRoles.length === 0 || userAction !== null || policyDiff.length === 0}
+                  onClick={() => setPolicyReviewOpen(true)}
                   type="button"
                 >
                   {localize(t, "Save user policy", "사용자 정책 저장")}
@@ -5003,6 +5891,37 @@ function UserManagement({
         ])}
         emptyLabel={t.table.noData}
       />
+      {policyReviewOpen && selectedUser ? (
+        <PortalOverlay onDismiss={() => setPolicyReviewOpen(false)}>
+          <section aria-label={localize(t, "User policy change review", "사용자 정책 변경 검토")} aria-modal="true" className="impactDialog policyDiffDialog" role="dialog">
+            <header>
+              <div>
+                <span>{localize(t, "Policy diff", "정책 Diff")}</span>
+                <h2>{selectedUser.displayName}</h2>
+              </div>
+              <button aria-label={localize(t, "Close policy review", "정책 검토 닫기")} className="iconButton" onClick={() => setPolicyReviewOpen(false)} title={localize(t, "Close", "닫기")} type="button"><X aria-hidden="true" size={18} /></button>
+            </header>
+            <div className="policyDiffList">
+              {policyDiff.map((item) => (
+                <div key={item.label}>
+                  <strong>{item.label}</strong>
+                  <code className="diffBefore">{item.before || "-"}</code>
+                  <ArrowRight aria-hidden="true" size={15} />
+                  <code className="diffAfter">{item.after || "-"}</code>
+                </div>
+              ))}
+            </div>
+            <div className="impactNotice">
+              <ShieldCheck aria-hidden="true" size={18} />
+              <span>{localize(t, "The change takes effect on the user's next authorization check and is written to the audit log.", "변경 사항은 사용자의 다음 권한 확인부터 적용되며 감사 로그에 기록됩니다.")}</span>
+            </div>
+            <footer className="actions">
+              <button disabled={userAction !== null} onClick={() => setPolicyReviewOpen(false)} type="button">{localize(t, "Cancel", "취소")}</button>
+              <button className="primary" disabled={userAction !== null || policyDiff.length === 0} onClick={() => void saveAccess()} type="button">{localize(t, "Apply policy", "정책 적용")}</button>
+            </footer>
+          </section>
+        </PortalOverlay>
+      ) : null}
     </div>
   );
 }
@@ -5192,20 +6111,24 @@ function Metric({
   label,
   value,
   detail,
+  href,
   tone = "default"
 }: {
   label: string;
   value: number;
   detail?: string;
+  href?: string;
   tone?: "default" | "risk";
 }) {
-  return (
-    <div className={`metric ${tone}`}>
+  const content = (
+    <>
       <span>{label}</span>
       <strong>{value}</strong>
       {detail ? <small>{detail}</small> : null}
-    </div>
+      {href ? <ArrowRight aria-hidden="true" className="metricArrow" size={16} /> : null}
+    </>
   );
+  return href ? <Link className={`metric ${tone} actionable`} href={href}>{content}</Link> : <div className={`metric ${tone}`}>{content}</div>;
 }
 
 function MiniStat({
@@ -5666,6 +6589,18 @@ function localize(t: Copy, en: string, ko: string): string {
   return t === copy.ko ? ko : en;
 }
 
+function savedViewLabels(t: Copy) {
+  return {
+    savedViews: localize(t, "Saved views", "저장된 보기"),
+    saveCurrent: localize(t, "Save current view", "현재 보기 저장"),
+    reset: localize(t, "Reset filters", "필터 초기화"),
+    deleteView: localize(t, "Delete selected view", "선택한 보기 삭제"),
+    namePlaceholder: localize(t, "View name", "보기 이름"),
+    confirm: localize(t, "Save", "저장"),
+    cancel: localize(t, "Cancel", "취소")
+  };
+}
+
 function factoryStatusClassName(status: string): "error" | "success" | "warningLine" {
   if (/unable|failed|error|forbidden|실패|오류|못했습니다/i.test(status)) return "error";
   if (/required|blocked|resolve|필요|대기|해결/i.test(status)) return "warningLine";
@@ -6063,6 +6998,25 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString();
+}
+
+function taskKindLabel(kind: PortalTask["kind"], t: Copy): string {
+  const labels: Record<PortalTask["kind"], [string, string]> = {
+    approval: ["Approval", "승인"],
+    request: ["My request", "내 요청"],
+    expiry: ["Expiry", "만료"],
+    failure: ["Failure", "실패"]
+  };
+  return localize(t, labels[kind][0], labels[kind][1]);
+}
+
+function formatTaskSla(value: string, t: Copy): string {
+  const remainingMs = new Date(value).getTime() - Date.now();
+  const absoluteMinutes = Math.max(1, Math.round(Math.abs(remainingMs) / 60_000));
+  const amount = absoluteMinutes >= 60 ? `${Math.round(absoluteMinutes / 60)}h` : `${absoluteMinutes}m`;
+  return remainingMs < 0
+    ? localize(t, `${amount} overdue`, `${amount} 지연`)
+    : localize(t, `${amount} left`, `${amount} 남음`);
 }
 
 function shortId(value: string): string {

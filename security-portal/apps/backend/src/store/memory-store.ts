@@ -160,6 +160,19 @@ export class MemoryStore implements PortalStore {
     return next;
   }
 
+  async markCredentialRevokeFailed(id: string): Promise<IssuedCredential> {
+    const credential = this.credentials.get(id);
+    if (!credential) {
+      throw new Error("Credential not found");
+    }
+    const next: IssuedCredential = {
+      ...credential,
+      status: "revoke_failed" satisfies CredentialStatus
+    };
+    this.credentials.set(id, next);
+    return next;
+  }
+
   async createAuditEvent(input: Omit<AuditEvent, "id" | "createdAt">): Promise<AuditEvent> {
     const event: AuditEvent = {
       ...input,

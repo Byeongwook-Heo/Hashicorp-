@@ -5618,3 +5618,841 @@ tbody tr:hover {
     flex: 1;
   }
 }
+
+/* Portal-wide workflow tools */
+.topbarAction {
+  position: relative;
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.actionBadge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0 5px;
+  border: 2px solid var(--bg);
+  border-radius: 999px;
+  background: var(--red);
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.portalOverlay {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: min(12vh, 96px) 20px 40px;
+  background: rgba(8, 10, 14, 0.64);
+}
+
+.globalSearchDialog,
+.bulkPreviewDialog,
+.impactDialog {
+  width: min(720px, 100%);
+  max-height: calc(100dvh - min(16vh, 128px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow-strong);
+  color: var(--ink);
+}
+
+.globalSearchInput {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 60px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.globalSearchInput > svg {
+  color: var(--muted);
+}
+
+.globalSearchInput input {
+  min-width: 0;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.globalSearchInput input:focus {
+  outline: 0;
+}
+
+.globalSearchResults {
+  display: grid;
+  max-height: min(62vh, 560px);
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.globalSearchResults a {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+  min-height: 66px;
+  padding: 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.globalSearchResults a:hover,
+.globalSearchResults a:focus-visible {
+  border-color: var(--line);
+  background: var(--panel-soft);
+}
+
+.searchResultIcon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.searchResultIcon.system {
+  color: #0e7490;
+}
+
+.searchResultIcon.request {
+  color: #a16207;
+}
+
+.searchResultIcon.credential {
+  color: #166534;
+}
+
+.globalSearchResults small,
+.globalSearchResults strong,
+.globalSearchResults em {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.globalSearchResults small {
+  color: var(--muted);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.globalSearchResults strong {
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.globalSearchResults em {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.taskOverlay {
+  justify-content: flex-end;
+  padding: 0;
+}
+
+.taskCenterDrawer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(410px, 100%);
+  height: 100dvh;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow-strong);
+  color: var(--ink);
+}
+
+.taskCenterDrawer > header,
+.bulkPreviewDialog > header,
+.impactDialog > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 70px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.taskCenterDrawer header span,
+.bulkPreviewDialog header span,
+.impactDialog header span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.taskCenterDrawer header h2,
+.bulkPreviewDialog header h2,
+.impactDialog header h2 {
+  margin: 3px 0 0;
+  font-size: 16px;
+}
+
+.taskDrawerHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.taskDrawerHeaderActions > strong {
+  display: grid;
+  min-width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--vault);
+  color: #111318;
+  font-size: 12px;
+}
+
+.taskList {
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.taskItem {
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 72px;
+  padding: 10px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.taskItem:hover,
+.taskItem:focus-visible {
+  border-color: var(--line);
+  background: var(--panel-soft);
+}
+
+.taskTone {
+  width: 3px;
+  height: 42px;
+  border-radius: 2px;
+  background: #0891b2;
+}
+
+.taskItem.approval .taskTone,
+.taskItem.request .taskTone {
+  background: var(--vault);
+}
+
+.taskItem.failure .taskTone {
+  background: var(--red);
+}
+
+.taskItem.expiry .taskTone {
+  background: #0891b2;
+}
+
+.taskItem small,
+.taskItem strong,
+.taskItem em {
+  display: block;
+  min-width: 0;
+}
+
+.taskItem small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.taskItem strong {
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.taskItem em {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskSla {
+  max-width: 78px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.listToolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.listFilterGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(3, minmax(120px, 0.7fr));
+  gap: 8px;
+  width: min(860px, 100%);
+}
+
+.listFilterGrid label,
+.savedViewName {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.listFilterGrid input,
+.listFilterGrid select,
+.savedViewControls select,
+.savedViewName input {
+  min-height: 36px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.savedViewControls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 250px;
+}
+
+.savedViewControls > select {
+  min-width: 134px;
+  max-width: 190px;
+}
+
+.savedViewControls .iconButton,
+.savedViewName .iconButton {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.savedViewName {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.savedViewName input {
+  width: 140px;
+}
+
+.filterPanelFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.metric.actionable {
+  position: relative;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.metric.actionable:focus-visible {
+  outline: 3px solid rgba(255, 207, 37, 0.42);
+  outline-offset: 2px;
+}
+
+.metricArrow {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  color: var(--muted);
+  transition: transform var(--motion-fast) ease, color var(--motion-fast) ease;
+}
+
+.metric.actionable:hover .metricArrow {
+  color: var(--ink);
+  transform: translateX(2px);
+}
+
+.requestHeaderTools {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.requestBatchActions {
+  display: flex;
+  gap: 5px;
+}
+
+.requestBatchActions .iconButton {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.visuallyHidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  clip-path: inset(50%) !important;
+  white-space: nowrap !important;
+}
+
+.bulkPreviewDialog,
+.impactDialog {
+  width: min(900px, 100%);
+}
+
+.bulkPreviewSummary,
+.impactSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  margin: 14px 16px 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.bulkPreviewSummary .miniStat,
+.impactSummary .miniStat {
+  min-height: 64px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bulkPreviewSummary .miniStat:last-child,
+.impactSummary .miniStat:last-child {
+  border-right: 0;
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.bulkPreviewTable {
+  max-height: min(48vh, 430px);
+  margin: 14px 16px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.bulkPreviewTable table {
+  min-width: 680px;
+  margin: 0;
+}
+
+.bulkPreviewTable tr.invalid td:last-child {
+  color: var(--red);
+  font-weight: 800;
+}
+
+.bulkPreviewDialog > .error,
+.impactDialog > .error {
+  margin: 0 16px 14px;
+}
+
+.bulkPreviewDialog > footer,
+.impactDialog > footer {
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.bulkPreviewDialog .actions button,
+.impactDialog .actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.bulkActionBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 50px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.bulkActionBar > span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.bulkSelectAll,
+.rowSelection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.bulkSelectAll input,
+.rowSelection input {
+  width: 17px;
+  height: 17px;
+  accent-color: #d9a800;
+}
+
+.credentialRow {
+  align-items: flex-start;
+  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+
+.credentialRow .rowSelection {
+  padding-top: 3px;
+}
+
+.credentialRow.selected {
+  border-color: rgba(217, 168, 0, 0.72);
+  background: color-mix(in srgb, var(--panel) 94%, var(--vault));
+}
+
+.credentialRow > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.impactDialog {
+  max-height: calc(100dvh - min(16vh, 128px));
+  overflow-y: auto;
+}
+
+.impactDiffList,
+.policyDiffList {
+  display: grid;
+  gap: 1px;
+  margin: 14px 16px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--line);
+}
+
+.impactDiffList > div,
+.policyDiffList > div {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(96px, auto) auto minmax(96px, auto);
+  gap: 10px;
+  align-items: center;
+  min-height: 58px;
+  padding: 9px 11px;
+  background: var(--panel);
+}
+
+.impactDiffList span,
+.impactDiffList strong,
+.impactDiffList small,
+.policyDiffList strong {
+  display: block;
+  min-width: 0;
+}
+
+.impactDiffList small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffBefore,
+.diffAfter {
+  max-width: 260px;
+  overflow: hidden;
+  padding: 5px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffBefore {
+  background: #fff1f2;
+  color: #9f1239;
+}
+
+.diffAfter {
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.impactNotice {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin: 0 16px 14px;
+  padding: 11px 12px;
+  border-left: 3px solid var(--vault);
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.impactNotice svg {
+  flex: 0 0 auto;
+  color: #a16207;
+}
+
+.dangerButton {
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.dangerButton:hover:not(:disabled) {
+  border-color: #991b1b;
+  background: #991b1b;
+}
+
+.policyDiffDialog {
+  width: min(760px, 100%);
+}
+
+.policyDiffList > div {
+  grid-template-columns: minmax(110px, 0.65fr) minmax(140px, 1fr) auto minmax(140px, 1fr);
+}
+
+:root[data-theme="dark"] .portalOverlay {
+  background: rgba(0, 0, 0, 0.76);
+}
+
+:root[data-theme="dark"] .topbarAction,
+:root[data-theme="dark"] .savedViewControls .iconButton,
+:root[data-theme="dark"] .savedViewName .iconButton,
+:root[data-theme="dark"] .requestBatchActions .iconButton {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .diffBefore {
+  background: rgba(159, 18, 57, 0.28);
+  color: #fda4af;
+}
+
+:root[data-theme="dark"] .diffAfter {
+  background: rgba(22, 101, 52, 0.3);
+  color: #86efac;
+}
+
+@media (max-width: 1100px) {
+  .listToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .listFilterGrid {
+    width: 100%;
+  }
+
+  .savedViewControls {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 210ms ease, visibility 0s linear 210ms;
+  }
+
+  .sidebar.open {
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+}
+
+@media (max-width: 640px) {
+  .portalOverlay {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .globalSearchDialog,
+  .bulkPreviewDialog,
+  .impactDialog {
+    width: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .globalSearchResults {
+    max-height: calc(100dvh - 61px);
+  }
+
+  .taskCenterDrawer {
+    width: 100%;
+    border-left: 0;
+  }
+
+  .listFilterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .listFilterGrid label:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .savedViewControls {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .savedViewControls > select,
+  .savedViewName,
+  .savedViewName input {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .filterPanelFooter,
+  .requestHeaderTools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .requestBatchActions {
+    justify-content: flex-end;
+  }
+
+  .bulkPreviewSummary,
+  .impactSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bulkPreviewSummary .miniStat:nth-child(2),
+  .impactSummary .miniStat:nth-child(2) {
+    border-right: 0;
+  }
+
+  .bulkPreviewSummary .miniStat:nth-child(-n + 2),
+  .impactSummary .miniStat:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+
+  .bulkActionBar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .bulkActionBar > span {
+    margin-left: 0;
+  }
+
+  .bulkActionBar > button {
+    width: 100%;
+  }
+
+  .credentialRow {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .credentialRow > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .impactDiffList > div,
+  .policyDiffList > div {
+    grid-template-columns: minmax(0, 1fr) auto minmax(84px, auto);
+  }
+
+  .impactDiffList > div > span,
+  .policyDiffList > div > strong {
+    grid-column: 1 / -1;
+  }
+
+  .impactDiffList > div > .diffBefore,
+  .policyDiffList > div > .diffBefore {
+    grid-column: 1;
+  }
+
+  .impactDiffList > div > svg,
+  .policyDiffList > div > svg {
+    grid-column: 2;
+  }
+
+  .impactDiffList > div > .diffAfter,
+  .policyDiffList > div > .diffAfter {
+    grid-column: 3;
+  }
+
+  .impactDialog > footer,
+  .bulkPreviewDialog > footer {
+    position: sticky;
+    bottom: 0;
+    background: var(--panel);
+  }
+}

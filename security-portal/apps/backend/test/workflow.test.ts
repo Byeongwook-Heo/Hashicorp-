@@ -127,6 +127,65 @@ describe("workflow", () => {
     });
     await expect(service.approveRequest(developer, request.id)).rejects.toThrow("Forbidden");
   });
+
+  it("creates CSV-style request batches and reports row-level failures", async () => {
+    const store = new MemoryStore();
+    await store.initialize();
+    const developer = await store.getUserByEmail("developer@example.com");
+    if (!developer) throw new Error("missing seed user");
+    const service = new WorkflowService(store, createVaultClient(mockConfig));
+
+    const result = await service.createRequests(developer, [
+      {
+        systemId: "system-tango-ec",
+        requestType: "CUSTOM_GITLAB_TOKEN",
+        reason: "Release validation",
+        ttl: "1h",
+        payload: { scope: "read_api" }
+      },
+      {
+        systemId: "system-payment-api",
+        requestType: "PKI_CERTIFICATE",
+        reason: "Unassigned system",
+        ttl: "30m",
+        payload: { scope: "read_api" }
+      }
+    ]);
+
+    expect(result.created).toHaveLength(1);
+    expect(result.failures).toEqual([{ index: 1, error: "Forbidden" }]);
+  });
+
+  it("tracks revoke failures and allows a bulk retry", async () => {
+    const store = new MemoryStore();
+    await store.initialize();
+    const developer = await store.getUserByEmail("developer@example.com");
+    const approver = await store.getUserByEmail("approver@example.com");
+    if (!developer || !approver) throw new Error("missing seed users");
+    const vault = createVaultClient(mockConfig);
+    vi.spyOn(vault, "revokeLease")
+      .mockResolvedValueOnce({ revoked: false, detail: { reason: "temporary failure" } })
+      .mockResolvedValueOnce({ revoked: true, detail: {} });
+    const service = new WorkflowService(store, vault);
+    const request = await service.createRequest({
+      actor: developer,
+      systemId: "system-tango-ec",
+      requestType: "CUSTOM_GITLAB_TOKEN",
+      reason: "Temporary credential",
+      ttl: "1h",
+      payload: {}
+    });
+    await service.approveRequest(approver, request.id);
+    const credential = await service.executeRequest(developer, request.id);
+
+    await expect(service.revokeCredential(developer, credential.id)).rejects.toThrow("Vault lease revoke failed");
+    expect((await store.getCredential(credential.id))?.status).toBe("revoke_failed");
+
+    const retried = await service.revokeCredentials(developer, [credential.id, credential.id]);
+    expect(retried.revoked).toHaveLength(1);
+    expect(retried.failures).toHaveLength(0);
+    expect((await store.getCredential(credential.id))?.status).toBe("revoked");
+  });
 });
 
 describe("real Vault adapter", () => {

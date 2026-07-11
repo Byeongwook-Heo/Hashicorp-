@@ -260,6 +260,15 @@ export class PostgresStore implements PortalStore {
     return credential;
   }
 
+  async markCredentialRevokeFailed(id: string): Promise<IssuedCredential> {
+    await this.pool.query("update issued_credentials set status = 'revoke_failed' where id = $1", [id]);
+    const credential = await this.getCredential(id);
+    if (!credential) {
+      throw new Error("Credential not found");
+    }
+    return credential;
+  }
+
   async createAuditEvent(input: Omit<AuditEvent, "id" | "createdAt">): Promise<AuditEvent> {
     const id = crypto.randomUUID();
     await this.pool.query(

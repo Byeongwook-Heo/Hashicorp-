@@ -51,6 +51,7 @@ export interface PortalStore {
   listCredentials(): Promise<IssuedCredential[]>;
   getCredential(id: string): Promise<IssuedCredential | undefined>;
   markCredentialRevoked(id: string): Promise<IssuedCredential>;
+  markCredentialRevokeFailed(id: string): Promise<IssuedCredential>;
   createAuditEvent(input: Omit<AuditEvent, "id" | "createdAt">): Promise<AuditEvent>;
   listAuditEvents(): Promise<AuditEvent[]>;
   createFactoryJob(input: CreateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob>;

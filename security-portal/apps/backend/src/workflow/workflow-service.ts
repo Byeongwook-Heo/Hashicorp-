@@ -1,5 +1,7 @@
 import type {
   AccessRequest,
+  BulkCredentialActionResult,
+  BulkRequestResult,
   IssuedCredential,
   PortalUser,
   RequestType
@@ -44,6 +46,29 @@ export class WorkflowService {
       system_id: request.systemId
     });
     return request;
+  }
+
+  async createRequests(
+    actor: PortalUser,
+    inputs: Array<{
+      systemId: string;
+      requestType: RequestType;
+      reason: string;
+      ttl: string;
+      payload: Record<string, unknown>;
+      riskLevel?: AccessRequest["riskLevel"];
+    }>
+  ): Promise<BulkRequestResult> {
+    const created: AccessRequest[] = [];
+    const failures: BulkRequestResult["failures"] = [];
+    for (const [index, input] of inputs.entries()) {
+      try {
+        created.push(await this.createRequest({ actor, ...input }));
+      } catch (error) {
+        failures.push({ index, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return { created, failures };
   }
 
   async approveRequest(
@@ -133,8 +158,8 @@ export class WorkflowService {
     if (!credential) {
       throw new Error("Credential not found");
     }
-    if (credential.status !== "active") {
-      throw new Error("Only active credentials can be revoked");
+    if (credential.status !== "active" && credential.status !== "revoke_failed") {
+      throw new Error("Only active or failed credentials can be revoked");
     }
     const request = await this.store.getRequest(credential.requestId);
     if (!request) {
@@ -143,6 +168,7 @@ export class WorkflowService {
     requireOwnerOrRole(actor, request.requesterId, ["security-approver", "vault-admin", "app-owner"]);
     const result = await this.vault.revokeLease(credential.vaultLeaseId);
     if (!result.revoked) {
+      await this.store.markCredentialRevokeFailed(credential.id);
       await this.audit(actor, "credential.revoke_failed", "credential", credential.id, "failure", result.detail);
       throw new Error("Vault lease revoke failed");
     }
@@ -151,6 +177,19 @@ export class WorkflowService {
       lease_id: credential.vaultLeaseId
     });
     return revoked;
+  }
+
+  async revokeCredentials(actor: PortalUser, credentialIds: string[]): Promise<BulkCredentialActionResult> {
+    const revoked: IssuedCredential[] = [];
+    const failures: BulkCredentialActionResult["failures"] = [];
+    for (const credentialId of [...new Set(credentialIds)]) {
+      try {
+        revoked.push(await this.revokeCredential(actor, credentialId));
+      } catch (error) {
+        failures.push({ credentialId, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return { revoked, failures };
   }
 
   private async audit(
