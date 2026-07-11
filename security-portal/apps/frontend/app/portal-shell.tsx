@@ -63,6 +63,8 @@ import {
   Minimize2,
   Moon,
   PackageSearch,
+  PanelLeftClose,
+  PanelLeftOpen,
   PlugZap,
   RefreshCw,
   Rocket,
@@ -129,8 +131,19 @@ type PortalTask = {
   href: string;
   dueAt?: string;
 };
+type PortalToast = {
+  id: number;
+  message: string;
+  tone: "success" | "warning" | "danger" | "info";
+};
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+const portalToastEvent = "security-portal:toast";
+
+function notifyPortal(message: string, tone: PortalToast["tone"] = "info") {
+  if (typeof window === "undefined" || !message.trim()) return;
+  window.dispatchEvent(new CustomEvent(portalToastEvent, { detail: { message, tone } }));
+}
 
 const navItems: Array<{ view: View; href: string; icon: LucideIcon; roles?: UserRole[] }> = [
   { view: "dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -489,8 +502,10 @@ export default function PortalShell({ view }: { view: View }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
+  const [toast, setToast] = useState<PortalToast | null>(null);
   const t = copy[language];
 
   function setPortalLanguage(nextLanguage: Language) {
@@ -506,6 +521,13 @@ export default function PortalShell({ view }: { view: View }) {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("security-portal-theme", nextTheme);
       document.documentElement.dataset.theme = nextTheme;
+    }
+  }
+
+  function setPortalSidebarCollapsed(collapsed: boolean) {
+    setSidebarCollapsed(collapsed);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("security-portal-sidebar-collapsed", String(collapsed));
     }
   }
 
@@ -568,7 +590,28 @@ export default function PortalShell({ view }: { view: View }) {
     const initialTheme: Theme = storedTheme === "dark" || storedTheme === "light" ? storedTheme : prefersDark ? "dark" : "light";
     setTheme(initialTheme);
     document.documentElement.dataset.theme = initialTheme;
+
+    setSidebarCollapsed(window.localStorage.getItem("security-portal-sidebar-collapsed") === "true");
   }, []);
+
+  useEffect(() => {
+    function showPortalToast(event: Event) {
+      const detail = (event as CustomEvent<Omit<PortalToast, "id">>).detail;
+      if (!detail?.message) return;
+      setToast({ ...detail, id: Date.now() });
+    }
+
+    window.addEventListener(portalToastEvent, showPortalToast);
+    return () => window.removeEventListener(portalToastEvent, showPortalToast);
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => {
+      setToast((current) => current?.id === toast.id ? null : current);
+    }, 4200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -753,8 +796,10 @@ export default function PortalShell({ view }: { view: View }) {
       : localize(t, "Vault needs attention", "Vault 확인 필요")
     : localize(t, "Checking Vault status", "Vault 상태 확인 중");
 
+  const ToastIcon = toast?.tone === "success" ? CheckCircle2 : toast?.tone === "info" ? Activity : AlertTriangle;
+
   return (
-    <div className={`shell view-${view}${mobileNavOpen ? " navOpen" : ""}`} data-view={view}>
+    <div className={`shell view-${view}${mobileNavOpen ? " navOpen" : ""}${sidebarCollapsed ? " sidebarCollapsed" : ""}`} data-view={view}>
       <aside className={mobileNavOpen ? "sidebar open" : "sidebar"} aria-label={localize(t, "Primary navigation", "주요 메뉴")}>
         <div className="sidebarHeader">
           <Link href="/dashboard" className="brand" aria-label="Go to dashboard">
@@ -799,6 +844,17 @@ export default function PortalShell({ view }: { view: View }) {
             <small>{vaultStatusLabel}</small>
           </div>
         </div>
+        <button
+          aria-label={localize(t, sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar", sidebarCollapsed ? "Sidebar 펼치기" : "Sidebar 접기")}
+          aria-pressed={sidebarCollapsed}
+          className="sidebarCollapseButton"
+          onClick={() => setPortalSidebarCollapsed(!sidebarCollapsed)}
+          title={localize(t, sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar", sidebarCollapsed ? "Sidebar 펼치기" : "Sidebar 접기")}
+          type="button"
+        >
+          {sidebarCollapsed ? <PanelLeftOpen aria-hidden="true" size={16} /> : <PanelLeftClose aria-hidden="true" size={16} />}
+          <span>{localize(t, sidebarCollapsed ? "Expand" : "Collapse", sidebarCollapsed ? "펼치기" : "접기")}</span>
+        </button>
       </aside>
 
       <button
@@ -961,6 +1017,15 @@ export default function PortalShell({ view }: { view: View }) {
           <Admin t={t} systems={systems} vaultHealth={vaultHealth} mappingHealth={mappingHealth} />
         ) : null}
         </div>
+        {toast ? (
+          <div aria-live="polite" className={`portalToast ${toast.tone}`} role={toast.tone === "danger" ? "alert" : "status"}>
+            <ToastIcon aria-hidden="true" size={18} />
+            <span>{toast.message}</span>
+            <button aria-label={localize(t, "Dismiss notification", "알림 닫기")} onClick={() => setToast(null)} type="button">
+              <X aria-hidden="true" size={15} />
+            </button>
+          </div>
+        ) : null}
       </main>
     </div>
   );
@@ -1296,7 +1361,7 @@ function Dashboard({
     .slice(0, 5);
   const recentSecurityEvents = auditEvents
     .filter((event) => /approve|reject|revoke|expire|execute/i.test(event.action))
-    .slice(0, 6);
+    .slice(0, 3);
   const pendingHref = canUseView(currentUser.roles, "approvals") ? "/approvals?status=pending&sort=oldest" : "/requests?status=pending&sort=oldest";
   const credentialsHref = canUseView(currentUser.roles, "credentials") ? "/credentials" : "/secrets";
 
@@ -1449,6 +1514,7 @@ function Dashboard({
           credential.ttl
         ])}
         emptyLabel={t.table.noData}
+        emptyAction={{ href: "/requests", label: localize(t, "Request a Secret", "Secret 요청") }}
       />
       <Table
         title={localize(t, "Recent approval / reject / revoke events", "최근 승인/반려/폐기 이벤트")}
@@ -1463,6 +1529,7 @@ function Dashboard({
           .filter((request) => request.status === "pending")
           .map((request) => [request.systemName, request.requestType, request.requesterEmail, request.riskLevel])}
         emptyLabel={t.table.noData}
+        emptyAction={{ href: "/requests", label: localize(t, "Create request", "요청 생성") }}
       />
       <section className="tablePanel">
         <h2>{t.dashboard.inventory}</h2>
@@ -1855,7 +1922,12 @@ function Systems({ t, systems }: { t: Copy; systems: SystemSummary[] }) {
         </div>
         <SavedViewControls filters={filters} labels={savedViewLabels(t)} onApply={(saved) => replace({ ...filters, ...saved })} onReset={reset} scope="systems" />
       </section>
-      {filteredSystems.length === 0 ? <div className="empty">{t.systems.empty}</div> : null}
+      {filteredSystems.length === 0 ? (
+        <div className="empty emptyWithAction">
+          <span>{t.systems.empty}</span>
+          <button onClick={reset} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+        </div>
+      ) : null}
       <div className="grid">
       {filteredSystems.map((system) => (
         <article className="card" key={system.id}>
@@ -1977,9 +2049,13 @@ function RequestForm({
       });
       await onChanged();
       setStep(0);
-      setSubmitMessage(localize(t, "Request submitted for approval.", "요청을 승인 대기열에 제출했습니다."));
+      const message = localize(t, "Request submitted for approval.", "요청을 승인 대기열에 제출했습니다.");
+      setSubmitMessage(message);
+      notifyPortal(message, "success");
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : localize(t, "Unable to submit request.", "요청을 제출하지 못했습니다."));
+      const message = err instanceof Error ? err.message : localize(t, "Unable to submit request.", "요청을 제출하지 못했습니다.");
+      setSubmitError(message);
+      notifyPortal(message, "danger");
     } finally {
       setBusy(false);
     }
@@ -2065,17 +2141,19 @@ function RequestForm({
         method: "POST",
         body: JSON.stringify({ requests: csvPreview.flatMap((row) => (row.input ? [row.input] : [])) })
       });
-      setSubmitMessage(
-        localize(
-          t,
-          `${response.result.created.length} requests imported${response.result.failures.length ? `, ${response.result.failures.length} failed` : ""}.`,
-          `${response.result.created.length}개 요청을 등록했습니다${response.result.failures.length ? `, ${response.result.failures.length}개 실패` : ""}.`
-        )
+      const message = localize(
+        t,
+        `${response.result.created.length} requests imported${response.result.failures.length ? `, ${response.result.failures.length} failed` : ""}.`,
+        `${response.result.created.length}개 요청을 등록했습니다${response.result.failures.length ? `, ${response.result.failures.length}개 실패` : ""}.`
       );
+      setSubmitMessage(message);
+      notifyPortal(message, response.result.failures.length ? "warning" : "success");
       setCsvPreview(null);
       await onChanged();
     } catch (error) {
-      setCsvError(error instanceof Error ? error.message : localize(t, "Unable to import requests.", "요청을 가져오지 못했습니다."));
+      const message = error instanceof Error ? error.message : localize(t, "Unable to import requests.", "요청을 가져오지 못했습니다.");
+      setCsvError(message);
+      notifyPortal(message, "danger");
     } finally {
       setCsvBusy(false);
     }
@@ -2395,8 +2473,16 @@ function Approvals({
             : undefined;
       await api(`/requests/${id}/${action}`, { method: "POST", body });
       await onChanged();
+      const actionLabel = action === "approve"
+        ? localize(t, "Request approved.", "요청을 승인했습니다.")
+        : action === "reject"
+          ? localize(t, "Request rejected.", "요청을 반려했습니다.")
+          : localize(t, "Request executed.", "요청을 실행했습니다.");
+      notifyPortal(actionLabel, "success");
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : localize(t, "Unable to update request.", "요청을 처리하지 못했습니다."));
+      const message = err instanceof Error ? err.message : localize(t, "Unable to update request.", "요청을 처리하지 못했습니다.");
+      setActionError(message);
+      notifyPortal(message, "danger");
     } finally {
       setBusyRequestId(null);
     }
@@ -2451,7 +2537,12 @@ function Approvals({
         </div>
       ) : null}
       {actionError ? <div className="error">{actionError}</div> : null}
-      {filteredRequests.length === 0 ? <div className="empty">{t.approvals.empty}</div> : null}
+      {filteredRequests.length === 0 ? (
+        <div className="empty emptyWithAction">
+          <span>{t.approvals.empty}</span>
+          <button onClick={reset} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+        </div>
+      ) : null}
       {filteredRequests.map((request) => (
         <article className="card approvalCard" key={request.id}>
           <div className="approvalMain">
@@ -2641,13 +2732,13 @@ function Credentials({
         method: "POST",
         body: JSON.stringify({ credentialIds: pendingActionIds })
       });
-      setActionMessage(
-        localize(
-          t,
-          `${response.result.revoked.length} credentials revoked${response.result.failures.length ? `, ${response.result.failures.length} failed` : ""}.`,
-          `${response.result.revoked.length}개 Credential을 폐기했습니다${response.result.failures.length ? `, ${response.result.failures.length}개 실패` : ""}.`
-        )
+      const message = localize(
+        t,
+        `${response.result.revoked.length} credentials revoked${response.result.failures.length ? `, ${response.result.failures.length} failed` : ""}.`,
+        `${response.result.revoked.length}개 Credential을 폐기했습니다${response.result.failures.length ? `, ${response.result.failures.length}개 실패` : ""}.`
       );
+      setActionMessage(message);
+      notifyPortal(message, response.result.failures.length ? "warning" : "success");
       if (response.result.failures.length) {
         setActionError(response.result.failures.map((failure) => `${shortId(failure.credentialId)}: ${failure.error}`).join(" · "));
       }
@@ -2655,7 +2746,9 @@ function Credentials({
       setSelectedIds([]);
       await onChanged();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : localize(t, "Unable to revoke credential.", "Credential을 폐기하지 못했습니다."));
+      const message = err instanceof Error ? err.message : localize(t, "Unable to revoke credential.", "Credential을 폐기하지 못했습니다.");
+      setActionError(message);
+      notifyPortal(message, "danger");
     } finally {
       setBusy(false);
     }
@@ -2725,7 +2818,12 @@ function Credentials({
       ) : null}
       {actionError ? <div className="error">{actionError}</div> : null}
       {actionMessage ? <div className="noticePanel compact">{actionMessage}</div> : null}
-      {filteredCredentials.length === 0 ? <div className="empty">{t.credentials.empty}</div> : null}
+      {filteredCredentials.length === 0 ? (
+        <div className="empty emptyWithAction">
+          <span>{t.credentials.empty}</span>
+          <button onClick={reset} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+        </div>
+      ) : null}
       {filteredCredentials.map((credential) => {
         const request = requestById.get(credential.requestId);
         const canRevoke = canManage(credential);
@@ -3037,6 +3135,7 @@ function PluginFactory({
   const [pluginHistory, setPluginHistory] = useState<PluginFactoryHistoryItem[]>([]);
   const [rollbackPreview, setRollbackPreview] = useState<string | null>(null);
   const [activeFactoryTab, setActiveFactoryTab] = useState<FactoryTab>("workspace");
+  const [mobileFactoryPane, setMobileFactoryPane] = useState<"design" | "status">("design");
   const [templateQuery, setTemplateQuery] = useState("");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [favoriteTemplateIds, setFavoriteTemplateIds] = useState<string[]>([]);
@@ -3145,6 +3244,12 @@ function PluginFactory({
     activeJobIdRef.current = activeJobId;
   }, [activeJobId]);
 
+  useEffect(() => {
+    if (!status) return;
+    const statusClass = factoryStatusClassName(status);
+    notifyPortal(status, statusClass === "error" ? "danger" : statusClass === "warningLine" ? "warning" : "success");
+  }, [status]);
+
   const selectedTemplate = templates.find((template) => template.id === selectedId) ?? templates[0];
   const normalizedTemplateQuery = templateQuery.trim().toLowerCase();
   const filteredTemplates = templates
@@ -3190,6 +3295,7 @@ function PluginFactory({
     localize(t, "Compare Sectigo and DigiCert", "Sectigo와 DigiCert를 비교해줘")
   ];
   const currentJob = factoryJobs.find((job) => job.id === activeJobId);
+  const factoryProgress = currentJob?.progress ?? (generated ? 70 : 10);
   const ownsCurrentJob = Boolean(currentJob && currentUser && currentJob.ownerId === currentUser.id);
   const canConfigureDeployment = ownsCurrentJob || canReviewJobs;
   const canRequestApproval = ownsCurrentJob || canApply;
@@ -3646,6 +3752,7 @@ function PluginFactory({
   function resetActiveFile() {
     if (!activeFile || !originalFile) return;
     setDraftFiles((files) => files.map((file) => (file.path === activeFile.path ? originalFile : file)));
+    notifyPortal(localize(t, "File reset to the generated version.", "파일을 생성된 버전으로 초기화했습니다."), "info");
   }
 
   async function copyActiveFile() {
@@ -3664,9 +3771,12 @@ function PluginFactory({
         textarea.remove();
       }
       setCopiedFilePath(activeFile.path);
+      notifyPortal(localize(t, "File copied to the clipboard.", "파일을 클립보드에 복사했습니다."), "success");
       window.setTimeout(() => setCopiedFilePath((path) => (path === activeFile.path ? null : path)), 1200);
     } catch {
-      setStatus(localize(t, "Unable to copy this file.", "파일을 복사하지 못했습니다."));
+      const message = localize(t, "Unable to copy this file.", "파일을 복사하지 못했습니다.");
+      setStatus(message);
+      notifyPortal(message, "danger");
     }
   }
 
@@ -4436,7 +4546,37 @@ function PluginFactory({
         </div>
       </section>
 
-      <section className="factoryJobTimeline" aria-label={localize(t, "Factory job progress", "Factory 작업 진행률")}>
+      <div className="factoryMobileTabs" role="tablist" aria-label={localize(t, "Factory workspace", "Factory 작업 화면")}>
+        <button
+          aria-controls="factory-mobile-design"
+          aria-selected={mobileFactoryPane === "design"}
+          className={mobileFactoryPane === "design" ? "active" : ""}
+          onClick={() => setMobileFactoryPane("design")}
+          role="tab"
+          type="button"
+        >
+          <MessageSquare aria-hidden="true" size={15} />
+          {localize(t, "Plugin design", "Plugin 설계")}
+        </button>
+        <button
+          aria-controls="factory-mobile-status"
+          aria-selected={mobileFactoryPane === "status"}
+          className={mobileFactoryPane === "status" ? "active" : ""}
+          onClick={() => setMobileFactoryPane("status")}
+          role="tab"
+          type="button"
+        >
+          <Activity aria-hidden="true" size={15} />
+          {localize(t, "Build status", "Build 상태")}
+          <span>{factoryProgress}%</span>
+        </button>
+      </div>
+
+      <section
+        className={`factoryJobTimeline${mobileFactoryPane === "status" ? " mobileActive" : ""}`}
+        id="factory-mobile-status"
+        aria-label={localize(t, "Factory job progress", "Factory 작업 진행률")}
+      >
         <div className="factoryTimelineHeader">
           <div>
             <span>{localize(t, "Build status", "빌드 상태")}</span>
@@ -4451,10 +4591,10 @@ function PluginFactory({
           </div>
           <div>
             <span>{currentJob?.status ?? "draft"}</span>
-            <strong>{currentJob?.progress ?? (generated ? 70 : 10)}%</strong>
+            <strong>{factoryProgress}%</strong>
           </div>
         </div>
-        <div className="factoryProgressTrack"><span style={{ width: `${currentJob?.progress ?? (generated ? 70 : 10)}%` }} /></div>
+        <div className="factoryProgressTrack"><span style={{ width: `${factoryProgress}%` }} /></div>
         <div className="workflowStrip">
           {workflowStages.map((stage, index) => (
             <div key={stage.id} className={`workflowStep ${stage.complete ? "complete" : currentJob?.stage === stage.id ? "current" : "pending"}`}>
@@ -4489,23 +4629,25 @@ function PluginFactory({
         </div>
       </section>
 
-      <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "repair" || busy === "apply" ? "running" : ""}`}>
+      <section
+        className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "repair" || busy === "apply" ? "running" : ""}${mobileFactoryPane === "design" ? " mobileActive" : ""}`}
+        id="factory-mobile-design"
+      >
         <div className="panelHeader">
           <div>
             <h2>{localize(t, "Plugin design", "플러그인 설계")}</h2>
             <p>{localize(t, "Describe the system and credential you need.", "연결할 시스템과 필요한 자격 증명을 설명해주세요.")}</p>
           </div>
-          <div className="chatQuickActions">
+          {canApply && generated ? <div className="chatQuickActions">
             <button
               type="button"
               className={activeChatPrompt === localize(t, "Apply it to Vault", "Vault에 적용해줘") ? "launching" : undefined}
               onClick={() => void submitChatPrompt(localize(t, "Apply it to Vault", "Vault에 적용해줘"))}
-              disabled={busy !== null || !generated || !canApply}
-              title={canApply ? undefined : localize(t, "Vault admin role required", "Vault 관리자 권한이 필요합니다.")}
+              disabled={busy !== null}
             >
               {localize(t, "Request Vault apply", "Vault 적용 요청")}
             </button>
-          </div>
+          </div> : null}
         </div>
         <div className="chatExamples" aria-label={localize(t, "Example prompts", "예시 프롬프트")}>
           <span>{localize(t, "Examples", "예시")}</span>
@@ -4689,8 +4831,6 @@ function PluginFactory({
         </form>
       </section>
 
-      {status ? <div className={factoryStatusClassName(status)}>{status}</div> : null}
-
       <section className="factoryViewLauncher" aria-label={localize(t, "Factory views", "Factory 메뉴")}>
         <div className="factoryLauncherGrid">
           {factoryLaunchers.map(({ id: launcherId, icon: Icon, label, status: launcherStatus }) => (
@@ -4795,7 +4935,21 @@ function PluginFactory({
                 </div>
               </article>
             ))}
-            {!filteredTemplates.length ? <div className="empty compact">{localize(t, "No templates match this search.", "검색 조건과 일치하는 템플릿이 없습니다.")}</div> : null}
+            {!filteredTemplates.length ? (
+              <div className="empty compact emptyWithAction">
+                <span>{localize(t, "No templates match this search.", "검색 조건과 일치하는 Template이 없습니다.")}</span>
+                <button
+                  onClick={() => {
+                    setTemplateQuery("");
+                    setFavoriteOnly(false);
+                    changeFilter("all");
+                  }}
+                  type="button"
+                >
+                  {localize(t, "Reset filters", "필터 초기화")}
+                </button>
+              </div>
+            ) : null}
           </div>
         </section>
 
@@ -5329,9 +5483,16 @@ function PluginFactory({
                   <CalendarClock aria-hidden="true" size={16} /> {localize(t, "Save schedule", "예약 저장")}
                 </button>
               </div>
-              <button className="primary deployNowButton" disabled={!canApply || !generated || !preflightPassed || busy !== null} onClick={() => void applyPlugin()} type="button">
-                <Rocket aria-hidden="true" size={17} /> {localize(t, "Apply now", "지금 적용")}
-              </button>
+              {canApply ? (
+                <button className="primary deployNowButton" disabled={!generated || !preflightPassed || busy !== null} onClick={() => void applyPlugin()} type="button">
+                  <Rocket aria-hidden="true" size={17} /> {localize(t, "Apply now", "지금 적용")}
+                </button>
+              ) : (
+                <div className="permissionNote">
+                  <ShieldCheck aria-hidden="true" size={17} />
+                  <span>{localize(t, "A Vault admin performs the final apply after approval.", "승인 후 최종 적용은 Vault 관리자가 수행합니다.")}</span>
+                </div>
+              )}
             </section>
           </div>
           {generated ? (
@@ -5560,6 +5721,14 @@ function UserManagement({
     setMessage("");
     setPolicyReviewOpen(false);
   }, [selectedUser?.id]);
+
+  useEffect(() => {
+    if (message) notifyPortal(message, "success");
+  }, [message]);
+
+  useEffect(() => {
+    if (error) notifyPortal(error, "danger");
+  }, [error]);
 
   async function saveAccess() {
     if (!selectedUser) return;
@@ -6159,12 +6328,14 @@ function Table({
   title,
   columns,
   rows,
-  emptyLabel = "No data."
+  emptyLabel = "No data.",
+  emptyAction
 }: {
   title: string;
   columns: string[];
   rows: string[][];
   emptyLabel?: string;
+  emptyAction?: { href: string; label: string };
 }) {
   return (
     <section className="tablePanel">
@@ -6173,10 +6344,13 @@ function Table({
         <span className="tableCount" aria-label={`${rows.length} rows`}>{rows.length.toLocaleString()}</span>
       </div>
       {rows.length === 0 ? (
-        <div className="empty compact">{emptyLabel}</div>
+        <div className={`empty compact${emptyAction ? " emptyWithAction" : ""}`}>
+          <span>{emptyLabel}</span>
+          {emptyAction ? <Link href={emptyAction.href}>{emptyAction.label}</Link> : null}
+        </div>
       ) : (
         <div className="tableScroll">
-          <table>
+          <table className="responsiveTable">
             <thead>
               <tr>
                 {columns.map((column) => (
@@ -6188,7 +6362,7 @@ function Table({
               {rows.map((row, index) => (
                 <tr key={index}>
                   {row.map((cell, cellIndex) => (
-                    <td key={cellIndex}>{cell}</td>
+                    <td data-label={columns[cellIndex] ?? ""} key={cellIndex}>{cell}</td>
                   ))}
                 </tr>
               ))}
@@ -6582,8 +6756,26 @@ function factoryAppliedMessage(result: VaultPluginApplyResult, t: Copy): string 
   );
 }
 
+function normalizeKoreanTechnicalTerms(value: string): string {
+  return value
+    .replaceAll("깃허브", "GitHub")
+    .replaceAll("섹티고", "Sectigo")
+    .replaceAll("디지서트", "DigiCert")
+    .replaceAll("클릭하우스", "ClickHouse")
+    .replaceAll("플러그인", "Plugin")
+    .replaceAll("데이터베이스", "Database")
+    .replaceAll("마운트", "Mount")
+    .replaceAll("체크섬", "Checksum")
+    .replaceAll("스캐폴드", "Scaffold")
+    .replaceAll("템플릿", "Template")
+    .replaceAll("롤백", "Rollback")
+    .replaceAll("빌드", "Build")
+    .replaceAll("테스트", "Test")
+    .replaceAll("시크릿", "Secret");
+}
+
 function localize(t: Copy, en: string, ko: string): string {
-  return t === copy.ko ? ko : en;
+  return t === copy.ko ? normalizeKoreanTechnicalTerms(ko) : en;
 }
 
 function savedViewLabels(t: Copy) {

@@ -1131,6 +1131,14 @@ tbody tr:hover {
     --page-gutter: 18px;
   }
 
+  .overviewPanel {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .overviewPanel > div:first-child {
+    min-width: 0;
+  }
+
   .topbar {
     min-height: 56px;
   }
@@ -1167,8 +1175,15 @@ tbody tr:hover {
 
   .overviewPanel {
     min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
     align-items: flex-start;
     padding-bottom: 14px;
+  }
+
+  .overviewPanel h2,
+  .overviewPanel p {
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 
   .overviewAside {
@@ -1301,6 +1316,407 @@ tbody tr:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .pageSurface {
+    animation: none;
+  }
+}
+
+/* Final usability pass: readable labels, focused workspaces, and clear feedback. */
+body,
+button,
+input,
+select,
+textarea {
+  letter-spacing: 0;
+}
+
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid #c99f00;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vault) 22%, transparent);
+}
+
+.brand small,
+.sidebarFooter small,
+.factoryWorkspaceActions button > span,
+.factoryTimelineHeader span,
+.factoryTimelineHeader small,
+.factoryApplyGate span,
+.factoryLauncherGrid small,
+.chatExamples > span,
+.chatBubble span {
+  font-size: 10px;
+}
+
+.topbar .statusIndicator,
+.metric span,
+.metric small,
+.factoryWorkspaceStatus small,
+.factoryJobTimeline .workflowStep small,
+.factoryTimelineMeta span {
+  font-size: 11px;
+}
+
+th {
+  font-size: 11px;
+}
+
+td,
+.chatBubble p {
+  font-size: 12px;
+}
+
+.dashboardPage > .tablePanel:nth-last-child(5),
+.dashboardPage > .tablePanel:nth-last-child(4) {
+  align-self: start;
+}
+
+.dashboardPage > .tablePanel:nth-last-child(5) table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.view-systems .grid,
+.view-systems .card,
+.view-systems .card dl,
+.view-systems .card dd {
+  min-width: 0;
+}
+
+.view-systems .card dd {
+  overflow-wrap: anywhere;
+}
+
+.view-systems .card pre {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.sidebarCollapseButton {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  gap: 9px;
+  justify-content: flex-start;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #aeb4bd;
+  font-size: 11px;
+}
+
+.sidebarCollapseButton:hover:not(:disabled) {
+  border-color: #30343b;
+  background: #202329;
+  color: #ffffff;
+}
+
+.factoryMobileTabs {
+  display: none;
+}
+
+.emptyWithAction {
+  display: flex;
+  min-height: 92px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 10px;
+}
+
+.emptyWithAction a,
+.emptyWithAction button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.permissionNote {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border-top: 1px solid var(--line);
+  color: var(--muted-strong);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.permissionNote svg {
+  flex: 0 0 auto;
+  color: var(--vault-deep);
+}
+
+.portalToast {
+  position: fixed;
+  right: 24px;
+  bottom: 22px;
+  z-index: 2000;
+  display: grid;
+  width: min(380px, calc(100vw - 36px));
+  min-height: 48px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 9px 10px 13px;
+  border: 1px solid #353a42;
+  border-left: 3px solid #7e8794;
+  border-radius: 4px;
+  background: #191c21;
+  color: #f5f6f7;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 20%);
+  animation: portalToastIn 180ms ease-out;
+}
+
+.portalToast.success {
+  border-left-color: #39a96b;
+}
+
+.portalToast.warning {
+  border-left-color: var(--vault);
+}
+
+.portalToast.danger {
+  border-left-color: #e05a50;
+}
+
+.portalToast.info {
+  border-left-color: #62a9b0;
+}
+
+.portalToast > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.portalToast button {
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #aeb4bd;
+}
+
+.portalToast button:hover:not(:disabled) {
+  border-color: transparent;
+  background: #2a2e35;
+  color: #ffffff;
+}
+
+@keyframes portalToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (min-width: 901px) {
+  .shell.sidebarCollapsed {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .shell.sidebarCollapsed .sidebar {
+    padding-right: 7px;
+    padding-left: 7px;
+  }
+
+  .shell.sidebarCollapsed .brand {
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .shell.sidebarCollapsed .brand > div:last-child,
+  .shell.sidebarCollapsed .sidebar nav a span,
+  .shell.sidebarCollapsed .sidebarFooter > div,
+  .shell.sidebarCollapsed .sidebarCollapseButton span {
+    display: none;
+  }
+
+  .shell.sidebarCollapsed .sidebar nav a,
+  .shell.sidebarCollapsed .sidebarFooter,
+  .shell.sidebarCollapsed .sidebarCollapseButton {
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .shell.sidebarCollapsed .sidebar nav a::before {
+    left: -7px;
+  }
+
+  .shell.sidebarCollapsed .sidebarFooter {
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 640px) {
+  .sidebarCollapseButton {
+    display: none;
+  }
+
+  .portalToast {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+  }
+
+  .factoryMobileTabs {
+    position: sticky;
+    top: 57px;
+    z-index: 18;
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
+    backdrop-filter: blur(10px);
+  }
+
+  .factoryMobileTabs button {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 8px;
+    border: 0;
+    border-right: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted-strong);
+    font-size: 11px;
+  }
+
+  .factoryMobileTabs button:last-child {
+    border-right: 0;
+  }
+
+  .factoryMobileTabs button.active {
+    color: var(--ink);
+    box-shadow: inset 0 -2px 0 var(--vault);
+  }
+
+  .factoryMobileTabs button > span {
+    min-width: 30px;
+    padding: 2px 4px;
+    background: var(--panel-soft);
+    color: var(--muted);
+    font-size: 10px;
+    text-align: center;
+  }
+
+  .view-plugins .factoryChatPanel,
+  .view-plugins .factoryJobTimeline {
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: auto;
+    min-height: 0;
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+  }
+
+  .view-plugins .factoryChatPanel:not(.mobileActive),
+  .view-plugins .factoryJobTimeline:not(.mobileActive) {
+    display: none;
+  }
+
+  .view-plugins .factoryChatPanel {
+    min-height: clamp(420px, calc(100svh - 300px), 520px);
+  }
+
+  .chatMessages {
+    max-height: 44svh;
+  }
+
+  .chatComposer {
+    position: sticky;
+    bottom: 0;
+    z-index: 8;
+    padding: 10px 0 4px;
+    background: var(--panel);
+  }
+
+  .responsiveTable,
+  .responsiveTable tbody {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .responsiveTable thead {
+    display: none;
+  }
+
+  .responsiveTable tr {
+    display: block;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .responsiveTable tr:last-child {
+    border-bottom: 0;
+  }
+
+  .responsiveTable td {
+    display: grid;
+    min-width: 0;
+    min-height: 30px;
+    grid-template-columns: minmax(88px, 0.42fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+    padding: 6px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .responsiveTable td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 650;
+    line-height: 1.45;
+  }
+
+  .dashboardPage > .tablePanel:nth-last-child(5) .responsiveTable td::before,
+  .dashboardPage > .tablePanel:nth-last-child(4) .responsiveTable td::before {
+    display: none;
+  }
+
+  .tableScroll > table:not(.responsiveTable) th:first-child,
+  .tableScroll > table:not(.responsiveTable) td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--panel);
+    box-shadow: 1px 0 0 var(--line);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portalToast {
     animation: none;
   }
 }
