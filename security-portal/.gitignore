@@ -1,0 +1,17 @@
+node_modules/
+.next/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+!aws.env.example
+*.log
+terraform.tfstate
+terraform.tfstate.*
+.terraform/
+*.tfplan
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+*.tsbuildinfo
