@@ -184,6 +184,7 @@ export class FactoryAssistant {
       : undefined;
     const template =
       findTemplate(prompt, this.templates) ??
+      findPreviousUserTemplate(context, this.templates) ??
       modelTemplate ??
       this.templates.find((item) => item.id === context.selectedTemplateId);
     let action: FactoryChatAction = { type: "none" };
@@ -237,7 +238,10 @@ export class FactoryAssistant {
     const prompt = latestUserMessage(context);
     const filter = inferCatalogFilter(prompt);
     const intent = inferExplicitIntent(prompt);
-    const template = findTemplate(prompt, this.templates) ?? this.templates.find((item) => item.id === context.selectedTemplateId);
+    const template =
+      findTemplate(prompt, this.templates) ??
+      findPreviousUserTemplate(context, this.templates) ??
+      this.templates.find((item) => item.id === context.selectedTemplateId);
 
     let reply: string;
     let action: FactoryChatAction = { type: "none" };
@@ -404,6 +408,22 @@ function parseModelReply(content: string): z.infer<typeof modelReplySchema> | un
 
 function latestUserMessage(context: FactoryChatContext): string {
   return [...context.messages].reverse().find((message) => message.role === "user")?.content ?? "";
+}
+
+function findPreviousUserTemplate(
+  context: FactoryChatContext,
+  templates: VaultPluginTemplate[]
+): VaultPluginTemplate | undefined {
+  const userMessages = context.messages.filter((message) => message.role === "user");
+  const previousMessage = userMessages.at(-2);
+  if (!previousMessage) return undefined;
+  const rankedTemplates = templates
+    .map((template) => ({ template, score: templateMatchScore(previousMessage.content, template) }))
+    .filter((candidate) => candidate.score >= 8)
+    .sort((left, right) => right.score - left.score);
+  const [best, runnerUp] = rankedTemplates;
+  if (!best || best.score < 20) return undefined;
+  return !runnerUp || best.score - runnerUp.score >= 20 ? best.template : undefined;
 }
 
 function inferCatalogFilter(prompt: string): FactoryCatalogFilter {

@@ -127,6 +127,66 @@ describe("FactoryAssistant", () => {
     expect(result.reply).not.toContain("Kafka");
   });
 
+  it("carries a single plugin target into a short Korean follow-up", async () => {
+    const assistant = new FactoryAssistant(rulesConfig, vaultPluginTemplates);
+    const openAiTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "openai");
+    const kafkaTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "kafka");
+    expect(openAiTemplate).toBeDefined();
+    expect(kafkaTemplate).toBeDefined();
+
+    const result = await assistant.chat({
+      locale: "ko",
+      selectedTemplateId: kafkaTemplate?.id,
+      generatedPluginName: kafkaTemplate?.name,
+      messages: [
+        { role: "user", content: "OpenAI Project Secrets" },
+        { role: "assistant", content: "OpenAI 프로젝트용 시크릿 플러그인입니다." },
+        { role: "user", content: "만들어줘" }
+      ]
+    });
+
+    expect(result.action).toEqual({ type: "generate", templateId: openAiTemplate?.id });
+    expect(result.reply).toContain("OpenAI Project Secrets");
+    expect(result.reply).not.toContain("Kafka");
+  });
+
+  it("overrides an Ollama template guess with the previous single user target", async () => {
+    const openAiTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "openai");
+    const kafkaTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "kafka");
+    expect(openAiTemplate).toBeDefined();
+    expect(kafkaTemplate).toBeDefined();
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          message: {
+            content: JSON.stringify({
+              reply: "Kafka 템플릿을 생성하겠습니다.",
+              action: { type: "generate", templateId: kafkaTemplate?.id, filter: null }
+            })
+          }
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    const assistant = new FactoryAssistant(ollamaConfig, vaultPluginTemplates, fetchMock);
+
+    const result = await assistant.chat({
+      locale: "ko",
+      selectedTemplateId: kafkaTemplate?.id,
+      generatedPluginName: kafkaTemplate?.name,
+      messages: [
+        { role: "user", content: "OpenAI Project Secrets" },
+        { role: "assistant", content: "OpenAI 프로젝트용 시크릿 플러그인입니다." },
+        { role: "user", content: "만들어줘" }
+      ]
+    });
+
+    expect(result.provider).toBe("ollama");
+    expect(result.action).toEqual({ type: "generate", templateId: openAiTemplate?.id });
+    expect(result.reply).toContain("OpenAI Project Secrets");
+    expect(result.reply).not.toContain("Kafka");
+  });
+
   it("keeps comparison questions conversational when Ollama misclassifies them as a list", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(
