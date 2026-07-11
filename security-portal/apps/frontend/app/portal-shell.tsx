@@ -754,7 +754,7 @@ export default function PortalShell({ view }: { view: View }) {
     : localize(t, "Checking Vault status", "Vault 상태 확인 중");
 
   return (
-    <div className={mobileNavOpen ? "shell navOpen" : "shell"}>
+    <div className={`shell view-${view}${mobileNavOpen ? " navOpen" : ""}`} data-view={view}>
       <aside className={mobileNavOpen ? "sidebar open" : "sidebar"} aria-label={localize(t, "Primary navigation", "주요 메뉴")}>
         <div className="sidebarHeader">
           <Link href="/dashboard" className="brand" aria-label="Go to dashboard">
@@ -792,6 +792,13 @@ export default function PortalShell({ view }: { view: View }) {
             );
           })}
         </nav>
+        <div className="sidebarFooter">
+          <span className={`sidebarStatusDot ${vaultStatusTone}`} aria-hidden="true" />
+          <div>
+            <strong>{localize(t, "Vault control plane", "Vault Control Plane")}</strong>
+            <small>{vaultStatusLabel}</small>
+          </div>
+        </div>
       </aside>
 
       <button
@@ -818,6 +825,7 @@ export default function PortalShell({ view }: { view: View }) {
               <Menu aria-hidden="true" size={20} />
             </button>
             <div>
+              <span className="topbarKicker">{t.brandTitle}</span>
               <h1>{t.nav[view]}</h1>
               <StatusIndicator label={vaultStatusLabel} tone={vaultStatusTone} />
             </div>
@@ -827,7 +835,7 @@ export default function PortalShell({ view }: { view: View }) {
               aria-expanded={globalSearchOpen}
               aria-haspopup="dialog"
               aria-label={localize(t, "Search systems, requests, and credentials", "시스템, 요청, Credential 통합 검색")}
-              className="iconButton topbarAction"
+              className="topbarAction globalSearchTrigger"
               onClick={() => {
                 setTaskCenterOpen(false);
                 setGlobalSearchOpen(true);
@@ -836,6 +844,8 @@ export default function PortalShell({ view }: { view: View }) {
               type="button"
             >
               <Search aria-hidden="true" size={18} />
+              <span>{localize(t, "Search", "검색")}</span>
+              <kbd>⌘K</kbd>
             </button>
             <button
               aria-expanded={taskCenterOpen}
@@ -850,6 +860,7 @@ export default function PortalShell({ view }: { view: View }) {
               type="button"
             >
               <Bell aria-hidden="true" size={18} />
+              <span className="topbarActionLabel">{localize(t, "Work", "작업")}</span>
               {portalTasks.length ? <span className="actionBadge">{Math.min(portalTasks.length, 99)}</span> : null}
             </button>
             <div className="languageSwitch" aria-label={t.languageLabel}>
@@ -870,6 +881,7 @@ export default function PortalShell({ view }: { view: View }) {
               {theme === "light" ? <Moon aria-hidden="true" size={18} /> : <Sun aria-hidden="true" size={18} />}
             </button>
             <div className="userBadge">
+              <span className="userAvatar" aria-hidden="true">{(user?.displayName ?? "V").slice(0, 1).toUpperCase()}</span>
               <div>
                 <span>{user?.displayName ?? t.loading}</span>
                 <small>{user?.roles.join(", ")}</small>
@@ -3225,11 +3237,20 @@ function PluginFactory({
   ];
   const preflightPassed = preflightChecks.every((check) => check.pass);
   const workflowStages = [
-    { id: "design", label: localize(t, "Design", "설계"), complete: Boolean(selectedTemplate) },
-    { id: "generate", label: localize(t, "Generate", "생성"), complete: Boolean(generated) },
-    { id: "test", label: localize(t, "Test", "검증"), complete: generated?.buildTest.status === "pass" },
+    {
+      id: "design",
+      label: localize(t, "Requirements", "요구사항"),
+      complete: Boolean(requirementsInterview?.spec.confirmed || selectedTemplate)
+    },
+    { id: "generate", label: localize(t, "Code generation", "코드 생성"), complete: Boolean(generated) },
+    { id: "test", label: localize(t, "Build and test", "빌드 및 테스트"), complete: generated?.buildTest.status === "pass" },
+    {
+      id: "security-review",
+      label: localize(t, "Diff review", "Diff 검토"),
+      complete: Boolean(generated && generated.securityReview.posture !== "blocked")
+    },
     { id: "approval", label: localize(t, "Approval", "승인"), complete: currentJob?.approval.status === "approved" },
-    { id: "deploy", label: localize(t, "Deploy", "배포"), complete: Boolean(applyResult?.applied) }
+    { id: "deploy", label: localize(t, "Vault apply", "Vault 적용"), complete: Boolean(applyResult?.applied) }
   ];
   const roleHome = factoryRoleHome(currentUser, factoryJobs, generated, favoriteTemplateIds.length, t);
   const factoryLaunchers: Array<{ id: Exclude<FactoryTab, "workspace">; icon: LucideIcon; label: string; status: string }> = [
@@ -4392,19 +4413,20 @@ function PluginFactory({
     <div className="stack pluginFactory">
       <section className="pluginHero">
         <div>
-          <span className="eyebrow">{localize(t, "Plugin workspace", "플러그인 작업 공간")}</span>
+          <span className="eyebrow">{localize(t, "AI-assisted workflow", "AI 기반 워크플로우")}</span>
+          <h2>{localize(t, "Plugin workspace", "플러그인 작업 공간")}</h2>
           <p>
             {localize(
               t,
-              "Describe the plugin you need in chat, or generate directly from a verified catalog template, then continue through deployment review.",
-              "채팅으로 필요한 플러그인을 요청하거나 검증된 카탈로그 템플릿에서 직접 생성한 뒤 배포 검토로 이어갑니다."
+              "Define the target, authentication, lifecycle, and mount in conversation before generation and guarded Vault apply.",
+              "대상 시스템과 인증·수명주기·Mount 경로를 대화로 확정한 뒤 생성과 안전한 Vault 적용으로 이어갑니다."
             )}
           </p>
         </div>
         <div className="pluginHeroActions">
           <button className="primary" type="button" onClick={focusFactoryChat} disabled={busy === "load"}>
             <MessageSquare aria-hidden="true" size={17} />
-            {localize(t, "Ask AI to create a plugin", "AI로 플러그인 요청")}
+            {localize(t, "Create with AI", "AI와 플러그인 만들기")}
           </button>
           <button
             className="primaryGhost"
@@ -4461,13 +4483,36 @@ function PluginFactory({
             </div>
           ))}
         </div>
+        <div className="factoryTimelineMeta">
+          <div>
+            <span>{localize(t, "Environment", "환경")}</span>
+            <strong>{currentJob?.deployment.environment ?? "dev"}</strong>
+          </div>
+          <div>
+            <span>{localize(t, "Mount path", "Mount 경로")}</span>
+            <code>{mountPath || "factory-lab/"}</code>
+          </div>
+        </div>
+        <div className="factoryApplyGate">
+          <ShieldCheck aria-hidden="true" size={18} />
+          <div>
+            <strong>{localize(t, "Manual Vault apply gate", "수동 Vault 적용 게이트")}</strong>
+            <span>
+              {localize(
+                t,
+                "Diff, checksum, and approval are required before apply.",
+                "Diff·체크섬·승인 확인 후에만 적용할 수 있습니다."
+              )}
+            </span>
+          </div>
+        </div>
       </section>
 
       <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "repair" || busy === "apply" ? "running" : ""}`}>
         <div className="panelHeader">
           <div>
             <h2>{localize(t, "Factory chat", "Factory 채팅")}</h2>
-            <p>{localize(t, "Ask for a plugin, generate it, then apply it to Vault.", "플러그인을 요청하고 생성한 뒤 Vault에 적용합니다.")}</p>
+            <p>{localize(t, "Describe the outcome and refine the specification together.", "원하는 결과를 설명하면 필요한 조건부터 함께 정리합니다.")}</p>
             <div
               className={`assistantRuntime ${assistantRuntime.provider} ${assistantRuntime.fallbackReason ?? ""}`}
               title={
@@ -4665,7 +4710,7 @@ function PluginFactory({
             ref={chatInputRef}
             value={chatInput}
             onChange={(event) => setChatInput(event.target.value)}
-            placeholder={localize(t, "Create a GitHub App plugin", "깃허브 앱 플러그인 만들어줘")}
+            placeholder={localize(t, "Describe the Vault plugin you want to build", "만들고 싶은 Vault 플러그인을 설명해주세요")}
             disabled={busy !== null}
           />
           <button
@@ -6176,28 +6221,33 @@ function Table({
 }) {
   return (
     <section className="tablePanel">
-      <h2>{title}</h2>
+      <div className="tablePanelHeader">
+        <h2>{title}</h2>
+        <span className="tableCount" aria-label={`${rows.length} rows`}>{rows.length.toLocaleString()}</span>
+      </div>
       {rows.length === 0 ? (
         <div className="empty compact">{emptyLabel}</div>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              {columns.map((column) => (
-                <th key={column}>{column}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, index) => (
-              <tr key={index}>
-                {row.map((cell, cellIndex) => (
-                  <td key={cellIndex}>{cell}</td>
+        <div className="tableScroll">
+          <table>
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th key={column}>{column}</th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={index}>
+                  {row.map((cell, cellIndex) => (
+                    <td key={cellIndex}>{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -6525,8 +6575,8 @@ function pluginCatalogSummary(templates: VaultPluginTemplate[], t: Copy, filter:
 function factoryWelcomeMessage(t: Copy): string {
   return localize(
     t,
-    "Describe the Vault plugin you need. I will match it to the right Factory template, show each generation step in real time, and continue to the guarded Vault apply flow when you are ready.",
-    "필요한 Vault 플러그인을 말씀해주세요. 적합한 Factory 템플릿을 찾아 생성 과정을 실시간으로 보여드리고, 준비되면 검증 절차를 거쳐 Vault 적용까지 진행하겠습니다."
+    "Tell me which system needs which credential. I will ask about any missing conditions, confirm the specification with you, then build, verify, and prepare the Vault apply flow.",
+    "어떤 시스템에 어떤 자격 증명이 필요한지 말씀해주세요. 모호한 조건은 제가 하나씩 질문해 명세를 정리하고, 확인된 내용으로 플러그인을 만든 뒤 검증과 Vault 적용까지 함께 진행할게요."
   );
 }
 
