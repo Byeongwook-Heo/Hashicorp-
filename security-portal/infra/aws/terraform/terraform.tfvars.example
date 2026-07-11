@@ -22,10 +22,18 @@ vault_auth_mode = "mock"
 vault_addr      = ""
 vault_namespace = ""
 
-# Real Vault mode examples:
-# vault_mode              = "real"
-# vault_auth_mode         = "approle"
-# vault_addr              = "http://vault.internal:8200"
-# vault_namespace         = ""
-# vault_role_id_secret_arn = "arn:aws:secretsmanager:..."
-# vault_secret_id_secret_arn = "arn:aws:secretsmanager:..."
+# Provision the private real-Vault path first. Populate the four AppRole secret
+# containers, then set enable_real_vault_runtime=true in a second apply.
+provision_real_vault_integration = false
+enable_real_vault_runtime        = false
+
+# vault_vpc_id              = "vpc-..."
+# vault_vpc_cidr            = "10.40.0.0/16"
+# vault_subnet_ids          = ["subnet-...", "subnet-..."]
+# vault_route_table_ids     = ["rtb-...", "rtb-..."]
+# vault_security_group_id   = "sg-..."
+# vault_instance_ids        = ["i-...", "i-...", "i-..."]
+# vault_node_iam_role_name  = "vault-node-role"
+# vault_plugin_allowed_mount_prefix = "factory-lab"
+# vault_plugin_directory    = "/opt/vault/plugins"
+# factory_build_max_attempts = 3

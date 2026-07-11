@@ -1,25 +1,53 @@
 locals {
-  name_prefix        = "${var.project_name}-${var.environment}"
-  az_count           = length(var.availability_zones)
-  public_subnet_ids  = var.create_new_network ? aws_subnet.public[*].id : var.public_subnet_ids
-  private_subnet_ids = var.create_new_network ? aws_subnet.private[*].id : var.private_subnet_ids
-  vpc_id             = var.create_new_network ? aws_vpc.this[0].id : var.vpc_id
-  frontend_image_uri = var.frontend_image_uri != "" ? var.frontend_image_uri : try("${aws_ecr_repository.frontend[0].repository_url}:latest", "public.ecr.aws/nginx/nginx:latest")
-  backend_image_uri  = var.backend_image_uri != "" ? var.backend_image_uri : try("${aws_ecr_repository.backend[0].repository_url}:latest", "public.ecr.aws/nginx/nginx:latest")
-  backend_secret_arns = compact([
-    aws_secretsmanager_secret.database_url.arn,
+  name_prefix             = "${var.project_name}-${var.environment}"
+  az_count                = length(var.availability_zones)
+  public_subnet_ids       = var.create_new_network ? aws_subnet.public[*].id : var.public_subnet_ids
+  private_subnet_ids      = var.create_new_network ? aws_subnet.private[*].id : var.private_subnet_ids
+  private_route_table_ids = var.create_new_network ? aws_route_table.private[*].id : var.private_route_table_ids
+  vpc_id                  = var.create_new_network ? aws_vpc.this[0].id : var.vpc_id
+  frontend_image_uri      = var.frontend_image_uri != "" ? var.frontend_image_uri : try("${aws_ecr_repository.frontend[0].repository_url}:latest", "public.ecr.aws/nginx/nginx:latest")
+  backend_image_uri       = var.backend_image_uri != "" ? var.backend_image_uri : try("${aws_ecr_repository.backend[0].repository_url}:latest", "public.ecr.aws/nginx/nginx:latest")
+  managed_vault_secret_definitions = {
+    runtime_role_id   = { name = "runtime-role-id", environment = "VAULT_ROLE_ID" }
+    runtime_secret_id = { name = "runtime-secret-id", environment = "VAULT_SECRET_ID" }
+    plugin_role_id    = { name = "plugin-role-id", environment = "VAULT_PLUGIN_ROLE_ID" }
+    plugin_secret_id  = { name = "plugin-secret-id", environment = "VAULT_PLUGIN_SECRET_ID" }
+  }
+  managed_vault_secret_arns = var.enable_real_vault_runtime ? [
+    for secret in aws_secretsmanager_secret.vault_approle : secret.arn
+  ] : []
+  legacy_vault_secret_arns = var.enable_real_vault_runtime ? [] : compact([
     var.vault_token_secret_arn,
     var.vault_role_id_secret_arn,
-    var.vault_secret_id_secret_arn,
-    try(aws_secretsmanager_secret.ollama_api_token[0].arn, "")
+    var.vault_secret_id_secret_arn
   ])
-  backend_secrets = concat(
-    [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }],
+  backend_secret_arns = compact(concat(
+    [aws_secretsmanager_secret.database_url.arn],
+    local.managed_vault_secret_arns,
+    local.legacy_vault_secret_arns,
+    [try(aws_secretsmanager_secret.ollama_api_token[0].arn, "")]
+  ))
+  managed_vault_secrets = var.enable_real_vault_runtime ? [
+    for key, definition in local.managed_vault_secret_definitions : {
+      name      = definition.environment
+      valueFrom = aws_secretsmanager_secret.vault_approle[key].arn
+    }
+  ] : []
+  legacy_vault_secrets = var.enable_real_vault_runtime ? [] : concat(
     var.vault_token_secret_arn == "" ? [] : [{ name = "VAULT_TOKEN", valueFrom = var.vault_token_secret_arn }],
     var.vault_role_id_secret_arn == "" ? [] : [{ name = "VAULT_ROLE_ID", valueFrom = var.vault_role_id_secret_arn }],
-    var.vault_secret_id_secret_arn == "" ? [] : [{ name = "VAULT_SECRET_ID", valueFrom = var.vault_secret_id_secret_arn }],
+    var.vault_secret_id_secret_arn == "" ? [] : [{ name = "VAULT_SECRET_ID", valueFrom = var.vault_secret_id_secret_arn }]
+  )
+  backend_secrets = concat(
+    [{ name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn }],
+    local.managed_vault_secrets,
+    local.legacy_vault_secrets,
     var.enable_ollama ? [{ name = "OLLAMA_API_KEY", valueFrom = aws_secretsmanager_secret.ollama_api_token[0].arn }] : []
   )
+  effective_vault_mode         = var.enable_real_vault_runtime ? "real" : var.vault_mode
+  effective_vault_addr         = var.enable_real_vault_runtime ? "http://${try(aws_lb.vault[0].dns_name, "not-provisioned")}:${var.vault_internal_port}" : var.vault_addr
+  effective_vault_auth_mode    = var.enable_real_vault_runtime ? "approle" : var.vault_auth_mode
+  effective_factory_build_mode = var.enable_real_vault_runtime ? "codebuild" : "static"
 
   tags = {
     Project     = var.project_name
@@ -514,18 +542,29 @@ resource "aws_ecs_task_definition" "backend" {
       environment = [
         { name = "PORT", value = tostring(var.backend_container_port) },
         { name = "FRONTEND_ORIGIN", value = "http://${aws_lb.this.dns_name}" },
-        { name = "VAULT_MODE", value = var.vault_mode },
-        { name = "VAULT_ADDR", value = var.vault_addr },
+        { name = "VAULT_MODE", value = local.effective_vault_mode },
+        { name = "VAULT_ADDR", value = local.effective_vault_addr },
         { name = "VAULT_NAMESPACE", value = var.vault_namespace },
-        { name = "VAULT_AUTH_MODE", value = var.vault_auth_mode },
+        { name = "VAULT_AUTH_MODE", value = local.effective_vault_auth_mode },
         { name = "VAULT_APPROLE_AUTH_MOUNT", value = var.vault_approle_auth_mount },
         { name = "VAULT_USE_SYSTEM_NAMESPACE", value = tostring(var.vault_use_system_namespace) },
         { name = "VAULT_REQUEST_TIMEOUT_MS", value = tostring(var.vault_request_timeout_ms) },
+        { name = "VAULT_PLUGIN_ALLOWED_MOUNT_PREFIX", value = var.enable_real_vault_runtime ? var.vault_plugin_allowed_mount_prefix : "" },
+        { name = "VAULT_PLUGIN_DISTRIBUTION_MODE", value = var.enable_real_vault_runtime ? "ssm" : "mock" },
+        { name = "VAULT_PLUGIN_NODE_IDS", value = var.enable_real_vault_runtime ? join(",", var.vault_instance_ids) : "" },
+        { name = "VAULT_PLUGIN_DIRECTORY", value = var.vault_plugin_directory },
+        { name = "FACTORY_BUILD_MODE", value = local.effective_factory_build_mode },
+        { name = "FACTORY_BUILD_PROJECT", value = var.enable_real_vault_runtime ? try(aws_codebuild_project.factory_plugin[0].name, "") : "" },
+        { name = "FACTORY_BUILD_BUCKET", value = var.enable_real_vault_runtime ? try(aws_s3_bucket.factory_artifacts[0].bucket, "") : "" },
+        { name = "FACTORY_BUILD_PREFIX", value = "factory-builds" },
+        { name = "FACTORY_BUILD_MAX_ATTEMPTS", value = tostring(var.factory_build_max_attempts) },
+        { name = "FACTORY_BUILD_POLL_INTERVAL_MS", value = "3000" },
+        { name = "FACTORY_BUILD_TIMEOUT_MS", value = "600000" },
         { name = "LLM_MODE", value = var.enable_ollama ? "ollama" : "rules" },
         { name = "OLLAMA_BASE_URL", value = var.enable_ollama ? "http://${aws_instance.ollama[0].private_ip}:${var.ollama_api_port}" : "" },
         { name = "OLLAMA_MODEL", value = var.ollama_model },
         { name = "OLLAMA_REQUEST_TIMEOUT_MS", value = tostring(var.ollama_request_timeout_ms) },
-        { name = "APP_API_BUILD", value = "ollama-factory-20260710h" },
+        { name = "APP_API_BUILD", value = "vault-factory-interview-20260711a" },
         { name = "API_BASE_PATH", value = "/api" }
       ]
       secrets = local.backend_secrets

@@ -14,10 +14,14 @@ import {
   type UserStatus,
   type SystemSummary,
   type VaultPluginApplyResult,
+  type VaultPluginAutoRepairResult,
   type VaultPluginFactoryJob,
   type VaultPluginGenerateResult,
   type VaultPluginGeneratedFile,
   type VaultPluginRollbackResult,
+  type VaultPluginRequirementField,
+  type VaultPluginRequirements,
+  type VaultPluginRequirementsInterview,
   type VaultPluginTemplate,
   type VaultPluginType,
   type VaultMappingHealth
@@ -146,7 +150,7 @@ const copy = {
       eyebrow: "Vault-based workflow portal",
       title: "Security Self-Service Portal",
       description:
-        "Local and test deployments start with mock login and mock Vault. Real Vault and Keycloak are enabled behind adapters in later phases."
+        "This test portal uses mock sign-in while Vault operations run through the connected private Vault cluster. Enterprise SSO remains adapter-ready."
     },
     dashboard: {
       title: "Security operations overview",
@@ -296,7 +300,7 @@ const copy = {
       eyebrow: "Vault 기반 워크플로우 포털",
       title: "보안 셀프서비스 포털",
       description:
-        "로컬 및 테스트 배포는 Mock 로그인과 Mock Vault로 시작합니다. 실제 Vault와 Keycloak 연동은 어댑터 뒤에서 단계적으로 활성화합니다."
+        "테스트 포털은 Mock 로그인을 사용하지만 Vault 작업은 연결된 프라이빗 Vault 클러스터에서 실행됩니다. Enterprise SSO는 어댑터 연동을 지원합니다."
     },
     dashboard: {
       title: "보안 운영 대시보드",
@@ -747,6 +751,7 @@ export default function PortalShell({ view }: { view: View }) {
             requests={requests}
             credentials={credentials}
             auditEvents={auditEvents}
+            vaultHealth={vaultHealth}
           />
         ) : null}
         {!loading && canAccessView && view === "secrets" ? (
@@ -879,7 +884,8 @@ function Dashboard({
   systems,
   requests,
   credentials,
-  auditEvents
+  auditEvents,
+  vaultHealth
 }: {
   t: Copy;
   stats: DashboardStats;
@@ -887,6 +893,7 @@ function Dashboard({
   requests: AccessRequest[];
   credentials: IssuedCredential[];
   auditEvents: AuditEvent[];
+  vaultHealth: VaultHealthResponse | null;
 }) {
   const recentCredential = credentials[0];
   const secretSurfaces = systems.flatMap((system) =>
@@ -941,7 +948,13 @@ function Dashboard({
         </div>
         <div className="overviewAside">
           <span>{t.dashboard.modeLabel}</span>
-          <strong>{t.dashboard.modeValue}</strong>
+          <strong>
+            {vaultHealth?.mode === "real"
+              ? localize(t, "Real Vault", "실제 Vault")
+              : vaultHealth?.mode === "mock"
+                ? t.dashboard.modeValue
+                : localize(t, "Checking Vault", "Vault 확인 중")}
+          </strong>
         </div>
       </section>
       <section className="executivePanel">
@@ -2048,6 +2061,11 @@ type FactoryAssistantHealth = {
   modelAvailable?: boolean;
   detail: string;
 };
+type FactoryRuntime = {
+  vaultMode: "mock" | "real";
+  buildMode: "static" | "codebuild";
+  requiredMountPrefix: string;
+};
 type FactoryJobState = {
   kind: "generate" | "apply";
   label: string;
@@ -2087,6 +2105,8 @@ type FactoryWorkspaceSnapshot = {
   favoriteTemplateIds?: string[];
   recentTemplateIds?: string[];
   compareTemplateIds?: string[];
+  requirementsInterview?: VaultPluginRequirementsInterview;
+  autoRepair?: VaultPluginAutoRepairResult;
 };
 
 const factoryStepDelayMs = 280;
@@ -2118,7 +2138,7 @@ function PluginFactory({
   const [generated, setGenerated] = useState<VaultPluginGenerateResult | null>(null);
   const [applyResult, setApplyResult] = useState<VaultPluginApplyResult | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"load" | "chat" | "generate" | "apply" | null>("load");
+  const [busy, setBusy] = useState<"load" | "chat" | "generate" | "repair" | "apply" | null>("load");
   const [chatInput, setChatInput] = useState("");
   const welcomeMessage = factoryWelcomeMessage(t);
   const [chatMessages, setChatMessages] = useState<PluginChatMessage[]>([
@@ -2157,6 +2177,13 @@ function PluginFactory({
   const [rollbackConfirmed, setRollbackConfirmed] = useState(false);
   const [removeCatalogOnRollback, setRemoveCatalogOnRollback] = useState(false);
   const [rollbackResult, setRollbackResult] = useState<VaultPluginRollbackResult | null>(null);
+  const [requirementsInterview, setRequirementsInterview] = useState<VaultPluginRequirementsInterview | null>(null);
+  const [autoRepair, setAutoRepair] = useState<VaultPluginAutoRepairResult | null>(null);
+  const [factoryRuntime, setFactoryRuntime] = useState<FactoryRuntime>({
+    vaultMode: "mock",
+    buildMode: "static",
+    requiredMountPrefix: ""
+  });
   const jobCreationRef = useRef<Promise<VaultPluginFactoryJob> | null>(null);
   const activeJobIdRef = useRef("");
   const chatInputRef = useRef<HTMLInputElement | null>(null);
@@ -2190,28 +2217,23 @@ function PluginFactory({
       setBusy("load");
       try {
         const [response, assistantHealth, jobsResponse] = await Promise.all([
-          api<{ templates: VaultPluginTemplate[] }>("/plugin-factory/templates"),
+          api<{ templates: VaultPluginTemplate[]; runtime: FactoryRuntime }>("/plugin-factory/templates"),
           api<FactoryAssistantHealth>("/health/llm").catch(() => null),
           api<{ jobs: VaultPluginFactoryJob[] }>("/plugin-factory/jobs")
         ]);
         if (!mounted) return;
         setTemplates(response.templates);
+        setFactoryRuntime(response.runtime);
         setAssistantRuntime(
           assistantHealth
             ? { provider: assistantHealth.provider, model: assistantHealth.model, checked: true }
             : { provider: "rules", fallbackReason: "unavailable", checked: true }
         );
         setFactoryJobs(jobsResponse.jobs);
-        const latestOwnedJob = jobsResponse.jobs.find((job) => job.ownerId === currentUser?.id);
-        if (latestOwnedJob) {
-          setActiveJobId(latestOwnedJob.id);
-          hydrateFactoryWorkspace(latestOwnedJob.snapshot as FactoryWorkspaceSnapshot, response.templates);
-        } else {
-          const first = response.templates[0];
-          if (first) {
-            setSelectedId(first.id);
-            hydratePluginForm(first);
-          }
+        const first = response.templates[0];
+        if (first) {
+          setSelectedId(first.id);
+          hydratePluginForm(first);
         }
         setWorkspaceReady(true);
         setStatus(null);
@@ -2317,7 +2339,11 @@ function PluginFactory({
     {
       label: localize(t, "Artifact checksum", "아티팩트 체크섬"),
       detail: artifactSha256 ? shortId(artifactSha256) : localize(t, "Missing", "없음"),
-      pass: /^[a-f0-9]{64}$/i.test(artifactSha256)
+      pass: Boolean(
+        generated?.buildArtifact &&
+          generated.buildArtifact.sha256 === artifactSha256 &&
+          /^[a-f0-9]{64}$/i.test(artifactSha256)
+      )
     },
     {
       label: localize(t, "Approval", "승인"),
@@ -2385,7 +2411,7 @@ function PluginFactory({
   const activeFactoryLauncher = factoryLaunchers.find((launcher) => launcher.id === activeFactoryTab);
   const capabilityCards = [
     ["1", localize(t, "Dry-run diff", "Dry-run 변경점"), generated ? generated.dryRun.changes.length : 0],
-    ["2", localize(t, "AI spec interview", "AI 질문형 설계"), generated ? generated.blueprint.questions.length : 0],
+    ["2", localize(t, "AI spec interview", "AI 질문형 설계"), requirementsInterview ? 7 - requirementsInterview.missingFields.length : 0],
     ["3", localize(t, "Code preview", "코드 미리보기"), draftFiles.length],
     ["4", localize(t, "Build/Test", "빌드/테스트"), generated ? generated.buildTest.steps.length : 0],
     ["5", localize(t, "Apply guardrails", "적용 안전장치"), generated ? generated.dryRun.approvals.length : 0],
@@ -2399,9 +2425,20 @@ function PluginFactory({
     ["9", localize(t, "Rollback", "롤백"), generated?.rollbackPlan.available ? 1 : 0],
     ["10", localize(t, "Security review", "보안 리뷰"), generated ? generated.securityReview.findings.length : 0]
   ];
+  const formModified = Boolean(
+    selectedTemplate &&
+      (pluginName !== selectedTemplate.name ||
+        mountPath !== selectedTemplate.defaultMountPath ||
+        version !== selectedTemplate.defaultVersion ||
+        command !== selectedTemplate.defaultCommand ||
+        description !== selectedTemplate.description)
+  );
+  const hasPersistableWorkspace = Boolean(
+    currentJob || requirementsInterview || generated || draftFiles.length || formModified
+  );
 
   useEffect(() => {
-    if (!workspaceReady || !currentUser || busy === "load" || !selectedId) return;
+    if (!workspaceReady || !currentUser || busy === "load" || !selectedId || !hasPersistableWorkspace) return;
     const timer = window.setTimeout(() => {
       void persistFactoryWorkspace();
     }, 700);
@@ -2426,7 +2463,9 @@ function PluginFactory({
     pluginHistory,
     favoriteTemplateIds,
     recentTemplateIds,
-    compareTemplateIds
+    compareTemplateIds,
+    requirementsInterview,
+    autoRepair
   ]);
 
   function factoryWorkspaceSnapshot(): FactoryWorkspaceSnapshot {
@@ -2449,7 +2488,9 @@ function PluginFactory({
       pluginHistory,
       favoriteTemplateIds,
       recentTemplateIds,
-      compareTemplateIds
+      compareTemplateIds,
+      requirementsInterview: requirementsInterview ?? undefined,
+      autoRepair: autoRepair ?? undefined
     };
   }
 
@@ -2464,7 +2505,7 @@ function PluginFactory({
       setDescription(snapshot.description ?? template.description);
     }
     setActiveFactoryTab("workspace");
-    setArtifactSha256(snapshot.artifactSha256 ?? snapshot.generated?.scaffoldSha256 ?? "");
+    setArtifactSha256(snapshot.artifactSha256 ?? snapshot.generated?.buildArtifact?.sha256 ?? "");
     setChatMessages(snapshot.chatMessages?.length ? snapshot.chatMessages : [{ id: "welcome", role: "assistant", content: welcomeMessage }]);
     setGenerated(snapshot.generated ?? null);
     setApplyResult(snapshot.applyResult ?? null);
@@ -2476,6 +2517,8 @@ function PluginFactory({
     setFavoriteTemplateIds(snapshot.favoriteTemplateIds ?? []);
     setRecentTemplateIds(snapshot.recentTemplateIds ?? []);
     setCompareTemplateIds(snapshot.compareTemplateIds?.slice(0, 2) ?? []);
+    setRequirementsInterview(snapshot.requirementsInterview ?? null);
+    setAutoRepair(snapshot.autoRepair ?? null);
   }
 
   function upsertFactoryJob(job: VaultPluginFactoryJob) {
@@ -2742,49 +2785,94 @@ function PluginFactory({
 
   async function rebuildEditedFiles() {
     if (!generated || !draftFiles.length) return;
-    setBusy("generate");
-    startFactoryJob("generate", localize(t, "Revalidating edited scaffold", "수정된 스캐폴드 재검증 중"));
+    const requirements = (generated as VaultPluginGenerateResult & { requirements?: VaultPluginRequirements }).requirements;
+    if (!requirements?.confirmed) {
+      setStatus(localize(t, "Confirm the requirements before running the build.", "빌드 전에 요구사항 명세를 확정하세요."));
+      return;
+    }
+    await runAutoRepairLoop({ ...generated, files: draftFiles }, requirements, draftFiles);
+  }
+
+  async function runAutoRepairLoop(
+    target: VaultPluginGenerateResult,
+    requirements: VaultPluginRequirements,
+    files = target.files
+  ): Promise<VaultPluginGenerateResult | null> {
+    setBusy("repair");
+    setStatus(null);
+    startFactoryJob("generate", localize(t, "Building and repairing in isolation", "격리 환경에서 빌드 및 자동 수정 중"));
     try {
-      await playFactoryJobLines([
-        `$ factory diff --files=${draftFiles.length}`,
-        `$ gofmt -w ./...`,
-        `$ go test ./...`,
-        `$ factory security scan`
-      ]);
       const job = await ensureFactoryJob();
+      appendFactoryJobLine(`$ factory build --isolated --max-attempts=3`);
       const response = await api<{
-        files: VaultPluginGeneratedFile[];
-        scaffoldSha256: string;
-        buildTest: VaultPluginGenerateResult["buildTest"];
-        securityReview: VaultPluginGenerateResult["securityReview"];
+        run: VaultPluginAutoRepairResult;
       }>("/plugin-factory/rebuild", {
         method: "POST",
-        body: JSON.stringify({ jobId: job.id, files: draftFiles })
+        body: JSON.stringify({
+          jobId: job.id,
+          pluginName: target.pluginName,
+          command: target.command,
+          requirements,
+          files
+        })
       });
+      let run = response.run;
+      let seenAttempts = 0;
+      setAutoRepair(run);
+      for (let poll = 0; run.status === "running" && poll < 300; poll += 1) {
+        await waitForFactoryMotion(2000);
+        const polled = await api<{ run: VaultPluginAutoRepairResult }>(`/plugin-factory/rebuild/${run.id}`);
+        run = polled.run;
+        setAutoRepair(run);
+        if (run.attempts.length > seenAttempts) {
+          for (const attempt of run.attempts.slice(seenAttempts)) {
+            appendFactoryJobLine(
+              attempt.status === "pass"
+                ? `✓ attempt ${attempt.attempt}: go test + linux/arm64 build passed`
+                : `✕ attempt ${attempt.attempt}: ${attempt.repairedFiles.length ? `AI changed ${attempt.repairedFiles.join(", ")}` : "build failed"}`
+            );
+          }
+          seenAttempts = run.attempts.length;
+        }
+      }
+      if (run.status === "running") throw new Error(localize(t, "The isolated build timed out.", "격리 빌드 시간이 초과되었습니다."));
       const nextGenerated: VaultPluginGenerateResult = {
-        ...generated,
-        files: response.files,
-        scaffoldSha256: response.scaffoldSha256,
+        ...target,
+        files: run.files,
+        scaffoldSha256: run.scaffoldSha256,
         generatedAt: new Date().toISOString(),
-        buildTest: response.buildTest,
-        securityReview: response.securityReview
+        buildTest: run.buildTest,
+        securityReview: run.securityReview,
+        buildArtifact: run.artifact,
+        requirements
       };
       setGenerated(nextGenerated);
-      setDraftFiles(response.files);
-      setArtifactSha256(response.scaffoldSha256);
+      setDraftFiles(run.files);
+      setArtifactSha256(run.artifact?.sha256 ?? "");
       setActiveFactoryTab("build");
-      finishFactoryJob("complete", localize(t, "✓ edited scaffold rebuilt and verified", "✓ 수정된 스캐폴드 재생성 및 검증 완료"));
-      await patchFactoryJobById(job.id, { status: "running", stage: "security-review", progress: 70 });
+      finishFactoryJob(
+        run.status === "pass" ? "complete" : "failed",
+        run.status === "pass"
+          ? localize(t, `✓ ARM64 binary ${shortId(run.artifact?.sha256 ?? "")}`, `✓ ARM64 바이너리 ${shortId(run.artifact?.sha256 ?? "")}`)
+          : localize(t, `✕ build failed after ${run.attempts.length} attempts`, `✕ ${run.attempts.length}회 시도 후 빌드 실패`)
+      );
+      await refreshFactoryJobs();
       recordFactoryHistory({
         action: "generated",
-        pluginName: generated.pluginName,
-        detail: localize(t, "Edited scaffold rebuilt", "수정 스캐폴드 재생성"),
-        status: "success"
+        pluginName: target.pluginName,
+        detail: run.summary,
+        status: run.status === "pass" ? "success" : "warning"
       });
-      setStatus(localize(t, "Edited scaffold rebuilt and verified.", "수정된 스캐폴드를 재생성하고 검증했습니다."));
+      setStatus(
+        run.status === "pass"
+          ? localize(t, "The isolated build and tests passed.", "격리 빌드와 테스트를 통과했습니다.")
+          : localize(t, "The automatic repair limit was reached. Review the diagnostics and source diff.", "자동 수정 한도에 도달했습니다. 진단 내용과 소스 Diff를 검토하세요.")
+      );
+      return nextGenerated;
     } catch (err) {
       finishFactoryJob("failed", `✕ ${err instanceof Error ? err.message : "rebuild failed"}`);
       setStatus(err instanceof Error ? err.message : localize(t, "Unable to rebuild edited files.", "수정 파일을 재생성하지 못했습니다."));
+      return null;
     } finally {
       setBusy(null);
     }
@@ -2868,14 +2956,162 @@ function PluginFactory({
     }
   }
 
+  async function startRequirementsInterview(template: VaultPluginTemplate, requestedApply: boolean) {
+    if (!canAuthorJobs) {
+      addChatMessage(
+        "assistant",
+        localize(t, "Plugin design requires a developer, app owner, or Vault administrator role.", "플러그인 설계에는 개발자, 앱 소유자 또는 Vault 관리자 권한이 필요합니다."),
+        "warning"
+      );
+      return;
+    }
+    setBusy("chat");
+    setStatus(null);
+    try {
+      const response = await api<{ interview: VaultPluginRequirementsInterview }>("/plugin-factory/requirements/start", {
+        method: "POST",
+        body: JSON.stringify({
+          locale: t === copy.ko ? "ko" : "en",
+          templateId: template.id,
+          requestedApply
+        })
+      });
+      chooseTemplate(template);
+      setRequirementsInterview(response.interview);
+      setMountPath(response.interview.spec.mountPath);
+      setAutoRepair(null);
+      setActiveFactoryTab("workspace");
+      addChatMessage("assistant", response.interview.reply);
+      setStatus(localize(t, "Requirements interview started.", "요구사항 인터뷰를 시작했습니다."));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : localize(t, "Unable to start the requirements interview.", "요구사항 인터뷰를 시작하지 못했습니다.");
+      setStatus(detail);
+      addChatMessage("assistant", detail, "warning");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function updateRequirementSpec(
+    field: keyof VaultPluginRequirements,
+    value: string
+  ) {
+    setRequirementsInterview((current) => {
+      if (!current) return current;
+      const spec = { ...current.spec, [field]: value, confirmed: false, confirmedAt: undefined };
+      const missingFields = missingFactoryRequirementFields(spec);
+      if (field === "mountPath") setMountPath(value);
+      return {
+        ...current,
+        spec,
+        missingFields,
+        readyToConfirm: missingFields.length === 0,
+        updatedAt: new Date().toISOString()
+      };
+    });
+  }
+
+  async function answerRequirementsInterview(prompt: string) {
+    if (!requirementsInterview) return;
+    if (requirementsInterview.readyToConfirm && /^(?:확정|명세\s*확정|진행|좋아|네|yes|confirm|proceed)[.!\s]*$/i.test(prompt.trim())) {
+      await confirmRequirementsAndGenerate();
+      return;
+    }
+    setBusy("chat");
+    try {
+      const response = await api<{ interview: VaultPluginRequirementsInterview }>("/plugin-factory/requirements/answer", {
+        method: "POST",
+        body: JSON.stringify({
+          locale: t === copy.ko ? "ko" : "en",
+          interview: requirementsInterview,
+          message: prompt
+        })
+      });
+      setRequirementsInterview(response.interview);
+      setMountPath(response.interview.spec.mountPath);
+      setAssistantRuntime({
+        provider: response.interview.provider,
+        model: response.interview.model,
+        checked: true
+      });
+      addChatMessage("assistant", response.interview.reply);
+    } catch (error) {
+      addChatMessage(
+        "assistant",
+        error instanceof Error ? error.message : localize(t, "I could not update the specification.", "명세를 업데이트하지 못했습니다."),
+        "warning"
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function confirmRequirementsAndGenerate() {
+    if (!requirementsInterview || !requirementsInterview.readyToConfirm) return;
+    const template = templates.find((item) => item.id === requirementsInterview.templateId);
+    if (!template) return;
+    setBusy("chat");
+    try {
+      const response = await api<{ interview: VaultPluginRequirementsInterview }>("/plugin-factory/requirements/confirm", {
+        method: "POST",
+        body: JSON.stringify({ locale: t === copy.ko ? "ko" : "en", interview: requirementsInterview })
+      });
+      const confirmed = response.interview;
+      setRequirementsInterview(confirmed);
+      setMountPath(confirmed.spec.mountPath);
+      addChatMessage("assistant", confirmed.reply, "success");
+      setBusy(null);
+      const generatedResult = await generateTemplateScaffold(
+        template,
+        {
+          interviewId: confirmed.id,
+          pluginName: template.name,
+          mountPath: confirmed.spec.mountPath,
+          version: template.defaultVersion,
+          command: template.defaultCommand,
+          description: template.description,
+          requirements: confirmed.spec
+        },
+        localize(t, "Confirmed specification generated the plugin source.", "확정된 명세로 플러그인 소스를 생성했습니다.")
+      );
+      if (!generatedResult) return;
+      addChatMessage("assistant", factoryGeneratedMessage(generatedResult, confirmed.requestedApply, t), "success");
+      addChatMessage(
+        "assistant",
+        localize(t, "I will now compile, test, and safely repair the source in the isolated runner.", "이제 격리된 환경에서 컴파일과 테스트를 실행하고 필요한 경우 안전하게 코드를 수정하겠습니다.")
+      );
+      const builtResult = await runAutoRepairLoop(generatedResult, confirmed.spec);
+      if (!builtResult || builtResult.buildTest.status !== "pass") return;
+      if (!confirmed.requestedApply) return;
+      if (!canApply) {
+        addChatMessage("assistant", localize(t, "Vault admin role is required to continue to apply.", "Vault 적용 단계에는 관리자 권한이 필요합니다."), "warning");
+        return;
+      }
+      const applyAttempt = await applyGeneratedPlugin(builtResult);
+      addChatMessage(
+        "assistant",
+        factoryApplyAttemptMessage(applyAttempt, builtResult.pluginName, t),
+        applyAttempt.status === "applied" ? "success" : "warning"
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : localize(t, "Unable to confirm the specification.", "명세를 확정하지 못했습니다.");
+      setStatus(detail);
+      addChatMessage("assistant", detail, "warning");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function generateTemplateScaffold(
     template: VaultPluginTemplate,
     input: {
+      interviewId: string;
       pluginName: string;
       mountPath: string;
       version: string;
       command: string;
       description: string;
+      requirements: VaultPluginRequirements;
     },
     successMessage = localize(t, "Plugin scaffold generated.", "플러그인 스캐폴드가 생성되었습니다.")
   ): Promise<VaultPluginGenerateResult | null> {
@@ -2916,12 +3152,14 @@ function PluginFactory({
       const response = await api<{ generated: VaultPluginGenerateResult }>("/plugin-factory/generate", {
         method: "POST",
         body: JSON.stringify({
+          interviewId: input.interviewId,
           templateId: template.id,
           pluginName: input.pluginName,
           mountPath: input.mountPath,
           version: input.version,
           command: input.command,
-          description: input.description
+          description: input.description,
+          requirements: input.requirements
         })
       });
       setGenerated(response.generated);
@@ -2932,7 +3170,8 @@ function PluginFactory({
       setVersion(response.generated.version);
       setCommand(response.generated.command);
       setDescription(response.generated.description);
-      setArtifactSha256(response.generated.scaffoldSha256);
+      setArtifactSha256("");
+      setAutoRepair(null);
       setActiveFilePath(response.generated.files[0]?.path ?? "");
       setActiveFactoryTab("files");
       setRollbackPreview(null);
@@ -2962,7 +3201,7 @@ function PluginFactory({
         version: response.generated.version,
         command: response.generated.command,
         description: response.generated.description,
-        artifactSha256: response.generated.scaffoldSha256,
+        artifactSha256: "",
         generated: response.generated,
         applyResult: undefined,
         rollbackResult: undefined,
@@ -3001,17 +3240,13 @@ function PluginFactory({
 
   async function generatePlugin() {
     if (!selectedTemplate) return;
-    await generateTemplateScaffold(selectedTemplate, {
-      pluginName,
-      mountPath,
-      version,
-      command,
-      description
-    });
+    await startRequirementsInterview(selectedTemplate, false);
   }
 
   async function applyGeneratedPlugin(target: VaultPluginGenerateResult): Promise<PluginApplyAttempt> {
-    const effectiveSha256 = generated?.id === target.id ? artifactSha256 || target.scaffoldSha256 : target.scaffoldSha256;
+    const effectiveSha256 =
+      target.buildArtifact?.sha256 ??
+      (generated?.id === target.id ? artifactSha256 : "");
     const canUseCurrentJob = Boolean(
       currentJob && currentUser && (currentJob.ownerId === currentUser.id || canReviewJobs)
     );
@@ -3068,7 +3303,9 @@ function PluginFactory({
           version: target.version,
           command: target.command,
           artifactSha256: effectiveSha256,
-          description: target.description
+          description: target.description,
+          artifactBucket: target.buildArtifact?.bucket,
+          artifactKey: target.buildArtifact?.key
         })
       });
       setApplyResult(response.result);
@@ -3130,7 +3367,11 @@ function PluginFactory({
       setActiveChatPrompt((activePrompt) => (activePrompt === trimmed ? null : activePrompt));
     }, 760);
     addChatMessage("user", trimmed);
-    await runFactoryChat(trimmed);
+    if (requirementsInterview && !requirementsInterview.spec.confirmed) {
+      await answerRequirementsInterview(trimmed);
+    } else {
+      await runFactoryChat(trimmed);
+    }
   }
 
   async function runFactoryChat(prompt: string) {
@@ -3220,35 +3461,7 @@ function PluginFactory({
       return;
     }
 
-    const applyAfterGenerate = result.action.type === "generate-and-apply";
-    const generatedResult = await generateTemplateScaffold(
-      template,
-      {
-        pluginName: template.name,
-        mountPath: template.defaultMountPath,
-        version: template.defaultVersion,
-        command: template.defaultCommand,
-        description: template.description
-      },
-      localize(t, "Factory chat generated a plugin scaffold.", "Factory 채팅으로 플러그인 스캐폴드를 생성했습니다.")
-    );
-    if (!generatedResult) {
-      addChatMessage("assistant", localize(t, "Generation failed. Check the status banner.", "생성에 실패했습니다. 상태 메시지를 확인하세요."), "warning");
-      return;
-    }
-
-    addChatMessage("assistant", factoryGeneratedMessage(generatedResult, applyAfterGenerate, t), "success");
-    if (!applyAfterGenerate) return;
-    if (!canApply) {
-      addChatMessage("assistant", localize(t, "Vault admin role is required to apply it.", "Vault 적용에는 관리자 권한이 필요합니다."), "warning");
-      return;
-    }
-    const applyAttempt = await applyGeneratedPlugin(generatedResult);
-    addChatMessage(
-      "assistant",
-      factoryApplyAttemptMessage(applyAttempt, generatedResult.pluginName, t),
-      applyAttempt.status === "applied" ? "success" : "warning"
-    );
+    await startRequirementsInterview(template, result.action.type === "generate-and-apply");
   }
 
   async function runFactoryChatFallback(prompt: string) {
@@ -3352,7 +3565,13 @@ function PluginFactory({
       <section className="factoryJobTimeline" aria-label={localize(t, "Factory job progress", "Factory 작업 진행률")}>
         <div className="factoryTimelineHeader">
           <div>
-            <span>{workspaceSaving ? localize(t, "Saving workspace", "작업 저장 중") : localize(t, "Workspace saved", "작업 저장됨")}</span>
+            <span>
+              {currentJob
+                ? workspaceSaving
+                  ? localize(t, "Saving workspace", "작업 저장 중")
+                  : localize(t, "Workspace saved", "작업 저장됨")
+                : localize(t, "Design draft", "설계 초안")}
+            </span>
             <strong>{currentJob?.pluginName || pluginName || localize(t, "New plugin draft", "새 플러그인 초안")}</strong>
           </div>
           <div>
@@ -3372,7 +3591,7 @@ function PluginFactory({
         </div>
       </section>
 
-      <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "apply" ? "running" : ""}`}>
+      <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "repair" || busy === "apply" ? "running" : ""}`}>
         <div className="panelHeader">
           <div>
             <h2>{localize(t, "Factory chat", "Factory 채팅")}</h2>
@@ -3421,6 +3640,122 @@ function PluginFactory({
             </button>
           ))}
         </div>
+        {requirementsInterview ? (
+          <div className={`requirementsInterview ${requirementsInterview.spec.confirmed ? "confirmed" : ""}`}>
+            <div className="requirementsHeader">
+              <div>
+                <span>{localize(t, "Requirements interview", "요구사항 인터뷰")}</span>
+                <strong>
+                  {requirementsInterview.spec.confirmed
+                    ? localize(t, "Specification confirmed", "생성 명세 확정됨")
+                    : localize(
+                        t,
+                        `${7 - requirementsInterview.missingFields.length}/7 required fields`,
+                        `필수 항목 ${7 - requirementsInterview.missingFields.length}/7`
+                      )}
+                </strong>
+              </div>
+              <span className="runtimeBadge">
+                {factoryRuntime.vaultMode === "real" ? "Vault real" : "Vault mock"} · {factoryRuntime.buildMode}
+              </span>
+            </div>
+            <div className="requirementsProgress" aria-hidden="true">
+              <span style={{ width: `${((7 - requirementsInterview.missingFields.length) / 7) * 100}%` }} />
+            </div>
+            <div className="requirementsGrid">
+              <label>
+                {localize(t, "Target system", "대상 시스템")}
+                <input
+                  value={requirementsInterview.spec.targetSystem}
+                  onChange={(event) => updateRequirementSpec("targetSystem", event.target.value)}
+                  disabled={requirementsInterview.spec.confirmed || busy !== null}
+                />
+              </label>
+              <label>
+                {localize(t, "Authentication", "인증 방식")}
+                <input
+                  value={requirementsInterview.spec.authMethod}
+                  onChange={(event) => updateRequirementSpec("authMethod", event.target.value)}
+                  disabled={requirementsInterview.spec.confirmed || busy !== null}
+                  placeholder={localize(t, "API key in sealed configuration", "예: Seal-wrap 설정의 API Key")}
+                />
+              </label>
+              <label className="wide">
+                {localize(t, "API path", "API 경로")}
+                <input
+                  value={requirementsInterview.spec.apiBasePath}
+                  onChange={(event) => updateRequirementSpec("apiBasePath", event.target.value)}
+                  disabled={requirementsInterview.spec.confirmed || busy !== null}
+                  placeholder="https://service.example/v1"
+                />
+              </label>
+              <label>
+                TTL
+                <input
+                  value={requirementsInterview.spec.ttl}
+                  onChange={(event) => updateRequirementSpec("ttl", event.target.value)}
+                  disabled={requirementsInterview.spec.confirmed || busy !== null}
+                />
+              </label>
+              <label>
+                {localize(t, "Mount path", "Mount 경로")}
+                <input
+                  value={requirementsInterview.spec.mountPath}
+                  onChange={(event) => updateRequirementSpec("mountPath", event.target.value)}
+                  disabled={requirementsInterview.spec.confirmed || busy !== null}
+                />
+              </label>
+              <label className="wide">
+                Rotation
+                <input
+                  value={requirementsInterview.spec.rotationStrategy}
+                  onChange={(event) => updateRequirementSpec("rotationStrategy", event.target.value)}
+                  disabled={requirementsInterview.spec.confirmed || busy !== null}
+                  placeholder={localize(t, "Rotate every 30 days and on demand", "예: 30일 주기 및 요청 시 교체")}
+                />
+              </label>
+              <label className="wide">
+                Revoke
+                <input
+                  value={requirementsInterview.spec.revokeStrategy}
+                  onChange={(event) => updateRequirementSpec("revokeStrategy", event.target.value)}
+                  disabled={requirementsInterview.spec.confirmed || busy !== null}
+                  placeholder={localize(t, "Disable upstream credential immediately", "예: 상위 시스템 Credential 즉시 폐기")}
+                />
+              </label>
+              <label>
+                {localize(t, "First environment", "최초 환경")}
+                <select
+                  value={requirementsInterview.spec.environment}
+                  onChange={(event) => updateRequirementSpec("environment", event.target.value)}
+                  disabled={requirementsInterview.spec.confirmed || busy !== null}
+                >
+                  <option value="dev">dev</option>
+                  <option value="staging">staging</option>
+                  <option value="prod">prod</option>
+                </select>
+              </label>
+            </div>
+            {!requirementsInterview.spec.confirmed ? (
+              <div className="requirementsActions">
+                <span>
+                  {requirementsInterview.missingFields.length
+                    ? localize(t, "Complete the highlighted fields", "비어 있는 필수 항목을 입력하세요")
+                    : localize(t, "Review before generation", "생성 전 명세를 검토하세요")}
+                </span>
+                <button
+                  className="primary"
+                  type="button"
+                  onClick={() => void confirmRequirementsAndGenerate()}
+                  disabled={!requirementsInterview.readyToConfirm || busy !== null}
+                >
+                  <BadgeCheck aria-hidden="true" size={16} />
+                  {localize(t, "Confirm and generate", "명세 확정 후 생성")}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         {factoryJob ? (
           <div className={`factoryCodeConsole ${factoryJob.status}`} aria-live="polite">
             <div>
@@ -3710,7 +4045,7 @@ function PluginFactory({
                   <Sparkles aria-hidden="true" size={16} />
                   {busy === "generate"
                     ? localize(t, "Generating...", "생성 중...")
-                    : localize(t, "Generate from this template", "이 템플릿으로 생성")}
+                    : localize(t, "Start requirements interview", "요구사항 인터뷰 시작")}
                 </button>
               </div>
             </>
@@ -3851,8 +4186,10 @@ function PluginFactory({
             </div>
             <div className="fileHeaderActions">
               <button disabled={!generated || !canAuthorJobs || busy !== null} onClick={() => void rebuildEditedFiles()} type="button">
-                <RefreshCw aria-hidden="true" size={16} />
-                {localize(t, "Build and verify edits", "수정본 빌드 및 검증")}
+                <RefreshCw aria-hidden="true" className={busy === "repair" ? "spin" : undefined} size={16} />
+                {busy === "repair"
+                  ? localize(t, "Building and repairing...", "빌드 및 자동 수정 중...")
+                  : localize(t, "Run AI build and repair", "AI 빌드 및 자동 수정")}
               </button>
               {scaffoldDownload ? (
                 <a className="downloadLink" href={scaffoldDownload.href} download={scaffoldDownload.filename}>
@@ -3976,9 +4313,37 @@ function PluginFactory({
               </div>
               <div className="buildTestPanel">
                 <div className="resultBanner compactBanner">
-                  <strong>{localize(t, "Build/Test simulation", "빌드/테스트 시뮬레이션")}</strong>
+                  <strong>{localize(t, "Isolated Build/Test", "격리 Build/Test")}</strong>
                   <span>{generated.buildTest.status}</span>
                 </div>
+                {autoRepair ? (
+                  <div className="repairAttemptList">
+                    <div className="repairAttemptHeader">
+                      <span>{localize(t, "Automatic repair loop", "AI 자동 수정 루프")}</span>
+                      <strong>{autoRepair.attempts.length}/{autoRepair.maxAttempts}</strong>
+                    </div>
+                    {autoRepair.attempts.map((attempt) => (
+                      <div className="repairAttempt" key={attempt.attempt}>
+                        <span className={attempt.status}>{attempt.attempt}</span>
+                        <div>
+                          <strong>{attempt.summary}</strong>
+                          <small>
+                            {attempt.provider ? `${attempt.provider}${attempt.model ? ` · ${attempt.model}` : ""}` : localize(t, "compiler", "컴파일러")}
+                            {attempt.durationMs ? ` · ${Math.round(attempt.durationMs / 1000)}s` : ""}
+                          </small>
+                          {attempt.repairedFiles.length ? <small>{attempt.repairedFiles.join(", ")}</small> : null}
+                        </div>
+                      </div>
+                    ))}
+                    {autoRepair.artifact ? (
+                      <div className="buildArtifactLine">
+                        <BadgeCheck aria-hidden="true" size={17} />
+                        <span>linux/arm64</span>
+                        <strong>{shortId(autoRepair.artifact.sha256)}</strong>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {generated.buildTest.steps.map((step) => (
                   <div className="applyStep" key={`${step.label}-${step.command}`}>
                     <span className={step.status === "pass" ? "success" : step.status === "warn" ? "planned" : step.status}>
@@ -5258,11 +5623,11 @@ function factoryGeneratedMessage(result: VaultPluginGenerateResult, wantsApply: 
   return localize(
     t,
     wantsApply
-      ? `The scaffold is ready: ${result.files.length} files were generated for ${result.pluginName}, mounted at ${result.mountPath}/ with version ${result.version}. I will now check the approval and preflight gates before Vault apply.`
-      : `The scaffold is ready. I generated ${result.files.length} files for ${result.pluginName}, set the default mount to ${result.mountPath}/, and prepared version ${result.version}. If this looks right, tell me "Apply it to Vault" and I will register and enable it.`,
+      ? `The confirmed specification produced ${result.files.length} files for ${result.pluginName}, mounted at ${result.mountPath}/ with version ${result.version}. I will compile, test, and repair the source before checking approval and Vault apply gates.`
+      : `The confirmed specification produced ${result.files.length} files for ${result.pluginName}, mounted at ${result.mountPath}/ with version ${result.version}. I will now compile and test the source in the isolated runner.`,
     wantsApply
-      ? `스캐폴드가 준비됐습니다. ${result.pluginName} 기준으로 ${result.files.length}개 파일을 만들었고, mount는 ${result.mountPath}/, version은 ${result.version}으로 잡았습니다. 이제 Vault 적용 전 승인과 사전 검증 상태를 확인하겠습니다.`
-      : `스캐폴드가 준비됐습니다. ${result.pluginName} 기준으로 ${result.files.length}개 파일을 만들었고, 기본 mount는 ${result.mountPath}/, version은 ${result.version}으로 잡았습니다. 괜찮으면 "Vault에 적용해줘"라고 말해주세요. 제가 등록과 활성화까지 이어가겠습니다.`
+      ? `확정된 명세로 ${result.pluginName}의 ${result.files.length}개 파일을 만들었습니다. Mount는 ${result.mountPath}/, Version은 ${result.version}입니다. 이제 컴파일과 테스트, 필요한 자동 수정을 마친 뒤 승인과 Vault 적용 단계를 확인하겠습니다.`
+      : `확정된 명세로 ${result.pluginName}의 ${result.files.length}개 파일을 만들었습니다. Mount는 ${result.mountPath}/, Version은 ${result.version}입니다. 이제 격리된 환경에서 실제 컴파일과 테스트를 실행하겠습니다.`
   );
 }
 
@@ -5305,6 +5670,19 @@ function factoryStatusClassName(status: string): "error" | "success" | "warningL
   if (/unable|failed|error|forbidden|실패|오류|못했습니다/i.test(status)) return "error";
   if (/required|blocked|resolve|필요|대기|해결/i.test(status)) return "warningLine";
   return "success";
+}
+
+function missingFactoryRequirementFields(spec: VaultPluginRequirements): VaultPluginRequirementField[] {
+  const fields: VaultPluginRequirementField[] = [
+    "targetSystem",
+    "authMethod",
+    "apiBasePath",
+    "ttl",
+    "rotationStrategy",
+    "revokeStrategy",
+    "mountPath"
+  ];
+  return fields.filter((field) => !spec[field].trim());
 }
 
 function toLocalDateTimeInputValue(date: Date): string {

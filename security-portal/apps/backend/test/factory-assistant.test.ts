@@ -71,7 +71,8 @@ describe("FactoryAssistant", () => {
 
     expect(result.provider).toBe("ollama");
     expect(result.action).toEqual({ type: "generate", templateId: template?.id });
-    expect(result.reply).toContain("스캐폴드 생성을 시작");
+    expect(result.reply).toContain("요구사항을 확인");
+    expect(result.reply).toContain("명세가 확정되면");
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 
@@ -92,6 +93,19 @@ describe("FactoryAssistant", () => {
     expect(result.action).toEqual({ type: "generate-and-apply", templateId: openAiTemplate?.id });
     expect(result.reply).toContain("OpenAI Project Secrets");
     expect(result.reply).not.toContain("Kafka");
+  });
+
+  it("asks the user to disambiguate when a create request names two templates", async () => {
+    const assistant = new FactoryAssistant(rulesConfig, vaultPluginTemplates);
+    const result = await assistant.chat({
+      locale: "ko",
+      messages: [{ role: "user", content: "Sectigo 또는 DigiCert 플러그인을 만들어줘" }]
+    });
+
+    expect(result.action).toEqual({ type: "none" });
+    expect(result.reply).toContain("Sectigo SCM PKI");
+    expect(result.reply).toContain("DigiCert TLM PKI");
+    expect(result.reply).toContain("하나를 지정");
   });
 
   it("overrides an Ollama apply misclassification when the user names a new plugin", async () => {
@@ -279,7 +293,8 @@ describe("FactoryAssistant", () => {
     });
 
     expect(result.action).toEqual({ type: "none" });
-    expect(result.reply).toContain("fallback");
+    expect(result.reply).toContain("Apache Kafka client credential");
+    expect(result.reply).toContain("위험도");
     expect(result.reply).not.toContain("전체 플러그인 템플릿");
   });
 

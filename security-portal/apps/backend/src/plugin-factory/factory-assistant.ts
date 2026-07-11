@@ -1,4 +1,4 @@
-import type { VaultPluginTemplate } from "@security-portal/shared";
+import type { VaultPluginGeneratedFile, VaultPluginRequirements, VaultPluginTemplate } from "@security-portal/shared";
 import { z } from "zod";
 
 export type FactoryChatLocale = "ko" | "en";
@@ -61,6 +61,14 @@ interface OllamaChatResponse {
   };
 }
 
+export interface FactoryRepairResult {
+  files: VaultPluginGeneratedFile[];
+  changedFiles: string[];
+  summary: string;
+  provider: "ollama" | "rules";
+  model?: string;
+}
+
 type FetchImplementation = typeof fetch;
 
 const catalogFilters = ["all", "auth", "secret", "database", "partner", "community", "learning"] as const;
@@ -95,6 +103,39 @@ const ollamaReplyFormat = {
     }
   },
   required: ["reply", "action"],
+  additionalProperties: false
+} as const;
+
+const repairReplySchema = z.object({
+  summary: z.string().trim().min(1).max(1000),
+  changes: z
+    .array(
+      z.object({
+        path: z.string().trim().min(1).max(240),
+        content: z.string().max(120_000)
+      })
+    )
+    .max(12)
+});
+
+const repairReplyFormat = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    changes: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          path: { type: "string" },
+          content: { type: "string" }
+        },
+        required: ["path", "content"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["summary", "changes"],
   additionalProperties: false
 } as const;
 
@@ -172,6 +213,76 @@ export class FactoryAssistant {
     }
   }
 
+  async repairGeneratedFiles(input: {
+    files: VaultPluginGeneratedFile[];
+    diagnostics: string;
+    requirements: VaultPluginRequirements;
+  }): Promise<FactoryRepairResult> {
+    if (this.config.mode !== "ollama" || !this.baseUrl || !this.config.apiKey) {
+      return {
+        files: input.files,
+        changedFiles: [],
+        summary: "The AI repair model is unavailable; no source changes were made.",
+        provider: "rules"
+      };
+    }
+    const source = input.files
+      .filter((file) => file.language === "go" || file.path === "go.mod")
+      .map((file) => `--- ${file.path} ---\n${file.content}`)
+      .join("\n")
+      .slice(0, 48_000);
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/api/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: this.config.model,
+        messages: [
+          {
+            role: "system",
+            content: [
+              "You repair a generated HashiCorp Vault plugin written in Go.",
+              "Use only the compiler and test diagnostics. Make the smallest changes needed to compile and pass tests.",
+              "Never add credentials, network calls, shell execution, subprocess execution, or disabled TLS verification.",
+              "Only return changed files that already exist in the supplied source set.",
+              "Preserve the requested behavior and Vault SDK plugin entrypoint.",
+              `Confirmed requirements: ${JSON.stringify(input.requirements)}`,
+              `Diagnostics: ${input.diagnostics.slice(0, 12_000)}`,
+              "Return JSON only."
+            ].join("\n")
+          },
+          { role: "user", content: source }
+        ],
+        stream: false,
+        format: repairReplyFormat,
+        think: false,
+        keep_alive: "30m",
+        options: { temperature: 0.1, num_ctx: 8192, num_predict: 3000 }
+      })
+    });
+    if (!response.ok) throw new Error(`ollama-http-${response.status}`);
+    const payload = (await response.json()) as OllamaChatResponse;
+    const parsed = repairReplySchema.parse(parseJsonObject(payload.message?.content ?? ""));
+    const filesByPath = new Map(input.files.map((file) => [file.path, file]));
+    const changedFiles: string[] = [];
+    for (const change of parsed.changes) {
+      if (change.path.includes("..") || change.path.startsWith("/")) continue;
+      const existing = filesByPath.get(change.path);
+      if (!existing || existing.content === change.content) continue;
+      filesByPath.set(change.path, { ...existing, content: change.content });
+      changedFiles.push(change.path);
+    }
+    return {
+      files: input.files.map((file) => filesByPath.get(file.path) ?? file),
+      changedFiles,
+      summary: parsed.summary,
+      provider: "ollama",
+      model: this.config.model
+    };
+  }
+
   private validateModelReply(
     parsed: z.infer<typeof modelReplySchema>,
     context: FactoryChatContext,
@@ -179,6 +290,16 @@ export class FactoryAssistant {
   ): FactoryChatResult {
     const prompt = latestUserMessage(context);
     const intent = inferExplicitIntent(prompt);
+    const ambiguousTemplates = findAmbiguousTemplateMatches(prompt, this.templates);
+    if ((intent.wantsCreate || intent.wantsSelect) && ambiguousTemplates.length > 1) {
+      return {
+        reply: templateClarificationReply(ambiguousTemplates, context.locale),
+        action: { type: "none" },
+        provider: "ollama",
+        model: this.config.model,
+        latencyMs: Date.now() - startedAt
+      };
+    }
     const modelTemplate = parsed.action.templateId
       ? this.templates.find((item) => item.id === parsed.action.templateId)
       : undefined;
@@ -238,6 +359,17 @@ export class FactoryAssistant {
     const prompt = latestUserMessage(context);
     const filter = inferCatalogFilter(prompt);
     const intent = inferExplicitIntent(prompt);
+    const promptTemplates = findStrongTemplateMatches(prompt, this.templates);
+    const ambiguousTemplates = findAmbiguousTemplateMatches(prompt, this.templates);
+    if ((intent.wantsCreate || intent.wantsSelect) && ambiguousTemplates.length > 1) {
+      return {
+        reply: templateClarificationReply(ambiguousTemplates, context.locale),
+        action: { type: "none" },
+        provider: "rules",
+        fallbackReason,
+        latencyMs: Date.now() - startedAt
+      };
+    }
     const template =
       findTemplate(prompt, this.templates) ??
       findPreviousUserTemplate(context, this.templates) ??
@@ -257,8 +389,8 @@ export class FactoryAssistant {
       action = { type: intent.wantsApply ? "generate-and-apply" : "generate", templateId: template.id };
       reply = localized(
         context.locale,
-        `I found ${template.displayName}. I will generate its scaffold and show each step.`,
-        `${template.displayName} 템플릿을 찾았습니다. 스캐폴드를 생성하면서 각 단계를 보여드릴게요.`
+        `I found ${template.displayName}. I will confirm the requirements first and generate code after the specification is approved.`,
+        `${template.displayName} 템플릿을 찾았습니다. 먼저 요구사항을 확인하고 명세가 확정되면 코드를 생성하겠습니다.`
       );
     } else if (intent.wantsApply) {
       action = context.generatedPluginName ? { type: "apply" } : { type: "none" };
@@ -272,6 +404,10 @@ export class FactoryAssistant {
         `I selected ${template.displayName}. Ask me to generate it when you are ready.`,
         `${template.displayName} 템플릿을 선택했습니다. 준비되면 생성해달라고 말씀해주세요.`
       );
+    } else if (promptTemplates.length > 1) {
+      reply = rulesKnowledgeReply(promptTemplates.slice(0, 4), context.locale, fallbackReason);
+    } else if (promptTemplates[0]) {
+      reply = rulesKnowledgeReply([promptTemplates[0]], context.locale, fallbackReason);
     } else {
       reply =
         fallbackReason === "invalid-response"
@@ -323,6 +459,7 @@ export class FactoryAssistant {
       "For explanations, comparisons, recommendations, and general questions, always use action none even when plugin names are mentioned.",
       "Use generate only when the user explicitly asks to create or make a plugin.",
       "Use generate-and-apply only when the user explicitly asks to both create and apply the same plugin.",
+      "A generate action starts a requirements interview before code generation. Never claim that code generation has already started.",
       "Use apply only when the user explicitly asks to apply/register/enable an already generated plugin.",
       "The latest user message has priority over the selected template and generated plugin context.",
       "When the latest message names a different catalog target and asks to create it, never apply the previously generated plugin.",
@@ -474,13 +611,13 @@ function commandAcknowledgement(
     return action.type === "generate-and-apply"
       ? localized(
           locale,
-          `I found ${template.displayName}. I will generate the scaffold first, then continue through the guarded Vault apply flow.`,
-          `${template.displayName} 템플릿을 찾았습니다. 먼저 스캐폴드를 생성한 뒤 안전장치를 거쳐 Vault 적용까지 이어가겠습니다.`
+          `I found ${template.displayName}. I will confirm the target, authentication, API path, TTL, rotation, revoke behavior, and mount path before generating code and continuing to the guarded Vault apply flow.`,
+          `${template.displayName} 템플릿을 찾았습니다. 코드를 만들기 전에 대상, 인증 방식, API 경로, TTL, Rotation, Revoke, Mount 경로를 확인한 뒤 안전한 Vault 적용 흐름으로 이어가겠습니다.`
         )
       : localized(
           locale,
-          `I found ${template.displayName}. I will start generating its scaffold now.`,
-          `${template.displayName} 템플릿을 찾았습니다. 지금 스캐폴드 생성을 시작하겠습니다.`
+          `I found ${template.displayName}. I will start with a requirements interview, then generate code after you confirm the specification.`,
+          `${template.displayName} 템플릿을 찾았습니다. 먼저 요구사항을 확인하고 명세가 확정되면 코드를 생성하겠습니다.`
         );
   }
   if (action.type === "apply") {
@@ -550,6 +687,27 @@ function findTemplate(prompt: string, templates: VaultPluginTemplate[]): VaultPl
   return best && best.score >= 8 ? best.template : undefined;
 }
 
+function findStrongTemplateMatches(prompt: string, templates: VaultPluginTemplate[]): VaultPluginTemplate[] {
+  return templates
+    .map((template) => ({ template, score: templateMatchScore(prompt, template) }))
+    .filter((candidate) => candidate.score >= 12)
+    .sort((left, right) => right.score - left.score)
+    .map((candidate) => candidate.template);
+}
+
+function findAmbiguousTemplateMatches(prompt: string, templates: VaultPluginTemplate[]): VaultPluginTemplate[] {
+  const ranked = templates
+    .map((template) => ({ template, score: templateMatchScore(prompt, template) }))
+    .filter((candidate) => candidate.score >= 12)
+    .sort((left, right) => right.score - left.score);
+  const [best, runnerUp] = ranked;
+  if (!best || !runnerUp) return [];
+  const normalized = normalizePrompt(prompt);
+  const namesMultipleTargets = /(?:와|과|또는|혹은|둘|중에서|\band\b|\bor\b|between)/.test(normalized);
+  if (!namesMultipleTargets && best.score - runnerUp.score > 6) return [];
+  return ranked.filter((candidate) => candidate.score >= best.score - 12).slice(0, 4).map((candidate) => candidate.template);
+}
+
 function findReferencedTemplates(prompt: string, templates: VaultPluginTemplate[]): VaultPluginTemplate[] {
   return templates
     .map((template) => ({ template, score: templateMatchScore(prompt, template) }))
@@ -563,6 +721,7 @@ function templateMatchScore(prompt: string, template: VaultPluginTemplate): numb
   const name = template.name.toLowerCase();
   const displayName = template.displayName.toLowerCase();
   const target = template.integrationTarget.toLowerCase();
+  const tags = template.tags.map((tag) => tag.toLowerCase());
   const haystack = `${name} ${displayName} ${target} ${template.tags.join(" ")} ${template.description}`.toLowerCase();
   let score = 0;
   if (normalized.includes(name)) score += 80;
@@ -570,6 +729,7 @@ function templateMatchScore(prompt: string, template: VaultPluginTemplate): numb
   if (normalized.includes(target)) score += 45;
   for (const token of normalized.split(/[^a-z0-9가-힣]+/).filter((item) => item.length > 1)) {
     if (token === target) score += 30;
+    else if (tags.includes(token)) score += 24;
     else if (haystack.includes(token)) score += 6;
   }
   return score;
@@ -597,4 +757,48 @@ function normalizePrompt(prompt: string): string {
 
 function localized(locale: FactoryChatLocale, english: string, korean: string): string {
   return locale === "ko" ? korean : english;
+}
+
+function templateClarificationReply(
+  templates: VaultPluginTemplate[],
+  locale: FactoryChatLocale
+): string {
+  const names = templates.map((template) => template.displayName).join(", ");
+  return localized(
+    locale,
+    `I found more than one matching template: ${names}. Which single template should I use for the requirements interview?`,
+    `요청에서 여러 템플릿이 함께 확인됐습니다: ${names}. 요구사항 인터뷰를 시작할 템플릿 하나를 지정해주세요.`
+  );
+}
+
+function templateSummaryReply(templates: VaultPluginTemplate[], locale: FactoryChatLocale): string {
+  if (templates.length === 1) {
+    const template = templates[0];
+    if (!template) return "";
+    return localized(
+      locale,
+      `${template.displayName} is a ${template.pluginType} template for ${template.description.toLowerCase()} Its catalog maturity is ${template.marketplace.maturity} with ${template.marketplace.riskLevel} risk.`,
+      `${template.displayName}은 ${template.description} 용도의 ${template.pluginType} 템플릿입니다. 카탈로그 기준 성숙도는 ${template.marketplace.maturity}, 위험도는 ${template.marketplace.riskLevel}입니다.`
+    );
+  }
+  const rows = templates.map((template) => `- ${template.displayName}: ${template.description}`).join("\n");
+  return localized(
+    locale,
+    `These catalog templates match your question:\n${rows}\nTell me which one you want to examine more closely.`,
+    `질문과 관련된 카탈로그 템플릿은 다음과 같습니다.\n${rows}\n더 자세히 볼 대상을 지정해주시면 해당 수명주기와 적용 방식을 설명하겠습니다.`
+  );
+}
+
+function rulesKnowledgeReply(
+  templates: VaultPluginTemplate[],
+  locale: FactoryChatLocale,
+  fallbackReason: FactoryChatResult["fallbackReason"]
+): string {
+  const summary = templateSummaryReply(templates, locale);
+  if (fallbackReason !== "invalid-response") return summary;
+  return localized(
+    locale,
+    `The AI connection is healthy, but this response failed validation after a retry. Here is the catalog-backed answer: ${summary}`,
+    `AI 연결은 정상이지만 자동 재시도 후 이번 답변 형식을 검증하지 못했습니다. 카탈로그 근거로 답하면 다음과 같습니다. ${summary}`
+  );
 }

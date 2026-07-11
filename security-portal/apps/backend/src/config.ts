@@ -12,6 +12,12 @@ export interface AppConfig {
   vaultToken?: string;
   vaultRoleId?: string;
   vaultSecretId?: string;
+  vaultPluginRoleId?: string;
+  vaultPluginSecretId?: string;
+  vaultPluginAllowedMountPrefix?: string;
+  vaultPluginDistributionMode?: "mock" | "ssm";
+  vaultPluginNodeIds?: string[];
+  vaultPluginDirectory?: string;
   vaultAppRoleAuthMount: string;
   vaultSkipVerify: boolean;
   vaultUseSystemNamespace: boolean;
@@ -21,6 +27,13 @@ export interface AppConfig {
   ollamaModel: string;
   ollamaApiKey?: string;
   ollamaRequestTimeoutMs: number;
+  factoryBuildMode?: "static" | "codebuild";
+  factoryBuildProject?: string;
+  factoryBuildBucket?: string;
+  factoryBuildPrefix?: string;
+  factoryBuildMaxAttempts?: number;
+  factoryBuildPollIntervalMs?: number;
+  factoryBuildTimeoutMs?: number;
 }
 
 export function loadConfig(): AppConfig {
@@ -36,6 +49,12 @@ export function loadConfig(): AppConfig {
     vaultToken: process.env.VAULT_TOKEN,
     vaultRoleId: process.env.VAULT_ROLE_ID,
     vaultSecretId: process.env.VAULT_SECRET_ID,
+    vaultPluginRoleId: process.env.VAULT_PLUGIN_ROLE_ID,
+    vaultPluginSecretId: process.env.VAULT_PLUGIN_SECRET_ID,
+    vaultPluginAllowedMountPrefix: process.env.VAULT_PLUGIN_ALLOWED_MOUNT_PREFIX,
+    vaultPluginDistributionMode: process.env.VAULT_PLUGIN_DISTRIBUTION_MODE === "ssm" ? "ssm" : "mock",
+    vaultPluginNodeIds: csv(process.env.VAULT_PLUGIN_NODE_IDS),
+    vaultPluginDirectory: process.env.VAULT_PLUGIN_DIRECTORY ?? "/opt/vault/plugins",
     vaultAppRoleAuthMount: process.env.VAULT_APPROLE_AUTH_MOUNT ?? "approle",
     vaultSkipVerify: process.env.VAULT_SKIP_VERIFY === "true",
     vaultUseSystemNamespace: process.env.VAULT_USE_SYSTEM_NAMESPACE === "true",
@@ -44,7 +63,14 @@ export function loadConfig(): AppConfig {
     ollamaBaseUrl: process.env.OLLAMA_BASE_URL,
     ollamaModel: process.env.OLLAMA_MODEL ?? "qwen3:8b",
     ollamaApiKey: process.env.OLLAMA_API_KEY,
-    ollamaRequestTimeoutMs: Number(process.env.OLLAMA_REQUEST_TIMEOUT_MS ?? "90000")
+    ollamaRequestTimeoutMs: Number(process.env.OLLAMA_REQUEST_TIMEOUT_MS ?? "90000"),
+    factoryBuildMode: process.env.FACTORY_BUILD_MODE === "codebuild" ? "codebuild" : "static",
+    factoryBuildProject: process.env.FACTORY_BUILD_PROJECT,
+    factoryBuildBucket: process.env.FACTORY_BUILD_BUCKET,
+    factoryBuildPrefix: process.env.FACTORY_BUILD_PREFIX ?? "factory-builds",
+    factoryBuildMaxAttempts: boundedInteger(process.env.FACTORY_BUILD_MAX_ATTEMPTS, 3, 1, 4),
+    factoryBuildPollIntervalMs: boundedInteger(process.env.FACTORY_BUILD_POLL_INTERVAL_MS, 3000, 1000, 15000),
+    factoryBuildTimeoutMs: boundedInteger(process.env.FACTORY_BUILD_TIMEOUT_MS, 600000, 60000, 900000)
   };
 }
 
@@ -58,4 +84,18 @@ function parseVaultAuthMode(value: string | undefined): AppConfig["vaultAuthMode
     default:
       return "mock";
   }
+}
+
+function csv(value: string | undefined): string[] {
+  return value
+    ? value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+}
+
+function boundedInteger(value: string | undefined, fallback: number, minimum: number, maximum: number): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
 }

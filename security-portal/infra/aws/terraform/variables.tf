@@ -52,6 +52,12 @@ variable "private_subnet_ids" {
   default     = []
 }
 
+variable "private_route_table_ids" {
+  description = "Existing private route table IDs when create_new_network=false."
+  type        = list(string)
+  default     = []
+}
+
 variable "enable_nat_gateway" {
   description = "Create one NAT gateway for private ECS tasks."
   type        = bool
@@ -271,6 +277,89 @@ variable "vault_secret_id_secret_arn" {
   description = "Optional Secrets Manager ARN containing Vault AppRole secret_id."
   type        = string
   default     = ""
+}
+
+variable "provision_real_vault_integration" {
+  description = "Provision private networking, build isolation, and secret containers for the real Vault integration."
+  type        = bool
+  default     = false
+}
+
+variable "enable_real_vault_runtime" {
+  description = "Switch the backend to the provisioned real Vault integration after AppRole secret values are populated."
+  type        = bool
+  default     = false
+}
+
+variable "vault_vpc_id" {
+  description = "VPC ID containing the real Vault cluster."
+  type        = string
+  default     = ""
+}
+
+variable "vault_vpc_cidr" {
+  description = "CIDR of the real Vault VPC."
+  type        = string
+  default     = ""
+}
+
+variable "vault_subnet_ids" {
+  description = "Private subnet IDs used by the internal Vault NLB."
+  type        = list(string)
+  default     = []
+}
+
+variable "vault_route_table_ids" {
+  description = "Vault VPC route table IDs that need a return route to the portal VPC."
+  type        = list(string)
+  default     = []
+}
+
+variable "vault_security_group_id" {
+  description = "Security group attached to the Vault nodes."
+  type        = string
+  default     = ""
+}
+
+variable "vault_instance_ids" {
+  description = "SSM-managed Vault node instance IDs used as NLB targets and plugin distribution destinations."
+  type        = list(string)
+  default     = []
+}
+
+variable "vault_node_iam_role_name" {
+  description = "Existing Vault node IAM role that receives read-only access to Factory artifacts."
+  type        = string
+  default     = ""
+}
+
+variable "vault_internal_port" {
+  description = "Vault API port exposed only through the internal NLB."
+  type        = number
+  default     = 8200
+}
+
+variable "vault_plugin_allowed_mount_prefix" {
+  description = "Required mount prefix for all Plugin Factory apply and rollback operations."
+  type        = string
+  default     = "factory-lab"
+}
+
+variable "vault_plugin_directory" {
+  description = "Plugin directory shared by the Vault configuration and SSM artifact distributor."
+  type        = string
+  default     = "/opt/vault/plugins"
+}
+
+variable "factory_build_max_attempts" {
+  description = "Maximum compile, test, diagnose, and AI repair attempts per Factory run."
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.factory_build_max_attempts >= 1 && var.factory_build_max_attempts <= 4
+    error_message = "factory_build_max_attempts must be between 1 and 4."
+  }
 }
 
 variable "log_retention_days" {

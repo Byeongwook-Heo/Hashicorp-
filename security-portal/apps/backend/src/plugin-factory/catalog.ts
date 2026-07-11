@@ -6,6 +6,7 @@ import type {
   VaultPluginGenerateRequest,
   VaultPluginGenerateResult,
   VaultPluginGeneratedFile,
+  VaultPluginRequirements,
   VaultPluginRollbackPlan,
   VaultPluginSecurityReview,
   VaultPluginTemplate
@@ -113,6 +114,7 @@ export function generateVaultPluginScaffold(request: VaultPluginGenerateRequest)
   const template = findPluginTemplate(request.templateId);
   const pluginName = normalizePluginName(request.pluginName);
   const mountPath = normalizeMountPath(request.mountPath);
+  const requirements = normalizeRequirements(request.requirements, template, mountPath);
   const version = normalizeVersion(request.version);
   const command = normalizeCommand(request.command);
   const description =
@@ -126,7 +128,8 @@ export function generateVaultPluginScaffold(request: VaultPluginGenerateRequest)
     version,
     command,
     description,
-    moduleName
+    moduleName,
+    requirements
   });
   const scaffoldSha256 = hashFiles(files);
   const enableCommand =
@@ -134,15 +137,18 @@ export function generateVaultPluginScaffold(request: VaultPluginGenerateRequest)
       ? `vault auth enable -path=${mountPath} ${pluginName}`
       : `vault secrets enable -path=${mountPath} ${pluginName}`;
   const commands = [
+    "factory build start --isolated",
+    "gofmt -w ./...",
     "go mod tidy",
     "go test ./...",
-    `go build -o dist/${command} ./cmd/${pluginName}`,
+    `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/${command} ./cmd/${pluginName}`,
     `PLUGIN_SHA=$(sha256sum dist/${command} | awk '{print $1;}')`,
     `vault plugin register -command=${command} -sha256=$PLUGIN_SHA -version=${version} ${template.pluginType} ${pluginName}`,
     enableCommand
   ];
   const applyPlan = [
-    "Verify Vault health, plugin_directory, api_addr, and admin token capability.",
+    "Verify Vault health, plugin_directory, api_addr, and the least-privilege plugin AppRole.",
+    "Compile and test the confirmed specification in the isolated Factory CodeBuild runner.",
     `Copy dist/${command} to the Vault plugin_directory on every Vault node.`,
     `Register ${pluginName} in the ${template.pluginType} plugin catalog with the binary SHA256.`,
     `Enable ${pluginName} at ${mountPath}/ using the registered version ${version}.`,
@@ -170,7 +176,8 @@ export function generateVaultPluginScaffold(request: VaultPluginGenerateRequest)
     commands,
     applyPlan,
     warnings,
-    blueprint: buildBlueprint({ template, pluginName, mountPath, version, command, description }),
+    requirements,
+    blueprint: buildBlueprint({ template, pluginName, mountPath, version, command, description, requirements }),
     dryRun: buildDryRunPlan({ template, pluginName, mountPath, version, command }),
     buildTest: buildBuildTestPlan({ template, pluginName, command, files }),
     rollbackPlan: buildRollbackPlan({ template, pluginName, mountPath, version }),
@@ -473,7 +480,8 @@ function buildBlueprint({
   mountPath,
   version,
   command,
-  description
+  description,
+  requirements
 }: {
   template: VaultPluginTemplate;
   pluginName: string;
@@ -481,23 +489,17 @@ function buildBlueprint({
   version: string;
   command: string;
   description: string;
+  requirements: VaultPluginRequirements;
 }): VaultPluginBlueprint {
-  const ttl = template.pluginType === "auth" ? "1h" : template.pluginType === "database" ? "30m" : "15m";
-  const rotation =
-    template.pluginType === "auth"
-      ? "token TTL and identity alias hardening"
-      : template.pluginType === "database"
-        ? "dynamic user revoke statements"
-        : "renew/revoke paths and upstream credential rotation";
   return {
     id: `blueprint-${pluginName}`,
     name: `${pluginName} standard rollout`,
     summary: `${template.displayName} blueprint for ${mountPath}/ at ${version}`,
     defaults: {
       mountPath,
-      ttl,
-      rotation,
-      environment: "dev"
+      ttl: requirements.ttl,
+      rotation: requirements.rotationStrategy,
+      environment: requirements.environment
     },
     questions: [
       {
@@ -521,7 +523,7 @@ function buildBlueprint({
       {
         id: "rotation",
         question: "What lifecycle behavior must be completed before production?",
-        answer: rotation,
+        answer: `${requirements.rotationStrategy}; revoke: ${requirements.revokeStrategy}`,
         required: true
       },
       {
@@ -605,33 +607,29 @@ function buildBuildTestPlan({
   command: string;
   files: VaultPluginGeneratedFile[];
 }): VaultPluginBuildTestPlan {
-  const status = isExternalTemplate(template) ? "warn" : "pass";
   return {
-    status,
+    status: "warn",
     steps: [
       {
         label: "Dependency tidy",
         command: "go mod tidy",
-        status: "pass",
-        durationMs: 420,
-        detail: "Module file is generated with Vault API and SDK dependencies."
+        status: "pending",
+        durationMs: 0,
+        detail: "Waiting for the isolated CodeBuild runner."
       },
       {
         label: "Unit tests",
         command: "go test ./...",
-        status: template.buildProfile === "scaffold" ? "warn" : "pass",
-        durationMs: 860,
-        detail:
-          template.buildProfile === "scaffold"
-            ? "Generated scaffold has a smoke-ready backend but needs integration tests."
-            : "Generated backend compiles against the logical framework scaffold."
+        status: "pending",
+        durationMs: 0,
+        detail: "Generated unit tests have not run yet."
       },
       {
         label: "Plugin binary",
         command: `go build -o dist/${command} ./cmd/${pluginName}`,
-        status: "pass",
-        durationMs: 1190,
-        detail: `${files.length} generated files are included in the build plan.`
+        status: "pending",
+        durationMs: 0,
+        detail: `${files.length} generated files will be compiled for linux/arm64.`
       },
       {
         label: "Binary checksum",
@@ -741,7 +739,8 @@ function buildFiles({
   version,
   command,
   description,
-  moduleName
+  moduleName,
+  requirements
 }: {
   template: VaultPluginTemplate;
   pluginName: string;
@@ -750,6 +749,7 @@ function buildFiles({
   command: string;
   description: string;
   moduleName: string;
+  requirements: VaultPluginRequirements;
 }): VaultPluginGeneratedFile[] {
   const factoryName = template.pluginType === "auth" ? "AuthFactory" : "BackendFactory";
   return [
@@ -811,7 +811,28 @@ func main() {
     {
       path: "internal/plugin/backend.go",
       language: "go",
-      content: backendFile(template, pluginName)
+      content: backendFile(template, pluginName, requirements)
+    },
+    {
+      path: "internal/plugin/backend_test.go",
+      language: "go",
+      content: `package plugin
+
+import (
+	"context"
+	"testing"
+)
+
+func TestReadStatus(t *testing.T) {
+	response, err := readStatus(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("readStatus returned an error: %v", err)
+	}
+	if response == nil || response.Data["status"] != "generated" {
+		t.Fatalf("unexpected response: %#v", response)
+	}
+}
+`
     },
     {
       path: "README.md",
@@ -822,12 +843,23 @@ ${description}
 
 Generated from \`${template.repository}\` as a ${template.pluginType} plugin starter.
 
+## Confirmed requirements
+
+- Target system: ${requirements.targetSystem}
+- Authentication: ${requirements.authMethod}
+- API path: ${requirements.apiBasePath}
+- TTL: ${requirements.ttl}
+- Rotation: ${requirements.rotationStrategy}
+- Revoke: ${requirements.revokeStrategy}
+- Mount: ${requirements.mountPath}/
+- First environment: ${requirements.environment}
+
 ## Build
 
 \`\`\`bash
 go mod tidy
 go test ./...
-go build -o dist/${command} ./cmd/${pluginName}
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/${command} ./cmd/${pluginName}
 PLUGIN_SHA=$(sha256sum dist/${command} | awk '{print $1;}')
 \`\`\`
 
@@ -842,6 +874,11 @@ ${template.pluginType === "auth" ? "vault auth" : "vault secrets"} enable -path=
 
 ${template.guardrails.map((guardrail) => `- ${guardrail}`).join("\n")}
 `
+    },
+    {
+      path: "factory/requirements.json",
+      language: "json",
+      content: `${JSON.stringify(requirements, null, 2)}\n`
     },
     {
       path: "vault/apply.hcl",
@@ -876,7 +913,11 @@ sha: build
   ];
 }
 
-function backendFile(template: VaultPluginTemplate, pluginName: string): string {
+function backendFile(
+  template: VaultPluginTemplate,
+  pluginName: string,
+  requirements: VaultPluginRequirements
+): string {
   const pathName = template.pluginType === "auth" ? "login" : "config";
   return `package plugin
 
@@ -918,11 +959,47 @@ func readStatus(_ context.Context, _ *logical.Request, _ *framework.FieldData) (
 	return &logical.Response{
 		Data: map[string]interface{}{
 			"status": "generated",
+			"target_system": ${JSON.stringify(requirements.targetSystem)},
+			"api_base_path": ${JSON.stringify(requirements.apiBasePath)},
+			"ttl": ${JSON.stringify(requirements.ttl)},
+			"rotation": ${JSON.stringify(requirements.rotationStrategy)},
+			"revoke": ${JSON.stringify(requirements.revokeStrategy)},
 			"next": "replace scaffold callbacks with ${template.integrationTarget} integration logic",
 		},
 	}, nil
 }
 `;
+}
+
+function normalizeRequirements(
+  value: VaultPluginRequirements | undefined,
+  template: VaultPluginTemplate,
+  mountPath: string
+): VaultPluginRequirements {
+  const fallback: VaultPluginRequirements = {
+    targetSystem: template.integrationTarget,
+    authMethod: "configuration credential",
+    apiBasePath: "not specified",
+    ttl: template.pluginType === "auth" ? "1h" : template.pluginType === "database" ? "30m" : "15m",
+    rotationStrategy: "manual review required",
+    revokeStrategy: "manual review required",
+    mountPath,
+    environment: "dev",
+    confirmed: false
+  };
+  if (!value) return fallback;
+  const normalizedMount = normalizeMountPath(value.mountPath);
+  if (normalizedMount !== mountPath) throw new Error("Confirmed requirement mount path does not match the generation request");
+  return {
+    ...value,
+    targetSystem: value.targetSystem.trim(),
+    authMethod: value.authMethod.trim(),
+    apiBasePath: value.apiBasePath.trim(),
+    ttl: value.ttl.trim(),
+    rotationStrategy: value.rotationStrategy.trim(),
+    revokeStrategy: value.revokeStrategy.trim(),
+    mountPath: normalizedMount
+  };
 }
 
 function hashFiles(files: VaultPluginGeneratedFile[]): string {

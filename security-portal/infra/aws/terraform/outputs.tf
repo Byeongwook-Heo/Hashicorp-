@@ -57,3 +57,23 @@ output "ollama_api_secret_arn" {
   description = "Secrets Manager ARN containing the private Ollama bearer token."
   value       = try(aws_secretsmanager_secret.ollama_api_token[0].arn, null)
 }
+
+output "vault_internal_endpoint" {
+  description = "Private NLB endpoint used by the backend for real Vault traffic."
+  value       = try("http://${aws_lb.vault[0].dns_name}:${var.vault_internal_port}", null)
+}
+
+output "vault_approle_secret_arns" {
+  description = "Secrets Manager containers that must be populated before enabling the real Vault runtime."
+  value       = { for key, secret in aws_secretsmanager_secret.vault_approle : key => secret.arn }
+}
+
+output "factory_build_project_name" {
+  description = "Isolated CodeBuild project used by the Plugin Factory repair loop."
+  value       = try(aws_codebuild_project.factory_plugin[0].name, null)
+}
+
+output "factory_artifact_bucket" {
+  description = "Encrypted S3 bucket containing Factory build inputs, diagnostics, and verified binaries."
+  value       = try(aws_s3_bucket.factory_artifacts[0].bucket, null)
+}

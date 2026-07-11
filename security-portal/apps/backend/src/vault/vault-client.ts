@@ -150,7 +150,7 @@ class MockVaultClient implements VaultClient {
 }
 
 class RealVaultClient implements VaultClient {
-  private cachedToken?: { token: string; expiresAt: number };
+  private readonly cachedTokens = new Map<"runtime" | "plugin", { token: string; expiresAt: number }>();
 
   constructor(private readonly config: AppConfig) {}
 
@@ -285,6 +285,7 @@ class RealVaultClient implements VaultClient {
 
     const pluginName = normalizeMount(request.pluginName);
     const mountPath = normalizeMount(request.mountPath);
+    this.assertPluginMountAllowed(mountPath);
     const catalogPath = `sys/plugins/catalog/${request.pluginType}/${pluginName}`;
     const enablePath =
       request.pluginType === "auth" ? `sys/auth/${mountPath}` : `sys/mounts/${mountPath}`;
@@ -292,6 +293,7 @@ class RealVaultClient implements VaultClient {
 
     const register = await this.vaultRequest("POST", catalogPath, {
       namespace: this.config.vaultNamespace,
+      credentialScope: "plugin",
       body: {
         sha256: request.artifactSha256,
         command: request.command,
@@ -300,6 +302,7 @@ class RealVaultClient implements VaultClient {
     });
     const enable = await this.vaultRequest("POST", enablePath, {
       namespace: this.config.vaultNamespace,
+      credentialScope: "plugin",
       body: {
         type: pluginName,
         description: request.description ?? `${pluginName} managed by Security Portal`,
@@ -310,6 +313,7 @@ class RealVaultClient implements VaultClient {
     });
     const verify = await this.vaultRequest("GET", enableListPath, {
       namespace: this.config.vaultNamespace,
+      credentialScope: "plugin",
       tolerateStatus: [200]
     });
 
@@ -351,16 +355,19 @@ class RealVaultClient implements VaultClient {
   async rollbackPlugin(request: VaultPluginRollbackRequest): Promise<VaultPluginRollbackResult> {
     const pluginName = normalizeMount(request.pluginName);
     const mountPath = normalizeMount(request.mountPath);
+    this.assertPluginMountAllowed(mountPath);
     const mountApiPath = request.pluginType === "auth" ? `sys/auth/${mountPath}` : `sys/mounts/${mountPath}`;
     const catalogPath = `sys/plugins/catalog/${request.pluginType}/${pluginName}`;
     const disable = await this.vaultRequest("DELETE", mountApiPath, {
       namespace: this.config.vaultNamespace,
+      credentialScope: "plugin",
       tolerateStatus: [200, 204, 404]
     });
     let catalogStatus: number | undefined;
     if (request.removeCatalog) {
       const catalog = await this.vaultRequest("DELETE", catalogPath, {
         namespace: this.config.vaultNamespace,
+        credentialScope: "plugin",
         tolerateStatus: [200, 204, 404]
       });
       catalogStatus = catalog.status;
@@ -399,6 +406,7 @@ class RealVaultClient implements VaultClient {
       body?: Record<string, unknown>;
       wrapTtl?: string;
       allowUnauthenticated?: boolean;
+      credentialScope?: "runtime" | "plugin";
       tolerateStatus?: number[];
     } = {}
   ): Promise<VaultResponse> {
@@ -413,7 +421,9 @@ class RealVaultClient implements VaultClient {
       const headers: Record<string, string> = {
         "content-type": "application/json"
       };
-      const token = options.allowUnauthenticated ? undefined : await this.getClientToken();
+      const token = options.allowUnauthenticated
+        ? undefined
+        : await this.getClientToken(options.credentialScope ?? "runtime");
       if (token) headers["X-Vault-Token"] = token;
       if (options.namespace) headers["X-Vault-Namespace"] = options.namespace;
       if (options.wrapTtl) headers["X-Vault-Wrap-TTL"] = options.wrapTtl;
@@ -434,7 +444,7 @@ class RealVaultClient implements VaultClient {
     }
   }
 
-  private async getClientToken(): Promise<string | undefined> {
+  private async getClientToken(scope: "runtime" | "plugin"): Promise<string | undefined> {
     if (this.config.vaultAuthMode === "token") {
       if (!this.config.vaultToken) {
         throw new Error("VAULT_TOKEN is required for VAULT_AUTH_MODE=token");
@@ -443,18 +453,25 @@ class RealVaultClient implements VaultClient {
     }
 
     if (this.config.vaultAuthMode === "approle") {
-      if (this.cachedToken && this.cachedToken.expiresAt > Date.now() + 30_000) {
-        return this.cachedToken.token;
+      const cachedToken = this.cachedTokens.get(scope);
+      if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) {
+        return cachedToken.token;
       }
-      if (!this.config.vaultRoleId || !this.config.vaultSecretId) {
-        throw new Error("VAULT_ROLE_ID and VAULT_SECRET_ID are required for VAULT_AUTH_MODE=approle");
+      const roleId = scope === "plugin" ? this.config.vaultPluginRoleId : this.config.vaultRoleId;
+      const secretId = scope === "plugin" ? this.config.vaultPluginSecretId : this.config.vaultSecretId;
+      if (!roleId || !secretId) {
+        throw new Error(
+          scope === "plugin"
+            ? "VAULT_PLUGIN_ROLE_ID and VAULT_PLUGIN_SECRET_ID are required for real plugin operations"
+            : "VAULT_ROLE_ID and VAULT_SECRET_ID are required for VAULT_AUTH_MODE=approle"
+        );
       }
       const mount = normalizeMount(this.config.vaultAppRoleAuthMount);
       const response = await this.vaultRequest("POST", `auth/${mount}/login`, {
         allowUnauthenticated: true,
         body: {
-          role_id: this.config.vaultRoleId,
-          secret_id: this.config.vaultSecretId
+          role_id: roleId,
+          secret_id: secretId
         }
       });
       const clientToken = response.body.auth?.client_token;
@@ -462,10 +479,10 @@ class RealVaultClient implements VaultClient {
         throw new Error("Vault AppRole login did not return a client token");
       }
       const leaseDuration = Number(response.body.auth?.lease_duration ?? 3600);
-      this.cachedToken = {
+      this.cachedTokens.set(scope, {
         token: clientToken,
         expiresAt: Date.now() + leaseDuration * 1000
-      };
+      });
       return clientToken;
     }
 
@@ -478,6 +495,13 @@ class RealVaultClient implements VaultClient {
     }
 
     return undefined;
+  }
+
+  private assertPluginMountAllowed(mountPath: string): void {
+    const prefix = this.config.vaultPluginAllowedMountPrefix?.replace(/^\/+|\/+$/g, "");
+    if (prefix && mountPath !== prefix && !mountPath.startsWith(`${prefix}/`)) {
+      throw new Error(`Real plugin operations are restricted to ${prefix}/`);
+    }
   }
 }
 

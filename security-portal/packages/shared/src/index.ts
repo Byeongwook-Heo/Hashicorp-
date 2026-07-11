@@ -190,12 +190,49 @@ export interface VaultPluginGeneratedFile {
 }
 
 export interface VaultPluginGenerateRequest {
+  interviewId?: string;
   templateId: string;
   pluginName: string;
   mountPath: string;
   version: string;
   command: string;
   description?: string;
+  requirements?: VaultPluginRequirements;
+}
+
+export type VaultPluginRequirementField =
+  | "targetSystem"
+  | "authMethod"
+  | "apiBasePath"
+  | "ttl"
+  | "rotationStrategy"
+  | "revokeStrategy"
+  | "mountPath";
+
+export interface VaultPluginRequirements {
+  targetSystem: string;
+  authMethod: string;
+  apiBasePath: string;
+  ttl: string;
+  rotationStrategy: string;
+  revokeStrategy: string;
+  mountPath: string;
+  environment: "dev" | "staging" | "prod";
+  confirmed: boolean;
+  confirmedAt?: string;
+}
+
+export interface VaultPluginRequirementsInterview {
+  id: string;
+  templateId: string;
+  requestedApply: boolean;
+  spec: VaultPluginRequirements;
+  missingFields: VaultPluginRequirementField[];
+  readyToConfirm: boolean;
+  provider: "ollama" | "rules";
+  model?: string;
+  reply: string;
+  updatedAt: string;
 }
 
 export interface VaultPluginMarketplaceProfile {
@@ -293,11 +330,48 @@ export interface VaultPluginGenerateResult {
   commands: string[];
   applyPlan: string[];
   warnings: string[];
+  requirements: VaultPluginRequirements;
   blueprint: VaultPluginBlueprint;
   dryRun: VaultPluginDryRunPlan;
   buildTest: VaultPluginBuildTestPlan;
   rollbackPlan: VaultPluginRollbackPlan;
   securityReview: VaultPluginSecurityReview;
+  buildArtifact?: VaultPluginBuildArtifact;
+}
+
+export interface VaultPluginBuildArtifact {
+  bucket: string;
+  key: string;
+  sha256: string;
+  architecture: "arm64";
+  command: string;
+  builtAt: string;
+}
+
+export interface VaultPluginBuildAttempt {
+  attempt: number;
+  status: "pass" | "fail";
+  summary: string;
+  diagnostics: string;
+  durationMs: number;
+  repairedFiles: string[];
+  provider?: "ollama" | "rules";
+  model?: string;
+}
+
+export interface VaultPluginAutoRepairResult {
+  id: string;
+  status: "running" | "pass" | "failed";
+  maxAttempts: number;
+  attempts: VaultPluginBuildAttempt[];
+  files: VaultPluginGeneratedFile[];
+  scaffoldSha256: string;
+  buildTest: VaultPluginBuildTestPlan;
+  securityReview: VaultPluginSecurityReview;
+  artifact?: VaultPluginBuildArtifact;
+  startedAt: string;
+  completedAt?: string;
+  summary: string;
 }
 
 export interface VaultPluginApplyRequest {
@@ -308,6 +382,8 @@ export interface VaultPluginApplyRequest {
   command: string;
   artifactSha256: string;
   description?: string;
+  artifactBucket?: string;
+  artifactKey?: string;
 }
 
 export interface VaultPluginApplyResult {

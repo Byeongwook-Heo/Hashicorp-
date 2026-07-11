@@ -27,6 +27,7 @@ PRIVATE_IP="$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.
 INSTANCE_ID="$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)"
 
 install -d -o vault -g vault -m 0750 /opt/vault/data
+install -d -o vault -g vault -m 0750 /opt/vault/plugins
 install -d -o vault -g vault -m 0750 /etc/vault.d
 
 log "Fetching Vault Enterprise license from SSM"
@@ -46,6 +47,7 @@ disable_mlock = true
 api_addr = "http://$PRIVATE_IP:8200"
 cluster_addr = "http://$PRIVATE_IP:8201"
 license_path = "/etc/vault.d/vault.hclic"
+plugin_directory = "/opt/vault/plugins"
 
 listener "tcp" {
   address = "0.0.0.0:8200"

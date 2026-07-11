@@ -1813,6 +1813,115 @@ textarea {
   box-shadow: none;
 }
 
+.requirementsInterview {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(226, 232, 240, 0.16);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.16);
+}
+
+.requirementsHeader,
+.requirementsActions,
+.repairAttemptHeader,
+.buildArtifactLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.requirementsHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.requirementsHeader span,
+.requirementsActions span,
+.repairAttemptHeader span {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.requirementsHeader strong {
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.runtimeBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid rgba(34, 211, 238, 0.32);
+  border-radius: 8px;
+  color: #a5f3fc !important;
+  white-space: nowrap;
+}
+
+.requirementsProgress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.requirementsProgress span {
+  display: block;
+  height: 100%;
+  background: var(--vault);
+  transition: width 220ms ease;
+}
+
+.requirementsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.requirementsGrid label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.requirementsGrid label.wide {
+  grid-column: 1 / -1;
+}
+
+.requirementsGrid input,
+.requirementsGrid select {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  border-color: rgba(226, 232, 240, 0.2);
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  font-size: 12px;
+}
+
+.requirementsGrid input:focus,
+.requirementsGrid select:focus {
+  border-color: rgba(255, 207, 37, 0.68);
+  outline: 2px solid rgba(255, 207, 37, 0.16);
+}
+
+.requirementsInterview.confirmed .requirementsProgress span {
+  background: #22c55e;
+}
+
+.requirementsActions button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
 .factoryCodeConsole {
   position: relative;
   overflow: hidden;
@@ -2275,6 +2384,83 @@ textarea {
 .safetyList {
   display: grid;
   gap: 8px;
+}
+
+.repairAttemptList {
+  display: grid;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.repairAttemptHeader strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.repairAttempt {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.repairAttempt > span {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.repairAttempt > span.pass {
+  border-color: rgba(34, 197, 94, 0.45);
+  color: #15803d;
+}
+
+.repairAttempt > span.fail {
+  border-color: rgba(239, 68, 68, 0.42);
+  color: #b91c1c;
+}
+
+.repairAttempt > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.repairAttempt strong,
+.repairAttempt small {
+  overflow-wrap: anywhere;
+}
+
+.repairAttempt strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.repairAttempt small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.buildArtifactLine {
+  justify-content: flex-start;
+  min-width: 0;
+  color: #15803d;
+  font-size: 11px;
+}
+
+.buildArtifactLine strong {
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .questionList label {
@@ -3303,6 +3489,12 @@ textarea {
 
   .dependencyMapSurface {
     min-height: 760px;
+    margin-inline: -14px;
+  }
+
+  .lifecycleTimeline {
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .dependencyMapCanvas {
@@ -4133,13 +4325,14 @@ tbody tr:hover {
     height: 100dvh;
     min-height: 0;
     padding: 18px 12px;
-    transform: translateX(-102%);
+    transform: translateX(calc(-100% - 32px));
     transition: transform 210ms ease;
-    box-shadow: var(--shadow-strong);
+    box-shadow: none;
   }
 
   .sidebar.open {
     transform: translateX(0);
+    box-shadow: var(--shadow-strong);
   }
 
   .sidebarHeader {
@@ -5288,6 +5481,26 @@ tbody tr:hover {
 }
 
 @media (max-width: 640px) {
+  .requirementsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .requirementsGrid label.wide {
+    grid-column: auto;
+  }
+
+  .requirementsHeader,
+  .requirementsActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .requirementsActions button,
+  .runtimeBadge {
+    width: 100%;
+    justify-content: center;
+  }
+
   .factoryRoleHome {
     grid-template-columns: auto minmax(0, 1fr);
   }
