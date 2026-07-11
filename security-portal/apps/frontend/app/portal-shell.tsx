@@ -14,37 +14,62 @@ import {
   type UserStatus,
   type SystemSummary,
   type VaultPluginApplyResult,
+  type VaultPluginFactoryJob,
   type VaultPluginGenerateResult,
+  type VaultPluginGeneratedFile,
+  type VaultPluginRollbackResult,
   type VaultPluginTemplate,
   type VaultPluginType,
   type VaultMappingHealth
 } from "@security-portal/shared";
 import Link from "next/link";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
+  BadgeCheck,
   Boxes,
+  CalendarClock,
   CheckCircle2,
   CircleGauge,
+  ClipboardCopy,
   ClipboardCheck,
+  Code2,
   Database,
+  FileDiff,
+  Files,
+  GitCompare,
   HeartPulse,
+  History,
   Inbox,
   KeyRound,
   LayoutDashboard,
+  ListChecks,
   LoaderCircle,
   LogOut,
+  Maximize2,
   Menu,
+  MessageSquare,
+  Minimize2,
   Moon,
+  PackageSearch,
   PlugZap,
+  RefreshCw,
+  Rocket,
   ScrollText,
+  Search,
   Send,
+  Shield,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Star,
   Sun,
+  Undo2,
   Upload,
+  UserCheck,
   Users,
+  Workflow,
   Wrench,
   X,
   type LucideIcon
@@ -2038,6 +2063,27 @@ type PluginFactoryHistoryItem = {
   createdAt: string;
   status: "success" | "warning";
 };
+type FactoryTab = "workspace" | "discover" | "files" | "review" | "deploy" | "history";
+type FileEditorMode = "preview" | "edit" | "diff";
+type FactoryWorkspaceSnapshot = {
+  activeTab?: FactoryTab;
+  selectedId?: string;
+  pluginName?: string;
+  mountPath?: string;
+  version?: string;
+  command?: string;
+  description?: string;
+  artifactSha256?: string;
+  chatMessages?: PluginChatMessage[];
+  generated?: VaultPluginGenerateResult;
+  draftFiles?: VaultPluginGeneratedFile[];
+  activeFilePath?: string;
+  savedBlueprints?: string[];
+  pluginHistory?: PluginFactoryHistoryItem[];
+  favoriteTemplateIds?: string[];
+  recentTemplateIds?: string[];
+  compareTemplateIds?: string[];
+};
 
 const factoryStepDelayMs = 280;
 
@@ -2087,9 +2133,33 @@ function PluginFactory({
   const [savedBlueprints, setSavedBlueprints] = useState<string[]>([]);
   const [pluginHistory, setPluginHistory] = useState<PluginFactoryHistoryItem[]>([]);
   const [rollbackPreview, setRollbackPreview] = useState<string | null>(null);
+  const [activeFactoryTab, setActiveFactoryTab] = useState<FactoryTab>("workspace");
+  const [templateQuery, setTemplateQuery] = useState("");
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
+  const [favoriteTemplateIds, setFavoriteTemplateIds] = useState<string[]>([]);
+  const [recentTemplateIds, setRecentTemplateIds] = useState<string[]>([]);
+  const [compareTemplateIds, setCompareTemplateIds] = useState<string[]>([]);
+  const [draftFiles, setDraftFiles] = useState<VaultPluginGeneratedFile[]>([]);
+  const [fileQuery, setFileQuery] = useState("");
+  const [fileEditorMode, setFileEditorMode] = useState<FileEditorMode>("preview");
+  const [fileFullscreen, setFileFullscreen] = useState(false);
+  const [copiedFilePath, setCopiedFilePath] = useState<string | null>(null);
+  const [factoryJobs, setFactoryJobs] = useState<VaultPluginFactoryJob[]>([]);
+  const [activeJobId, setActiveJobId] = useState("");
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [workspaceSaving, setWorkspaceSaving] = useState(false);
+  const [approvalNote, setApprovalNote] = useState("");
+  const [scheduleAt, setScheduleAt] = useState("");
+  const [rollbackConfirmed, setRollbackConfirmed] = useState(false);
+  const [removeCatalogOnRollback, setRemoveCatalogOnRollback] = useState(false);
+  const [rollbackResult, setRollbackResult] = useState<VaultPluginRollbackResult | null>(null);
+  const jobCreationRef = useRef<Promise<VaultPluginFactoryJob> | null>(null);
   const canApply = currentUser?.roles.includes("vault-admin") ?? false;
+  const canReviewJobs = currentUser?.roles.some((role) => role === "security-approver" || role === "vault-admin") ?? false;
+  const canAuthorJobs = currentUser?.roles.some((role) => role === "developer" || role === "app-owner" || role === "vault-admin") ?? false;
   const scaffoldDownload = useMemo(() => {
     if (!generated) return null;
+    const files = draftFiles.length ? draftFiles : generated.files;
     const payload = JSON.stringify(
       {
         pluginName: generated.pluginName,
@@ -2097,7 +2167,7 @@ function PluginFactory({
         version: generated.version,
         command: generated.command,
         scaffoldSha256: generated.scaffoldSha256,
-        files: generated.files
+        files
       },
       null,
       2
@@ -2106,16 +2176,17 @@ function PluginFactory({
       href: `data:application/json;charset=utf-8,${encodeURIComponent(payload)}`,
       filename: `${generated.pluginName}-scaffold.json`
     };
-  }, [generated]);
+  }, [draftFiles, generated]);
 
   useEffect(() => {
     let mounted = true;
     async function loadTemplates() {
       setBusy("load");
       try {
-        const [response, assistantHealth] = await Promise.all([
+        const [response, assistantHealth, jobsResponse] = await Promise.all([
           api<{ templates: VaultPluginTemplate[] }>("/plugin-factory/templates"),
-          api<FactoryAssistantHealth>("/health/llm").catch(() => null)
+          api<FactoryAssistantHealth>("/health/llm").catch(() => null),
+          api<{ jobs: VaultPluginFactoryJob[] }>("/plugin-factory/jobs")
         ]);
         if (!mounted) return;
         setTemplates(response.templates);
@@ -2124,14 +2195,23 @@ function PluginFactory({
             ? { provider: assistantHealth.provider, model: assistantHealth.model, checked: true }
             : { provider: "rules", fallbackReason: "unavailable", checked: true }
         );
-        const first = response.templates[0];
-        if (first) {
-          setSelectedId(first.id);
-          hydratePluginForm(first);
+        setFactoryJobs(jobsResponse.jobs);
+        const latestOwnedJob = jobsResponse.jobs.find((job) => job.ownerId === currentUser?.id);
+        if (latestOwnedJob) {
+          setActiveJobId(latestOwnedJob.id);
+          hydrateFactoryWorkspace(latestOwnedJob.snapshot as FactoryWorkspaceSnapshot, response.templates);
+        } else {
+          const first = response.templates[0];
+          if (first) {
+            setSelectedId(first.id);
+            hydratePluginForm(first);
+          }
         }
+        setWorkspaceReady(true);
         setStatus(null);
       } catch (err) {
         setStatus(err instanceof Error ? err.message : "Unable to load plugin templates");
+        setWorkspaceReady(true);
       } finally {
         if (mounted) setBusy(null);
       }
@@ -2149,13 +2229,38 @@ function PluginFactory({
   }, [welcomeMessage]);
 
   useEffect(() => {
-    if (generated?.files.length && !generated.files.some((file) => file.path === activeFilePath)) {
-      setActiveFilePath(generated.files[0]?.path ?? "");
+    if (draftFiles.length && !draftFiles.some((file) => file.path === activeFilePath)) {
+      setActiveFilePath(draftFiles[0]?.path ?? "");
     }
-  }, [activeFilePath, generated]);
+  }, [activeFilePath, draftFiles]);
 
   const selectedTemplate = templates.find((template) => template.id === selectedId) ?? templates[0];
-  const filteredTemplates = templates.filter((template) => templateMatchesFilter(template, filter));
+  const normalizedTemplateQuery = templateQuery.trim().toLowerCase();
+  const filteredTemplates = templates
+    .filter((template) => templateMatchesFilter(template, filter))
+    .filter((template) => !favoriteOnly || favoriteTemplateIds.includes(template.id))
+    .filter((template) => {
+      if (!normalizedTemplateQuery) return true;
+      return [
+        template.displayName,
+        template.name,
+        template.description,
+        template.integrationTarget,
+        template.tags.join(" "),
+        template.marketplace.badges.join(" ")
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedTemplateQuery);
+    })
+    .sort((a, b) => {
+      const aRecent = recentTemplateIds.indexOf(a.id);
+      const bRecent = recentTemplateIds.indexOf(b.id);
+      if (aRecent === -1 && bRecent === -1) return a.displayName.localeCompare(b.displayName);
+      if (aRecent === -1) return 1;
+      if (bRecent === -1) return -1;
+      return aRecent - bRecent;
+    });
   const counts: Record<PluginFilter, number> = {
     all: templates.length,
     auth: templates.filter((template) => template.pluginType === "auth").length,
@@ -2173,11 +2278,64 @@ function PluginFactory({
     localize(t, "List every plugin you can make", "만들 수 있는 플러그인 전부 알려줘"),
     localize(t, "Compare Sectigo and DigiCert", "Sectigo와 DigiCert를 비교해줘")
   ];
-  const activeFile = generated?.files.find((file) => file.path === activeFilePath) ?? generated?.files[0];
+  const currentJob = factoryJobs.find((job) => job.id === activeJobId);
+  const ownsCurrentJob = Boolean(currentJob && currentUser && currentJob.ownerId === currentUser.id);
+  const canConfigureDeployment = ownsCurrentJob || canReviewJobs;
+  const canRequestApproval = ownsCurrentJob || canApply;
+  const compareTemplates = compareTemplateIds
+    .map((id) => templates.find((template) => template.id === id))
+    .filter((template): template is VaultPluginTemplate => Boolean(template));
+  const filteredFiles = draftFiles.filter((file) => {
+    const query = fileQuery.trim().toLowerCase();
+    return !query || file.path.toLowerCase().includes(query) || file.content.toLowerCase().includes(query);
+  });
+  const activeFile = draftFiles.find((file) => file.path === activeFilePath) ?? draftFiles[0];
+  const originalFile = generated?.files.find((file) => file.path === activeFile?.path);
+  const activeFileDiff = fileDiffSummary(originalFile?.content ?? "", activeFile?.content ?? "");
+  const highFindings = generated?.securityReview.findings.filter((finding) => finding.severity === "high").length ?? 0;
+  const preflightChecks = [
+    {
+      label: localize(t, "Build and tests", "빌드 및 테스트"),
+      detail: generated?.buildTest.status ?? localize(t, "Not run", "미실행"),
+      pass: generated?.buildTest.status === "pass"
+    },
+    {
+      label: localize(t, "Security review", "보안 검토"),
+      detail: generated ? `${generated.securityReview.score}/100 · ${highFindings} high` : localize(t, "Not run", "미실행"),
+      pass: Boolean(generated && generated.securityReview.posture !== "blocked" && highFindings === 0)
+    },
+    {
+      label: localize(t, "Artifact checksum", "아티팩트 체크섬"),
+      detail: artifactSha256 ? shortId(artifactSha256) : localize(t, "Missing", "없음"),
+      pass: /^[a-f0-9]{64}$/i.test(artifactSha256)
+    },
+    {
+      label: localize(t, "Approval", "승인"),
+      detail: currentJob?.approval.status ?? localize(t, "Not requested", "요청 전"),
+      pass: currentJob?.approval.status === "approved"
+    }
+  ];
+  const preflightPassed = preflightChecks.every((check) => check.pass);
+  const workflowStages = [
+    { id: "design", label: localize(t, "Design", "설계"), complete: Boolean(selectedTemplate) },
+    { id: "generate", label: localize(t, "Generate", "생성"), complete: Boolean(generated) },
+    { id: "test", label: localize(t, "Test", "검증"), complete: generated?.buildTest.status === "pass" },
+    { id: "approval", label: localize(t, "Approval", "승인"), complete: currentJob?.approval.status === "approved" },
+    { id: "deploy", label: localize(t, "Deploy", "배포"), complete: Boolean(applyResult?.applied) }
+  ];
+  const roleHome = factoryRoleHome(currentUser, factoryJobs, generated, favoriteTemplateIds.length, t);
+  const factoryTabs: Array<{ id: FactoryTab; icon: LucideIcon; label: string }> = [
+    { id: "workspace", icon: MessageSquare, label: localize(t, "Workspace", "작업공간") },
+    { id: "discover", icon: PackageSearch, label: localize(t, "Discover", "탐색") },
+    { id: "files", icon: Files, label: localize(t, "Files", "파일") },
+    { id: "review", icon: ListChecks, label: localize(t, "Review", "검토") },
+    { id: "deploy", icon: Rocket, label: localize(t, "Deploy", "배포") },
+    { id: "history", icon: History, label: localize(t, "History", "이력") }
+  ];
   const capabilityCards = [
     ["1", localize(t, "Dry-run diff", "Dry-run 변경점"), generated ? generated.dryRun.changes.length : 0],
     ["2", localize(t, "AI spec interview", "AI 질문형 설계"), generated ? generated.blueprint.questions.length : 0],
-    ["3", localize(t, "Code preview", "코드 미리보기"), generated ? generated.files.length : 0],
+    ["3", localize(t, "Code preview", "코드 미리보기"), draftFiles.length],
     ["4", localize(t, "Build/Test", "빌드/테스트"), generated ? generated.buildTest.steps.length : 0],
     ["5", localize(t, "Apply guardrails", "적용 안전장치"), generated ? generated.dryRun.approvals.length : 0],
     ["6", localize(t, "Blueprint save", "Blueprint 저장"), savedBlueprints.length],
@@ -2191,6 +2349,146 @@ function PluginFactory({
     ["10", localize(t, "Security review", "보안 리뷰"), generated ? generated.securityReview.findings.length : 0]
   ];
 
+  useEffect(() => {
+    if (!workspaceReady || !currentUser || busy === "load" || !selectedId) return;
+    const timer = window.setTimeout(() => {
+      void persistFactoryWorkspace();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [
+    workspaceReady,
+    activeFactoryTab,
+    selectedId,
+    pluginName,
+    mountPath,
+    version,
+    command,
+    description,
+    artifactSha256,
+    chatMessages,
+    generated,
+    draftFiles,
+    activeFilePath,
+    savedBlueprints,
+    pluginHistory,
+    favoriteTemplateIds,
+    recentTemplateIds,
+    compareTemplateIds
+  ]);
+
+  function factoryWorkspaceSnapshot(): FactoryWorkspaceSnapshot {
+    return {
+      activeTab: activeFactoryTab,
+      selectedId,
+      pluginName,
+      mountPath,
+      version,
+      command,
+      description,
+      artifactSha256,
+      chatMessages: chatMessages.slice(-40),
+      generated: generated ?? undefined,
+      draftFiles,
+      activeFilePath,
+      savedBlueprints,
+      pluginHistory,
+      favoriteTemplateIds,
+      recentTemplateIds,
+      compareTemplateIds
+    };
+  }
+
+  function hydrateFactoryWorkspace(snapshot: FactoryWorkspaceSnapshot, availableTemplates: VaultPluginTemplate[]) {
+    const template = availableTemplates.find((item) => item.id === snapshot.selectedId) ?? availableTemplates[0];
+    if (template) {
+      setSelectedId(template.id);
+      setPluginName(snapshot.pluginName ?? template.name);
+      setMountPath(snapshot.mountPath ?? template.defaultMountPath);
+      setVersion(snapshot.version ?? template.defaultVersion);
+      setCommand(snapshot.command ?? template.defaultCommand);
+      setDescription(snapshot.description ?? template.description);
+    }
+    setActiveFactoryTab(snapshot.activeTab ?? "workspace");
+    setArtifactSha256(snapshot.artifactSha256 ?? snapshot.generated?.scaffoldSha256 ?? "");
+    setChatMessages(snapshot.chatMessages?.length ? snapshot.chatMessages : [{ id: "welcome", role: "assistant", content: welcomeMessage }]);
+    setGenerated(snapshot.generated ?? null);
+    setDraftFiles(snapshot.draftFiles?.length ? snapshot.draftFiles : snapshot.generated?.files ?? []);
+    setActiveFilePath(snapshot.activeFilePath ?? snapshot.draftFiles?.[0]?.path ?? snapshot.generated?.files[0]?.path ?? "");
+    setSavedBlueprints(snapshot.savedBlueprints ?? []);
+    setPluginHistory(snapshot.pluginHistory ?? []);
+    setFavoriteTemplateIds(snapshot.favoriteTemplateIds ?? []);
+    setRecentTemplateIds(snapshot.recentTemplateIds ?? []);
+    setCompareTemplateIds(snapshot.compareTemplateIds?.slice(0, 2) ?? []);
+  }
+
+  function upsertFactoryJob(job: VaultPluginFactoryJob) {
+    setFactoryJobs((jobs) => [job, ...jobs.filter((item) => item.id !== job.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+  }
+
+  async function ensureFactoryJob(): Promise<VaultPluginFactoryJob> {
+    if (currentJob && currentUser && currentJob.ownerId === currentUser.id) return currentJob;
+    if (jobCreationRef.current) return jobCreationRef.current;
+    const creation = api<{ job: VaultPluginFactoryJob }>("/plugin-factory/jobs", {
+      method: "POST",
+      body: JSON.stringify({
+        templateId: selectedTemplate?.id,
+        pluginName: pluginName || selectedTemplate?.name || "vault-plugin-draft",
+        snapshot: factoryWorkspaceSnapshot()
+      })
+    }).then((response) => {
+      setActiveJobId(response.job.id);
+      upsertFactoryJob(response.job);
+      return response.job;
+    });
+    jobCreationRef.current = creation;
+    try {
+      return await creation;
+    } finally {
+      jobCreationRef.current = null;
+    }
+  }
+
+  async function patchFactoryJob(
+    patch: Partial<Pick<VaultPluginFactoryJob, "templateId" | "pluginName" | "status" | "stage" | "progress" | "snapshot" | "events" | "deployment">>
+  ): Promise<VaultPluginFactoryJob> {
+    const job = await ensureFactoryJob();
+    return patchFactoryJobById(job.id, patch);
+  }
+
+  async function patchFactoryJobById(
+    jobId: string,
+    patch: Partial<Pick<VaultPluginFactoryJob, "templateId" | "pluginName" | "status" | "stage" | "progress" | "snapshot" | "events" | "deployment">>
+  ): Promise<VaultPluginFactoryJob> {
+    const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${jobId}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch)
+    });
+    upsertFactoryJob(response.job);
+    return response.job;
+  }
+
+  async function persistFactoryWorkspace() {
+    if (!workspaceReady || !selectedTemplate) return;
+    if (currentJob && currentJob.ownerId !== currentUser?.id) return;
+    setWorkspaceSaving(true);
+    try {
+      const snapshot = factoryWorkspaceSnapshot() as unknown as Record<string, unknown>;
+      if (currentJob) {
+        const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${currentJob.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ templateId: selectedTemplate.id, pluginName: pluginName || selectedTemplate.name, snapshot })
+        });
+        upsertFactoryJob(response.job);
+      } else {
+        await ensureFactoryJob();
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : localize(t, "Unable to save Factory workspace.", "Factory 작업을 저장하지 못했습니다."));
+    } finally {
+      setWorkspaceSaving(false);
+    }
+  }
+
   function hydratePluginForm(template: VaultPluginTemplate) {
     setPluginName(template.name);
     setMountPath(template.defaultMountPath);
@@ -2199,11 +2497,14 @@ function PluginFactory({
     setDescription(template.description);
     setArtifactSha256("");
     setGenerated(null);
+    setDraftFiles([]);
+    setActiveFilePath("");
     setApplyResult(null);
   }
 
   function chooseTemplate(template: VaultPluginTemplate) {
     setSelectedId(template.id);
+    setRecentTemplateIds((ids) => [template.id, ...ids.filter((id) => id !== template.id)].slice(0, 8));
     hydratePluginForm(template);
     setStatus(null);
   }
@@ -2213,6 +2514,201 @@ function PluginFactory({
     if (selectedTemplate && templateMatchesFilter(selectedTemplate, nextFilter)) return;
     const firstMatch = templates.find((template) => templateMatchesFilter(template, nextFilter));
     if (firstMatch) chooseTemplate(firstMatch);
+  }
+
+  function toggleFavorite(templateId: string) {
+    setFavoriteTemplateIds((ids) => (ids.includes(templateId) ? ids.filter((id) => id !== templateId) : [templateId, ...ids]));
+  }
+
+  function toggleComparison(templateId: string) {
+    setCompareTemplateIds((ids) => {
+      if (ids.includes(templateId)) return ids.filter((id) => id !== templateId);
+      return [...ids.slice(-1), templateId];
+    });
+  }
+
+  async function refreshFactoryJobs() {
+    const response = await api<{ jobs: VaultPluginFactoryJob[] }>("/plugin-factory/jobs");
+    setFactoryJobs(response.jobs);
+    const updated = response.jobs.find((job) => job.id === activeJobId);
+    if (updated) upsertFactoryJob(updated);
+  }
+
+  async function runFactoryJobAction(
+    action: "request-approval" | "approve" | "reject" | "schedule" | "canary" | "full" | "retry" | "rollback"
+  ) {
+    const canUseCurrentJob = Boolean(
+      currentJob && currentUser && (currentJob.ownerId === currentUser.id || canReviewJobs)
+    );
+    const job = canUseCurrentJob ? currentJob : await ensureFactoryJob();
+    if (!job) return;
+    setStatus(null);
+    try {
+      if (action === "request-approval") {
+        await patchFactoryJobById(job.id, {
+          templateId: selectedTemplate?.id,
+          pluginName: pluginName || selectedTemplate?.name || job.pluginName,
+          snapshot: factoryWorkspaceSnapshot() as unknown as Record<string, unknown>
+        });
+      }
+      const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${job.id}/actions`, {
+        method: "POST",
+        body: JSON.stringify({
+          action,
+          note: approvalNote.trim() || undefined,
+          scheduledFor: action === "schedule" && scheduleAt ? new Date(scheduleAt).toISOString() : undefined
+        })
+      });
+      upsertFactoryJob(response.job);
+      setActiveJobId(response.job.id);
+      setStatus(
+        localize(
+          t,
+          `Factory action completed: ${action}.`,
+          `Factory 작업이 처리되었습니다: ${factoryActionLabel(action, t)}.`
+        )
+      );
+      if (action === "approve" || action === "reject") setApprovalNote("");
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : localize(t, "Unable to update Factory job.", "Factory 작업을 변경하지 못했습니다."));
+    }
+  }
+
+  async function updateDeploymentEnvironment(environment: "dev" | "staging" | "prod") {
+    const canUseCurrentJob = Boolean(
+      currentJob && currentUser && (currentJob.ownerId === currentUser.id || canReviewJobs)
+    );
+    const job = canUseCurrentJob && currentJob ? currentJob : await ensureFactoryJob();
+    await patchFactoryJobById(job.id, {
+      deployment: { ...job.deployment, environment }
+    });
+  }
+
+  async function executePluginRollback() {
+    if (!generated || !currentJob || !rollbackConfirmed || !canApply) return;
+    setBusy("apply");
+    setStatus(null);
+    startFactoryJob("apply", localize(t, `Rolling back ${generated.pluginName}`, `${generated.pluginName} 롤백 중`));
+    try {
+      await playFactoryJobLines(generated.rollbackPlan.commands);
+      const response = await api<{ result: VaultPluginRollbackResult }>("/plugin-factory/rollback", {
+        method: "POST",
+        body: JSON.stringify({
+          jobId: currentJob.id,
+          pluginType: generated.template.pluginType,
+          pluginName: generated.pluginName,
+          mountPath: generated.mountPath,
+          removeCatalog: removeCatalogOnRollback
+        })
+      });
+      setRollbackResult(response.result);
+      setRollbackConfirmed(false);
+      setApplyResult(null);
+      finishFactoryJob("complete", localize(t, "✓ rollback completed", "✓ 롤백 완료"));
+      setStatus(localize(t, "Vault plugin rollback completed.", "Vault 플러그인 롤백이 완료되었습니다."));
+      await refreshFactoryJobs();
+    } catch (err) {
+      finishFactoryJob("failed", `✕ ${err instanceof Error ? err.message : "rollback failed"}`);
+      setStatus(err instanceof Error ? err.message : localize(t, "Unable to roll back plugin.", "플러그인을 롤백하지 못했습니다."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function loadFactoryJob(job: VaultPluginFactoryJob) {
+    setActiveJobId(job.id);
+    hydrateFactoryWorkspace(job.snapshot as FactoryWorkspaceSnapshot, templates);
+    setActiveFactoryTab(job.approval.status === "requested" && canReviewJobs ? "deploy" : "workspace");
+  }
+
+  function openRoleHomeAction() {
+    const pendingJob = canReviewJobs ? factoryJobs.find((job) => job.approval.status === "requested") : undefined;
+    if (pendingJob) {
+      loadFactoryJob(pendingJob);
+      return;
+    }
+    setActiveFactoryTab(roleHome.tab);
+  }
+
+  function updateActiveFileContent(content: string) {
+    if (!activeFile) return;
+    setDraftFiles((files) => files.map((file) => (file.path === activeFile.path ? { ...file, content } : file)));
+  }
+
+  function resetActiveFile() {
+    if (!activeFile || !originalFile) return;
+    setDraftFiles((files) => files.map((file) => (file.path === activeFile.path ? originalFile : file)));
+  }
+
+  async function copyActiveFile() {
+    if (!activeFile) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(activeFile.content);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = activeFile.content;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      setCopiedFilePath(activeFile.path);
+      window.setTimeout(() => setCopiedFilePath((path) => (path === activeFile.path ? null : path)), 1200);
+    } catch {
+      setStatus(localize(t, "Unable to copy this file.", "파일을 복사하지 못했습니다."));
+    }
+  }
+
+  async function rebuildEditedFiles() {
+    if (!generated || !draftFiles.length) return;
+    setBusy("generate");
+    startFactoryJob("generate", localize(t, "Revalidating edited scaffold", "수정된 스캐폴드 재검증 중"));
+    try {
+      await playFactoryJobLines([
+        `$ factory diff --files=${draftFiles.length}`,
+        `$ gofmt -w ./...`,
+        `$ go test ./...`,
+        `$ factory security scan`
+      ]);
+      const job = await ensureFactoryJob();
+      const response = await api<{
+        files: VaultPluginGeneratedFile[];
+        scaffoldSha256: string;
+        buildTest: VaultPluginGenerateResult["buildTest"];
+        securityReview: VaultPluginGenerateResult["securityReview"];
+      }>("/plugin-factory/rebuild", {
+        method: "POST",
+        body: JSON.stringify({ jobId: job.id, files: draftFiles })
+      });
+      const nextGenerated: VaultPluginGenerateResult = {
+        ...generated,
+        files: response.files,
+        scaffoldSha256: response.scaffoldSha256,
+        generatedAt: new Date().toISOString(),
+        buildTest: response.buildTest,
+        securityReview: response.securityReview
+      };
+      setGenerated(nextGenerated);
+      setDraftFiles(response.files);
+      setArtifactSha256(response.scaffoldSha256);
+      finishFactoryJob("complete", localize(t, "✓ edited scaffold rebuilt and verified", "✓ 수정된 스캐폴드 재생성 및 검증 완료"));
+      await patchFactoryJobById(job.id, { status: "running", stage: "security-review", progress: 70 });
+      recordFactoryHistory({
+        action: "generated",
+        pluginName: generated.pluginName,
+        detail: localize(t, "Edited scaffold rebuilt", "수정 스캐폴드 재생성"),
+        status: "success"
+      });
+      setStatus(localize(t, "Edited scaffold rebuilt and verified.", "수정된 스캐폴드를 재생성하고 검증했습니다."));
+    } catch (err) {
+      finishFactoryJob("failed", `✕ ${err instanceof Error ? err.message : "rebuild failed"}`);
+      setStatus(err instanceof Error ? err.message : localize(t, "Unable to rebuild edited files.", "수정 파일을 재생성하지 못했습니다."));
+    } finally {
+      setBusy(null);
+    }
   }
 
   function startFactoryJob(kind: FactoryJobState["kind"], label: string) {
@@ -2308,7 +2804,27 @@ function PluginFactory({
     setBusy("generate");
     setStatus(null);
     setApplyResult(null);
+    let job: VaultPluginFactoryJob | null = null;
     try {
+      const activeJob = await ensureFactoryJob();
+      job = activeJob;
+      await patchFactoryJobById(activeJob.id, {
+        templateId: template.id,
+        pluginName: input.pluginName,
+        status: "running",
+        stage: "generate",
+        progress: 15,
+        events: [
+          ...activeJob.events,
+          {
+            id: `${Date.now()}-generate`,
+            label: "generate",
+            detail: input.pluginName,
+            status: "running" as const,
+            createdAt: new Date().toISOString()
+          }
+        ].slice(-100)
+      });
       await playFactoryJobLines([
       `$ factory select ${template.id}`,
       `$ mkdir -p cmd/${input.pluginName} internal/plugin vault`,
@@ -2328,6 +2844,7 @@ function PluginFactory({
         })
       });
       setGenerated(response.generated);
+      setDraftFiles(response.generated.files);
       setSelectedId(template.id);
       setPluginName(response.generated.pluginName);
       setMountPath(response.generated.mountPath);
@@ -2336,6 +2853,7 @@ function PluginFactory({
       setDescription(response.generated.description);
       setArtifactSha256(response.generated.scaffoldSha256);
       setActiveFilePath(response.generated.files[0]?.path ?? "");
+      setActiveFactoryTab("files");
       setRollbackPreview(null);
       setStatus(successMessage);
       await onChanged();
@@ -2354,10 +2872,30 @@ function PluginFactory({
         detail: `${response.generated.files.length} files · ${response.generated.mountPath}/ · ${shortId(response.generated.scaffoldSha256)}`,
         status: "success"
       });
+      const latestJob = factoryJobs.find((item) => item.id === activeJob.id) ?? activeJob;
+      await patchFactoryJobById(activeJob.id, {
+        status: "running",
+        stage: "security-review",
+        progress: 70,
+        deployment: { ...latestJob.deployment, rollbackReady: response.generated.rollbackPlan.available },
+        events: [
+          ...latestJob.events.filter((event) => event.label !== "generate" || event.status !== "running"),
+          {
+            id: `${Date.now()}-generated`,
+            label: "generate",
+            detail: `${response.generated.files.length} files · ${shortId(response.generated.scaffoldSha256)}`,
+            status: "success" as const,
+            createdAt: new Date().toISOString()
+          }
+        ].slice(-100)
+      });
       return response.generated;
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Unable to generate plugin scaffold");
       finishFactoryJob("failed", `✕ ${err instanceof Error ? err.message : "generation failed"}`);
+      if (job) {
+        void patchFactoryJobById(job.id, { status: "failed", stage: "generate" }).catch(() => undefined);
+      }
       return null;
     } finally {
       setBusy(null);
@@ -2377,6 +2915,20 @@ function PluginFactory({
 
   async function applyGeneratedPlugin(target: VaultPluginGenerateResult): Promise<VaultPluginApplyResult | null> {
     const effectiveSha256 = generated?.id === target.id ? artifactSha256 || target.scaffoldSha256 : target.scaffoldSha256;
+    const canUseCurrentJob = Boolean(
+      currentJob && currentUser && (currentJob.ownerId === currentUser.id || canReviewJobs)
+    );
+    const job = canUseCurrentJob && currentJob ? currentJob : await ensureFactoryJob();
+    if (job.approval.status !== "approved") {
+      setActiveFactoryTab("deploy");
+      setStatus(localize(t, "Approval is required before Vault apply.", "Vault 적용 전에 승인이 필요합니다."));
+      return null;
+    }
+    if (!preflightPassed) {
+      setActiveFactoryTab("deploy");
+      setStatus(localize(t, "Resolve every preflight check before apply.", "적용 전 사전 검증 항목을 모두 해결하세요."));
+      return null;
+    }
     startFactoryJob("apply", localize(t, `Applying ${target.pluginName}`, `${target.pluginName} Vault 적용 중`));
     setBusy("apply");
     setStatus(null);
@@ -2394,6 +2946,7 @@ function PluginFactory({
         method: "POST",
         body: JSON.stringify({
           pluginType: target.template.pluginType,
+          jobId: job.id,
           pluginName: target.pluginName,
           mountPath: target.mountPath,
           version: target.version,
@@ -2420,10 +2973,12 @@ function PluginFactory({
         detail: `${response.result.mountPath}/ · ${response.result.mode}`,
         status: response.result.applied ? "success" : "warning"
       });
+      await refreshFactoryJobs();
       return response.result;
     } catch (err) {
       setStatus(err instanceof Error ? err.message : "Unable to apply plugin");
       finishFactoryJob("failed", `✕ ${err instanceof Error ? err.message : "apply failed"}`);
+      void patchFactoryJobById(job.id, { status: "failed", stage: "deploy" }).catch(() => undefined);
       return null;
     } finally {
       setBusy(null);
@@ -2540,6 +3095,14 @@ function PluginFactory({
     chooseTemplate(template);
     setFilter(filterForTemplate(template));
     if (result.action.type === "select") return;
+    if (!canAuthorJobs) {
+      addChatMessage(
+        "assistant",
+        localize(t, "Plugin generation requires a developer, app owner, or Vault administrator role.", "플러그인 생성에는 개발자, 앱 소유자 또는 Vault 관리자 권한이 필요합니다."),
+        "warning"
+      );
+      return;
+    }
 
     const applyAfterGenerate = result.action.type === "generate-and-apply";
     const generatedResult = await generateTemplateScaffold(
@@ -2667,7 +3230,7 @@ function PluginFactory({
           </p>
         </div>
         <div className="pluginHeroActions">
-          <button className="primary" type="button" onClick={() => void generatePlugin()} disabled={!selectedTemplate || busy !== null}>
+          <button className="primary" type="button" onClick={() => void generatePlugin()} disabled={!selectedTemplate || !canAuthorJobs || busy !== null}>
             <Sparkles aria-hidden="true" size={17} />
             {busy === "generate" ? localize(t, "Generating...", "생성 중...") : localize(t, "Create custom plugin", "커스텀 플러그인 생성")}
           </button>
@@ -2675,7 +3238,7 @@ function PluginFactory({
             className="primaryGhost"
             type="button"
             onClick={() => void applyPlugin()}
-            disabled={!generated || !canApply || busy !== null || !artifactSha256}
+            disabled={!generated || !canApply || busy !== null || !artifactSha256 || !preflightPassed}
             title={canApply ? undefined : localize(t, "Vault admin role required", "Vault 관리자 권한이 필요합니다.")}
           >
             <Upload aria-hidden="true" size={17} />
@@ -2684,21 +3247,65 @@ function PluginFactory({
         </div>
       </section>
 
-      <section className="workflowStrip" aria-label="Plugin workflow">
-        {[
-          [localize(t, "Generate", "생성"), localize(t, "Go scaffold, policy, Makefile", "Go 스캐폴드, 정책, Makefile")],
-          [localize(t, "Build/Test", "빌드/테스트"), localize(t, "go test, go build, SHA256", "go test, go build, SHA256")],
-          [localize(t, "Register/Enable", "등록/활성화"), localize(t, "Catalog, mount, smoke test", "Catalog, Mount, Smoke test")]
-        ].map(([label, detail], index) => (
-          <div key={label} className="workflowStep">
-            <span>{index + 1}</span>
-            <strong>{label}</strong>
-            <small>{detail}</small>
-          </div>
-        ))}
+      <section className="factoryRoleHome">
+        <span className="factoryRoleIcon"><UserCheck aria-hidden="true" size={20} /></span>
+        <div>
+          <small>{roleHome.eyebrow}</small>
+          <strong>{roleHome.title}</strong>
+          <p>{roleHome.detail}</p>
+        </div>
+        <div className="factoryRoleMetric">
+          <span>{roleHome.metricLabel}</span>
+          <strong>{roleHome.metricValue}</strong>
+        </div>
+        <button type="button" onClick={openRoleHomeAction}>
+          {roleHome.action}
+        </button>
       </section>
 
-      <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "apply" ? "running" : ""}`}>
+      <nav className="factoryTabs" aria-label={localize(t, "Factory workspace views", "Factory 작업 화면")} role="tablist">
+        {factoryTabs.map(({ id: tabId, icon: Icon, label }) => (
+          <button
+            key={tabId}
+            aria-selected={activeFactoryTab === tabId}
+            className={activeFactoryTab === tabId ? "active" : ""}
+            onClick={() => setActiveFactoryTab(tabId)}
+            role="tab"
+            type="button"
+          >
+            <Icon aria-hidden="true" size={17} />
+            <span>{label}</span>
+            {tabId === "files" && draftFiles.length ? <small>{draftFiles.length}</small> : null}
+            {tabId === "history" && factoryJobs.length ? <small>{factoryJobs.length}</small> : null}
+          </button>
+        ))}
+      </nav>
+
+      <section className="factoryJobTimeline" aria-label={localize(t, "Factory job progress", "Factory 작업 진행률")}>
+        <div className="factoryTimelineHeader">
+          <div>
+            <span>{workspaceSaving ? localize(t, "Saving workspace", "작업 저장 중") : localize(t, "Workspace saved", "작업 저장됨")}</span>
+            <strong>{currentJob?.pluginName || pluginName || localize(t, "New plugin draft", "새 플러그인 초안")}</strong>
+          </div>
+          <div>
+            <span>{currentJob?.status ?? "draft"}</span>
+            <strong>{currentJob?.progress ?? (generated ? 70 : 10)}%</strong>
+          </div>
+        </div>
+        <div className="factoryProgressTrack"><span style={{ width: `${currentJob?.progress ?? (generated ? 70 : 10)}%` }} /></div>
+        <div className="workflowStrip">
+          {workflowStages.map((stage, index) => (
+            <div key={stage.id} className={`workflowStep ${stage.complete ? "complete" : currentJob?.stage === stage.id ? "current" : "pending"}`}>
+              <span>{stage.complete ? <CheckCircle2 aria-hidden="true" size={17} /> : index + 1}</span>
+              <strong>{stage.label}</strong>
+              <small>{stage.complete ? localize(t, "Complete", "완료") : localize(t, "Pending", "대기")}</small>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {activeFactoryTab === "workspace" ? (
+        <section className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "apply" ? "running" : ""}`}>
         <div className="panelHeader">
           <div>
             <h2>{localize(t, "Factory chat", "Factory 채팅")}</h2>
@@ -2726,7 +3333,7 @@ function PluginFactory({
               type="button"
               className={activeChatPrompt === "selected-template-generate" ? "launching" : undefined}
               onClick={() => void generateSelectedTemplateFromChat()}
-              disabled={!selectedTemplate || busy !== null}
+              disabled={!selectedTemplate || !canAuthorJobs || busy !== null}
             >
               {localize(t, "Generate selected template", "선택 템플릿 생성")}
             </button>
@@ -2803,10 +3410,12 @@ function PluginFactory({
             <Send aria-hidden="true" size={18} />
           </button>
         </form>
-      </section>
+        </section>
+      ) : null}
 
       {status ? <div className={status.includes("Unable") || status.includes("required") ? "error" : "success"}>{status}</div> : null}
 
+      {activeFactoryTab === "discover" ? (
       <div className="pluginWorkspace">
         <section className="pluginCatalogPanel">
           <div className="panelHeader">
@@ -2820,6 +3429,26 @@ function PluginFactory({
                 )}
               </p>
             </div>
+          </div>
+          <div className="pluginSearchToolbar">
+            <label>
+              <Search aria-hidden="true" size={17} />
+              <input
+                aria-label={localize(t, "Search plugin templates", "플러그인 템플릿 검색")}
+                onChange={(event) => setTemplateQuery(event.target.value)}
+                placeholder={localize(t, "Search name, target, or tag", "이름, 대상 또는 태그 검색")}
+                value={templateQuery}
+              />
+            </label>
+            <button
+              aria-pressed={favoriteOnly}
+              className={favoriteOnly ? "active" : ""}
+              onClick={() => setFavoriteOnly((value) => !value)}
+              type="button"
+            >
+              <Star aria-hidden="true" fill={favoriteOnly ? "currentColor" : "none"} size={16} />
+              {localize(t, "Favorites", "즐겨찾기")} {favoriteTemplateIds.length}
+            </button>
           </div>
           <div className="segmentedControl" role="tablist" aria-label="Plugin filters">
             {(["all", "auth", "secret", "database", "partner", "community", "learning"] as PluginFilter[]).map((item) => (
@@ -2836,24 +3465,42 @@ function PluginFactory({
 
           <div className="pluginList">
             {filteredTemplates.map((template) => (
-              <button
-                key={template.id}
-                type="button"
-                className={`pluginRow ${selectedTemplate?.id === template.id ? "selected" : ""}`}
-                onClick={() => chooseTemplate(template)}
-              >
-                <div>
-                  <strong>{template.displayName}</strong>
-                  <small>{template.description}</small>
+              <article key={template.id} className={`pluginRow ${selectedTemplate?.id === template.id ? "selected" : ""}`}>
+                <button className="pluginSelect" onClick={() => chooseTemplate(template)} type="button">
+                  <div>
+                    <strong>{template.displayName}</strong>
+                    <small>{template.description}</small>
+                  </div>
+                  <div className="pluginBadges">
+                    <span>{pluginTypeLabel(template.pluginType, t)}</span>
+                    <span>{sourceLabel(template.source, t)}</span>
+                    <span>{template.marketplace.maturity}</span>
+                    {template.popularity?.rank ? <span>Top {template.popularity.rank}</span> : null}
+                  </div>
+                </button>
+                <div className="pluginRowActions">
+                  <button
+                    aria-label={favoriteTemplateIds.includes(template.id) ? localize(t, "Remove favorite", "즐겨찾기 해제") : localize(t, "Add favorite", "즐겨찾기 추가")}
+                    className={`iconButton ${favoriteTemplateIds.includes(template.id) ? "active" : ""}`}
+                    onClick={() => toggleFavorite(template.id)}
+                    title={localize(t, "Favorite", "즐겨찾기")}
+                    type="button"
+                  >
+                    <Star aria-hidden="true" fill={favoriteTemplateIds.includes(template.id) ? "currentColor" : "none"} size={15} />
+                  </button>
+                  <button
+                    aria-label={compareTemplateIds.includes(template.id) ? localize(t, "Remove from comparison", "비교에서 제거") : localize(t, "Add to comparison", "비교에 추가")}
+                    className={`iconButton ${compareTemplateIds.includes(template.id) ? "active" : ""}`}
+                    onClick={() => toggleComparison(template.id)}
+                    title={localize(t, "Compare", "비교")}
+                    type="button"
+                  >
+                    <GitCompare aria-hidden="true" size={15} />
+                  </button>
                 </div>
-                <div className="pluginBadges">
-                  <span>{pluginTypeLabel(template.pluginType, t)}</span>
-                  <span>{sourceLabel(template.source, t)}</span>
-                  <span>{template.marketplace.maturity}</span>
-                  {template.popularity?.rank ? <span>Top {template.popularity.rank}</span> : null}
-                </div>
-              </button>
+              </article>
             ))}
+            {!filteredTemplates.length ? <div className="empty compact">{localize(t, "No templates match this search.", "검색 조건과 일치하는 템플릿이 없습니다.")}</div> : null}
           </div>
         </section>
 
@@ -2930,13 +3577,42 @@ function PluginFactory({
                   <span key={guardrail}>{guardrail}</span>
                 ))}
               </div>
+
+              <div className="templateTrustGrid">
+                <div><BadgeCheck aria-hidden="true" size={17} /><span>{localize(t, "Publisher", "게시자")}</span><strong>{selectedTemplate.source === "official" || selectedTemplate.source === "partner" ? localize(t, "Verified source", "검증된 출처") : localize(t, "Community review", "커뮤니티 검토")}</strong></div>
+                <div><Activity aria-hidden="true" size={17} /><span>{localize(t, "Maintenance", "유지보수")}</span><strong>{selectedTemplate.marketplace.lastReviewedAt}</strong></div>
+                <div><Code2 aria-hidden="true" size={17} /><span>{localize(t, "Release", "릴리스")}</span><strong>{selectedTemplate.defaultVersion}</strong></div>
+                <div><Shield aria-hidden="true" size={17} /><span>SBOM / Scan</span><strong>{selectedTemplate.buildProfile === "scaffold" ? localize(t, "Generated at build", "빌드 시 생성") : localize(t, "Reference manifest", "참조 매니페스트")}</strong></div>
+              </div>
+
+              {compareTemplates.length ? (
+                <div className="templateComparison">
+                  <div className="panelHeader">
+                    <div><h3>{localize(t, "Template comparison", "템플릿 비교")}</h3><p>{localize(t, "Select up to two templates.", "최대 두 개 템플릿을 비교합니다.")}</p></div>
+                    <button onClick={() => setCompareTemplateIds([])} type="button">{localize(t, "Clear", "초기화")}</button>
+                  </div>
+                  <div className="comparisonGrid">
+                    {compareTemplates.map((template) => (
+                      <div key={template.id}>
+                        <strong>{template.displayName}</strong>
+                        <span>{pluginTypeLabel(template.pluginType, t)} · {sourceLabel(template.source, t)}</span>
+                        <span>{template.integrationTarget}</span>
+                        <span>{template.marketplace.maturity} · {template.marketplace.riskLevel}</span>
+                        <span>{template.defaultVersion}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <div className="empty compact">{busy === "load" ? t.loading : t.table.noData}</div>
           )}
         </section>
       </div>
+      ) : null}
 
+      {activeFactoryTab === "review" ? (
       <section className="tablePanel factoryOpsPanel">
         <div className="panelHeader">
           <div>
@@ -3055,32 +3731,65 @@ function PluginFactory({
           </section>
         </div>
       </section>
+      ) : null}
 
       <div className="pluginOutputGrid">
+        {activeFactoryTab === "files" ? (
         <section className="tablePanel commandPanel generatedFilesPanel">
           <div className="panelHeader">
             <div>
               <h2>{localize(t, "Generated files", "생성 파일")}</h2>
-              <p>{generated ? `${generated.files.length} files - ${shortId(generated.scaffoldSha256)}` : "-"}</p>
+              <p>{generated ? `${draftFiles.length} files - ${shortId(generated.scaffoldSha256)}` : "-"}</p>
             </div>
-            {scaffoldDownload ? (
-              <a className="downloadLink" href={scaffoldDownload.href} download={scaffoldDownload.filename}>
-                {localize(t, "Download scaffold", "스캐폴드 다운로드")}
-              </a>
-            ) : (
-              <button type="button" disabled>
-                {localize(t, "Download scaffold", "스캐폴드 다운로드")}
+            <div className="fileHeaderActions">
+              <button disabled={!generated || !canAuthorJobs || busy !== null} onClick={() => void rebuildEditedFiles()} type="button">
+                <RefreshCw aria-hidden="true" size={16} />
+                {localize(t, "Rebuild edits", "수정본 재생성")}
               </button>
-            )}
+              {scaffoldDownload ? (
+                <a className="downloadLink" href={scaffoldDownload.href} download={scaffoldDownload.filename}>
+                  {localize(t, "Download", "다운로드")}
+                </a>
+              ) : (
+                <button type="button" disabled>{localize(t, "Download", "다운로드")}</button>
+              )}
+            </div>
           </div>
           {generated ? (
+            <>
+            <div className="generatedFileToolbar">
+              <label>
+                <Search aria-hidden="true" size={16} />
+                <input
+                  aria-label={localize(t, "Search generated files", "생성 파일 검색")}
+                  onChange={(event) => setFileQuery(event.target.value)}
+                  placeholder={localize(t, "Search path or source", "경로 또는 코드 검색")}
+                  value={fileQuery}
+                />
+              </label>
+              <div className="segmentedControl compact" role="tablist" aria-label={localize(t, "File editor mode", "파일 편집 모드")}>
+                {(["preview", "edit", "diff"] as FileEditorMode[]).map((mode) => (
+                  <button
+                    aria-selected={fileEditorMode === mode}
+                    className={fileEditorMode === mode ? "active" : ""}
+                    key={mode}
+                    onClick={() => setFileEditorMode(mode)}
+                    role="tab"
+                    type="button"
+                  >
+                    {mode === "preview" ? <Code2 aria-hidden="true" size={14} /> : mode === "edit" ? <Files aria-hidden="true" size={14} /> : <FileDiff aria-hidden="true" size={14} />}
+                    {fileEditorModeLabel(mode, t)}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="generatedFileWorkspace">
               <div
                 className="fileTabs"
                 role="tablist"
                 aria-label={localize(t, "Generated plugin files", "생성된 플러그인 파일")}
               >
-                {generated.files.map((file) => (
+                {filteredFiles.map((file) => (
                   <button
                     key={file.path}
                     type="button"
@@ -3098,24 +3807,56 @@ function PluginFactory({
               </div>
               {activeFile ? (
                 <div
-                  className="codePreview"
+                  className={`codePreview ${fileFullscreen ? "fullscreen" : ""}`}
                   id="generated-file-preview"
                   role="tabpanel"
                   aria-label={activeFile.path}
                 >
                   <div>
-                    <strong>{activeFile.path}</strong>
-                    <span>{activeFile.language}</span>
+                    <div>
+                      <strong>{activeFile.path}</strong>
+                      <span>{activeFile.language} · +{activeFileDiff.added} / -{activeFileDiff.removed}</span>
+                    </div>
+                    <div className="codePreviewActions">
+                      <button aria-label={localize(t, "Copy file", "파일 복사")} className="iconButton" onClick={() => void copyActiveFile()} title={localize(t, "Copy file", "파일 복사")} type="button">
+                        {copiedFilePath === activeFile.path ? <CheckCircle2 aria-hidden="true" size={16} /> : <ClipboardCopy aria-hidden="true" size={16} />}
+                      </button>
+                      <button aria-label={localize(t, "Reset file", "파일 초기화")} className="iconButton" disabled={!activeFileDiff.changed} onClick={resetActiveFile} title={localize(t, "Reset file", "파일 초기화")} type="button">
+                        <Undo2 aria-hidden="true" size={16} />
+                      </button>
+                      <button aria-label={fileFullscreen ? localize(t, "Exit full screen", "전체화면 종료") : localize(t, "Full screen", "전체화면")} className="iconButton" onClick={() => setFileFullscreen((value) => !value)} title={fileFullscreen ? localize(t, "Exit full screen", "전체화면 종료") : localize(t, "Full screen", "전체화면")} type="button">
+                        {fileFullscreen ? <Minimize2 aria-hidden="true" size={16} /> : <Maximize2 aria-hidden="true" size={16} />}
+                      </button>
+                    </div>
                   </div>
-                  <pre>{activeFile.content}</pre>
+                  {fileEditorMode === "preview" ? <pre>{activeFile.content}</pre> : null}
+                  {fileEditorMode === "edit" ? (
+                    <textarea
+                      aria-label={localize(t, "Edit generated source", "생성 코드 편집")}
+                      className="codeEditor"
+                      onChange={(event) => updateActiveFileContent(event.target.value)}
+                      readOnly={!canAuthorJobs}
+                      spellCheck={false}
+                      value={activeFile.content}
+                    />
+                  ) : null}
+                  {fileEditorMode === "diff" ? (
+                    <div className="codeDiffView">
+                      <div><span>{localize(t, "Original", "원본")}</span><pre>{originalFile?.content ?? ""}</pre></div>
+                      <div><span>{localize(t, "Edited", "수정본")}</span><pre>{activeFile.content}</pre></div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
+            </>
           ) : (
             <div className="empty compact">{localize(t, "No generated scaffold yet.", "아직 생성된 스캐폴드가 없습니다.")}</div>
           )}
         </section>
+        ) : null}
 
+        {activeFactoryTab === "review" ? (
         <section className="tablePanel commandPanel">
           <h2>{localize(t, "Build and apply plan", "빌드 및 적용 계획")}</h2>
           {generated ? (
@@ -3164,9 +3905,98 @@ function PluginFactory({
             <div className="empty compact">{localize(t, "Generate a plugin to see commands.", "플러그인을 생성하면 명령을 확인할 수 있습니다.")}</div>
           )}
         </section>
+        ) : null}
 
+        {activeFactoryTab === "deploy" ? (
         <section className="tablePanel commandPanel">
           <h2>{localize(t, "Apply result", "적용 결과")}</h2>
+          <div className="deploymentReviewGrid">
+            <section className="preflightPanel">
+              <div className="panelHeader">
+                <div>
+                  <h3>{localize(t, "Preflight review", "배포 사전 검토")}</h3>
+                  <p>{localize(t, "All checks and approval must pass before apply.", "모든 검증과 승인이 완료되어야 적용할 수 있습니다.")}</p>
+                </div>
+                <span className={`preflightStatus ${preflightPassed ? "ready" : "blocked"}`}>
+                  {preflightPassed ? localize(t, "Ready", "준비 완료") : localize(t, "Blocked", "대기")}
+                </span>
+              </div>
+              <div className="preflightList">
+                {preflightChecks.map((check) => (
+                  <div key={check.label} className={check.pass ? "pass" : "pending"}>
+                    {check.pass ? <CheckCircle2 aria-hidden="true" size={17} /> : <CircleGauge aria-hidden="true" size={17} />}
+                    <span><strong>{check.label}</strong><small>{check.detail}</small></span>
+                  </div>
+                ))}
+              </div>
+              {generated ? (
+                <div className="impactSummary">
+                  <div><span>{localize(t, "Mount", "Mount")}</span><strong>{generated.mountPath}/</strong></div>
+                  <div><span>{localize(t, "Plugin", "플러그인")}</span><strong>{generated.command}</strong></div>
+                  <div><span>{localize(t, "Role impact", "Role 영향")}</span><strong>{generated.template.pluginType === "auth" ? "auth method" : "secret consumers"}</strong></div>
+                  <div><span>{localize(t, "Changes", "변경 수")}</span><strong>{generated.dryRun.changes.length}</strong></div>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="approvalPanel">
+              <div className="panelHeader">
+                <div><h3>{localize(t, "Approval and rollout", "승인 및 배포 방식")}</h3><p>{currentJob?.approval.status ?? localize(t, "Not requested", "요청 전")}</p></div>
+                <UserCheck aria-hidden="true" size={20} />
+              </div>
+              <label>
+                {localize(t, "Approval note", "승인 메모")}
+                <textarea disabled={!canConfigureDeployment} onChange={(event) => setApprovalNote(event.target.value)} rows={2} value={approvalNote} />
+              </label>
+              <div className="approvalActions">
+                <button
+                  disabled={!generated || !canRequestApproval || currentJob?.approval.status === "requested" || currentJob?.approval.status === "approved"}
+                  onClick={() => void runFactoryJobAction("request-approval")}
+                  type="button"
+                >
+                  {localize(t, "Request approval", "승인 요청")}
+                </button>
+                {canReviewJobs && currentJob?.approval.status === "requested" ? (
+                  <>
+                    <button className="primary" onClick={() => void runFactoryJobAction("approve")} type="button">{localize(t, "Approve", "승인")}</button>
+                    <button onClick={() => void runFactoryJobAction("reject")} type="button">{localize(t, "Reject", "반려")}</button>
+                  </>
+                ) : null}
+              </div>
+              <div className="rolloutControls">
+                <div className="segmentedControl compact" aria-label={localize(t, "Rollout mode", "배포 방식")}>
+                  <button className={currentJob?.deployment.mode !== "canary" ? "active" : ""} disabled={!canConfigureDeployment} onClick={() => void runFactoryJobAction("full")} type="button">{localize(t, "Full", "전체")}</button>
+                  <button className={currentJob?.deployment.mode === "canary" ? "active" : ""} disabled={!canConfigureDeployment} onClick={() => void runFactoryJobAction("canary")} type="button">Canary</button>
+                </div>
+                <label>
+                  {localize(t, "Environment", "환경")}
+                  <select
+                    disabled={!canConfigureDeployment}
+                    onChange={(event) => void updateDeploymentEnvironment(event.target.value as "dev" | "staging" | "prod")}
+                    value={currentJob?.deployment.environment ?? generated?.blueprint.defaults.environment ?? "dev"}
+                  >
+                    <option value="dev">dev</option><option value="staging">staging</option><option value="prod">prod</option>
+                  </select>
+                </label>
+                <label>
+                  {localize(t, "Schedule", "배포 예약")}
+                  <input
+                    min={toLocalDateTimeInputValue(new Date())}
+                    disabled={!canConfigureDeployment}
+                    onInput={(event) => setScheduleAt(event.currentTarget.value)}
+                    type="datetime-local"
+                    value={scheduleAt}
+                  />
+                </label>
+                <button disabled={!canConfigureDeployment || currentJob?.approval.status !== "approved" || !scheduleAt} onClick={() => void runFactoryJobAction("schedule")} type="button">
+                  <CalendarClock aria-hidden="true" size={16} /> {localize(t, "Save schedule", "예약 저장")}
+                </button>
+              </div>
+              <button className="primary deployNowButton" disabled={!canApply || !generated || !preflightPassed || busy !== null} onClick={() => void applyPlugin()} type="button">
+                <Rocket aria-hidden="true" size={17} /> {localize(t, "Apply now", "지금 적용")}
+              </button>
+            </section>
+          </div>
           {generated ? (
             <div className="dryRunPanel">
               <div className="resultBanner compactBanner">
@@ -3221,8 +4051,70 @@ function PluginFactory({
                 : localize(t, "Vault admin role required for apply.", "적용에는 Vault 관리자 권한이 필요합니다.")}
             </div>
           )}
+          {generated?.rollbackPlan.available ? (
+            <section className="rollbackZone">
+              <div className="panelHeader">
+                <div><h3>{localize(t, "Rollback", "롤백")}</h3><p>{generated.rollbackPlan.summary}</p></div>
+                <Undo2 aria-hidden="true" size={20} />
+              </div>
+              <label className="toggleLine">
+                <input checked={removeCatalogOnRollback} onChange={(event) => setRemoveCatalogOnRollback(event.target.checked)} type="checkbox" />
+                {localize(t, "Remove plugin catalog entry after disabling the mount", "Mount 비활성화 후 플러그인 카탈로그 항목도 제거")}
+              </label>
+              <label className="toggleLine rollbackConfirm">
+                <input checked={rollbackConfirmed} onChange={(event) => setRollbackConfirmed(event.target.checked)} type="checkbox" />
+                {localize(t, `I understand this disables ${generated.mountPath}/.`, `${generated.mountPath}/가 비활성화됨을 확인했습니다.`)}
+              </label>
+              <div className="actions">
+                <button onClick={() => void previewRollback()} type="button">{localize(t, "Preview commands", "명령 미리보기")}</button>
+                <button disabled={!canApply || !applyResult?.applied || !rollbackConfirmed || busy !== null} onClick={() => void executePluginRollback()} type="button">
+                  {localize(t, "Execute rollback", "롤백 실행")}
+                </button>
+              </div>
+              {rollbackResult ? (
+                <div className="applyResult">
+                  {rollbackResult.steps.map((step) => <div className="applyStep" key={step.label}><span className={step.status}>{step.status}</span><div><strong>{step.label}</strong><small>{step.detail}</small></div></div>)}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
         </section>
+        ) : null}
       </div>
+
+      {activeFactoryTab === "history" ? (
+        <section className="tablePanel factoryHistoryPanel">
+          <div className="panelHeader">
+            <div>
+              <h2>{localize(t, "Saved Factory jobs", "저장된 Factory 작업")}</h2>
+              <p>{localize(t, "Chats, files, approvals, and deployment events survive refresh and sign-in.", "대화, 파일, 승인, 배포 이벤트가 새로고침과 재로그인 후에도 유지됩니다.")}</p>
+            </div>
+            <button onClick={() => void refreshFactoryJobs()} type="button"><RefreshCw aria-hidden="true" size={16} /> {localize(t, "Refresh", "새로고침")}</button>
+          </div>
+          <div className="factoryHistoryLayout">
+            <div className="factoryJobList">
+              {factoryJobs.map((job) => (
+                <button className={job.id === activeJobId ? "active" : ""} key={job.id} onClick={() => loadFactoryJob(job)} type="button">
+                  <span className={`statusBadge ${job.status}`}>{job.status}</span>
+                  <strong>{job.pluginName}</strong>
+                  <small>{job.ownerEmail} · {new Date(job.updatedAt).toLocaleString()}</small>
+                  <div className="historyProgress"><span style={{ width: `${job.progress}%` }} /></div>
+                </button>
+              ))}
+              {!factoryJobs.length ? <div className="empty compact">{localize(t, "No saved Factory jobs.", "저장된 Factory 작업이 없습니다.")}</div> : null}
+            </div>
+            <div className="factoryEventLog">
+              <h3>{currentJob?.pluginName ?? localize(t, "Select a job", "작업을 선택하세요")}</h3>
+              {currentJob?.events.length ? currentJob.events.slice().reverse().map((event) => (
+                <div key={event.id} className={event.status}>
+                  <span><Activity aria-hidden="true" size={15} /></span>
+                  <div><strong>{factoryActionLabel(event.label, t)}</strong><small>{event.detail || new Date(event.createdAt).toLocaleString()}</small></div>
+                </div>
+              )) : <div className="empty compact">{localize(t, "No job events yet.", "아직 작업 이벤트가 없습니다.")}</div>}
+            </div>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -3957,6 +4849,114 @@ function templateMatchesFilter(template: VaultPluginTemplate, filter: PluginFilt
   return template.pluginType === filter;
 }
 
+function fileDiffSummary(original: string, edited: string): { added: number; removed: number; changed: boolean } {
+  if (original === edited) return { added: 0, removed: 0, changed: false };
+  const before = original.split("\n");
+  const after = edited.split("\n");
+  const remaining = new Map<string, number>();
+  before.forEach((line) => remaining.set(line, (remaining.get(line) ?? 0) + 1));
+  let sharedLines = 0;
+  after.forEach((line) => {
+    const matches = remaining.get(line) ?? 0;
+    if (matches > 0) {
+      sharedLines += 1;
+      remaining.set(line, matches - 1);
+    }
+  });
+  return {
+    added: after.length - sharedLines,
+    removed: before.length - sharedLines,
+    changed: true
+  };
+}
+
+function fileEditorModeLabel(mode: FileEditorMode, t: Copy): string {
+  const labels: Record<FileEditorMode, [string, string]> = {
+    preview: ["Preview", "미리보기"],
+    edit: ["Edit", "편집"],
+    diff: ["Diff", "변경 비교"]
+  };
+  return localize(t, labels[mode][0], labels[mode][1]);
+}
+
+function factoryActionLabel(action: string, t: Copy): string {
+  const labels: Record<string, [string, string]> = {
+    generate: ["Generate scaffold", "스캐폴드 생성"],
+    "request-approval": ["Request approval", "승인 요청"],
+    approve: ["Approve deployment", "배포 승인"],
+    reject: ["Reject deployment", "배포 반려"],
+    schedule: ["Schedule deployment", "배포 예약"],
+    canary: ["Select canary rollout", "카나리 배포 선택"],
+    full: ["Select full rollout", "전체 배포 선택"],
+    retry: ["Retry job", "작업 재시도"],
+    apply: ["Apply to Vault", "Vault 적용"],
+    "apply-complete": ["Vault apply complete", "Vault 적용 완료"],
+    rollback: ["Rollback", "롤백"],
+    "approval-invalidated": ["Approval invalidated", "승인 무효화"]
+  };
+  const label = labels[action];
+  return label ? localize(t, label[0], label[1]) : action;
+}
+
+function factoryRoleHome(
+  user: PortalUser | null,
+  jobs: VaultPluginFactoryJob[],
+  generated: VaultPluginGenerateResult | null,
+  favoriteCount: number,
+  t: Copy
+): { eyebrow: string; title: string; detail: string; metricLabel: string; metricValue: number; action: string; tab: FactoryTab } {
+  const ownJobs = jobs.filter((job) => job.ownerId === user?.id);
+  const approvalQueue = jobs.filter((job) => job.approval.status === "requested");
+
+  if (user?.roles.includes("vault-admin")) {
+    return {
+      eyebrow: localize(t, "Vault administrator", "Vault 관리자"),
+      title: localize(t, "Review the release gate", "배포 게이트를 검토하세요"),
+      detail: localize(t, "Confirm security evidence, approval, rollout mode, and rollback readiness before apply.", "적용 전 보안 근거, 승인, 배포 방식과 롤백 준비 상태를 확인합니다."),
+      metricLabel: localize(t, "Awaiting approval", "승인 대기"),
+      metricValue: approvalQueue.length,
+      action: localize(t, "Open deployment", "배포 열기"),
+      tab: "deploy"
+    };
+  }
+
+  if (user?.roles.includes("security-approver")) {
+    return {
+      eyebrow: localize(t, "Security approver", "보안 승인자"),
+      title: localize(t, "Decide with evidence", "근거를 보고 승인하세요"),
+      detail: localize(t, "Use the build, security, checksum, and impact summary together before making a decision.", "빌드, 보안, 체크섬과 영향도 요약을 함께 확인한 뒤 결정합니다."),
+      metricLabel: localize(t, "Review queue", "검토 대기"),
+      metricValue: approvalQueue.length,
+      action: localize(t, "Review requests", "요청 검토"),
+      tab: "deploy"
+    };
+  }
+
+  if (user?.roles.includes("auditor")) {
+    return {
+      eyebrow: localize(t, "Auditor", "감사자"),
+      title: localize(t, "Trace every Factory decision", "Factory 결정 이력을 추적하세요"),
+      detail: localize(t, "Inspect preserved workspace snapshots, approvals, deployments, and rollback events.", "보존된 작업 스냅샷과 승인, 배포, 롤백 이벤트를 확인합니다."),
+      metricLabel: localize(t, "Recorded jobs", "기록된 작업"),
+      metricValue: jobs.length,
+      action: localize(t, "Open history", "이력 열기"),
+      tab: "history"
+    };
+  }
+
+  return {
+    eyebrow: localize(t, "Plugin author", "플러그인 작성자"),
+    title: generated
+      ? localize(t, "Continue your plugin workspace", "플러그인 작업을 이어가세요")
+      : localize(t, "Find the right starting point", "알맞은 시작점을 찾아보세요"),
+    detail: localize(t, "Search trusted templates, describe the integration in chat, and iterate on generated files.", "신뢰 정보를 갖춘 템플릿을 찾고, 채팅으로 연동 요구사항을 설명한 뒤 생성 파일을 다듬습니다."),
+    metricLabel: localize(t, "My drafts", "내 초안"),
+    metricValue: ownJobs.length || favoriteCount,
+    action: generated ? localize(t, "Continue editing", "편집 계속") : localize(t, "Explore templates", "템플릿 탐색"),
+    tab: generated ? "files" : "discover"
+  };
+}
+
 function pluginTypeLabel(pluginType: VaultPluginType, t: Copy): string {
   switch (pluginType) {
     case "auth":
@@ -4156,6 +5156,10 @@ function factoryAppliedMessage(result: VaultPluginApplyResult, t: Copy): string 
 
 function localize(t: Copy, en: string, ko: string): string {
   return t === copy.ko ? ko : en;
+}
+
+function toLocalDateTimeInputValue(date: Date): string {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
 function scoreRisk({

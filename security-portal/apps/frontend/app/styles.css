@@ -4243,3 +4243,987 @@ tbody tr:hover {
     justify-content: space-between;
   }
 }
+
+/* Vault Plugin Factory workspace */
+.pluginFactory {
+  gap: 14px;
+}
+
+.pageSurface {
+  animation-fill-mode: none;
+}
+
+.factoryRoleHome {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(116px, auto) auto;
+  gap: 14px;
+  align-items: center;
+  min-height: 86px;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--vault);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.factoryRoleIcon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--ink);
+  color: var(--vault);
+}
+
+.factoryRoleHome small,
+.factoryRoleHome strong,
+.factoryRoleHome p,
+.factoryRoleMetric span {
+  display: block;
+}
+
+.factoryRoleHome > div:nth-child(2) > small,
+.factoryRoleMetric span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.factoryRoleHome > div:nth-child(2) > strong {
+  margin-top: 3px;
+  font-size: 15px;
+}
+
+.factoryRoleHome p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.factoryRoleMetric {
+  min-width: 116px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+
+.factoryRoleMetric strong {
+  margin-top: 2px;
+  font-size: 22px;
+}
+
+.factoryTabs {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(112px, 1fr));
+  gap: 4px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  scrollbar-width: thin;
+}
+
+.factoryTabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 112px;
+  min-height: 42px;
+  padding: 0 10px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.factoryTabs button:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+.factoryTabs button.active {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.factoryTabs button.active svg {
+  color: var(--vault-deep);
+}
+
+.factoryTabs button small {
+  display: grid;
+  min-width: 19px;
+  height: 19px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--panel);
+  font-size: 10px;
+}
+
+.factoryJobTimeline {
+  display: grid;
+  gap: 11px;
+  padding: 15px 0 4px;
+  border-top: 1px solid var(--line);
+}
+
+.factoryTimelineHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.factoryTimelineHeader > div {
+  min-width: 0;
+}
+
+.factoryTimelineHeader > div:last-child {
+  text-align: right;
+}
+
+.factoryTimelineHeader span,
+.factoryTimelineHeader strong {
+  display: block;
+}
+
+.factoryTimelineHeader span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.factoryTimelineHeader strong {
+  margin-top: 3px;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factoryProgressTrack,
+.historyProgress {
+  overflow: hidden;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--line-soft);
+}
+
+.factoryProgressTrack span,
+.historyProgress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vault-deep);
+  transition: width 240ms ease;
+}
+
+.factoryJobTimeline .workflowStrip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.factoryJobTimeline .workflowStep {
+  min-height: 62px;
+  padding: 10px;
+  border-color: var(--line);
+  background: var(--panel);
+  box-shadow: none;
+}
+
+.factoryJobTimeline .workflowStep > span {
+  width: 30px;
+  height: 30px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.factoryJobTimeline .workflowStep.complete > span {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.factoryJobTimeline .workflowStep.current {
+  border-color: rgba(217, 168, 0, 0.72);
+  box-shadow: inset 0 -2px 0 var(--vault);
+}
+
+.factoryJobTimeline .workflowStep.current > span {
+  background: var(--vault);
+  color: #111318;
+}
+
+.pluginSearchToolbar,
+.generatedFileToolbar,
+.fileHeaderActions,
+.codePreviewActions,
+.approvalActions,
+.rolloutControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pluginSearchToolbar {
+  margin-top: 14px;
+}
+
+.pluginSearchToolbar > label,
+.generatedFileToolbar > label {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  padding-left: 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--muted);
+}
+
+.pluginSearchToolbar input,
+.generatedFileToolbar input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pluginSearchToolbar > button.active,
+.pluginRowActions .iconButton.active {
+  border-color: rgba(217, 168, 0, 0.65);
+  background: rgba(255, 207, 37, 0.16);
+  color: #9a7600;
+}
+
+.pluginRow {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.pluginSelect {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  min-height: 56px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+}
+
+.pluginSelect:hover:not(:disabled) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.pluginRowActions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 9px;
+  border-left: 1px solid var(--line);
+}
+
+.pluginRowActions .iconButton {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+}
+
+.templateTrustGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.templateTrustGrid > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 8px;
+  align-items: center;
+  min-height: 68px;
+  padding: 10px;
+  border-top: 2px solid var(--line);
+  background: var(--panel-soft);
+}
+
+.templateTrustGrid svg {
+  grid-row: span 2;
+  color: var(--green);
+}
+
+.templateTrustGrid span,
+.templateTrustGrid strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.templateTrustGrid span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.templateTrustGrid strong {
+  font-size: 11px;
+}
+
+.templateComparison {
+  padding-top: 13px;
+  border-top: 1px solid var(--line);
+}
+
+.comparisonGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.comparisonGrid > div {
+  display: grid;
+  gap: 5px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+}
+
+.comparisonGrid span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.fileHeaderActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.fileHeaderActions button,
+.fileHeaderActions .downloadLink,
+.panelHeader > button,
+.rolloutControls > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.generatedFileToolbar {
+  justify-content: space-between;
+  padding: 9px 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.generatedFileToolbar .segmentedControl {
+  flex: none;
+  margin: 0;
+}
+
+.codePreview > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.codePreview > div:first-child > div:first-child {
+  min-width: 0;
+}
+
+.codePreview > div:first-child strong,
+.codePreview > div:first-child span {
+  display: block;
+}
+
+.codePreviewActions {
+  flex: none;
+}
+
+.codePreviewActions .iconButton {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  border-color: rgba(226, 232, 240, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+}
+
+.codeEditor {
+  display: block;
+  width: 100%;
+  height: clamp(320px, 48vh, 620px);
+  min-height: 320px;
+  resize: vertical;
+  padding: 16px;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: #0b1120;
+  color: #dbeafe;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.codeEditor:focus {
+  box-shadow: inset 0 0 0 2px rgba(255, 207, 37, 0.72);
+}
+
+.codePreview > .codeDiffView {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+}
+
+.codeDiffView > div {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.codeDiffView > div + div {
+  border-left: 1px solid #263248;
+}
+
+.codeDiffView > div > span {
+  display: block;
+  min-height: 32px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #263248;
+  background: #111827;
+}
+
+.codeDiffView pre,
+.codePreview pre {
+  height: clamp(320px, 48vh, 620px);
+  background: #0b1120;
+  color: #dbeafe;
+}
+
+.codePreview.fullscreen {
+  position: fixed;
+  z-index: 100;
+  inset: 16px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-color: #4a5568;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.52);
+}
+
+.codePreview.fullscreen pre,
+.codePreview.fullscreen .codeEditor,
+.codePreview.fullscreen .codeDiffView,
+.codePreview.fullscreen .codeDiffView pre {
+  height: 100%;
+  min-height: 0;
+}
+
+.deploymentReviewGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(340px, 0.95fr);
+  gap: 20px;
+  padding: 4px 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.preflightPanel,
+.approvalPanel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.approvalPanel {
+  padding-left: 20px;
+  border-left: 1px solid var(--line);
+}
+
+.preflightStatus {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.preflightStatus.ready {
+  color: var(--green);
+}
+
+.preflightStatus.blocked {
+  color: #9a6700;
+}
+
+.preflightList {
+  display: grid;
+  gap: 6px;
+}
+
+.preflightList > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 52px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+}
+
+.preflightList > div.pass svg {
+  color: var(--green);
+}
+
+.preflightList > div.pending svg {
+  color: #9a6700;
+}
+
+.preflightList strong,
+.preflightList small {
+  display: block;
+}
+
+.preflightList strong {
+  font-size: 12px;
+}
+
+.preflightList small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.impactSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--line);
+}
+
+.impactSummary > div {
+  min-width: 0;
+  padding: 9px;
+  background: var(--panel);
+}
+
+.impactSummary span,
+.impactSummary strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.impactSummary span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.impactSummary strong {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.approvalPanel > label,
+.rolloutControls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.approvalActions,
+.rolloutControls {
+  flex-wrap: wrap;
+}
+
+.rolloutControls {
+  align-items: end;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.rolloutControls .segmentedControl {
+  margin: 0;
+}
+
+.rolloutControls label {
+  min-width: 132px;
+  flex: 1;
+}
+
+.deployNowButton {
+  width: 100%;
+  margin-top: 2px;
+}
+
+.rollbackZone {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 14px 0 2px;
+  border-top: 2px solid rgba(180, 35, 24, 0.45);
+}
+
+.rollbackZone .toggleLine {
+  box-shadow: none;
+}
+
+.rollbackConfirm {
+  border-color: rgba(180, 35, 24, 0.34);
+  background: color-mix(in srgb, var(--panel) 94%, #ef4444);
+}
+
+.statusBadge.waiting-approval,
+.statusBadge.scheduled {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.statusBadge.complete,
+.statusBadge.rolled-back {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.statusBadge.failed {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.factoryHistoryPanel {
+  display: grid;
+  gap: 14px;
+}
+
+.factoryHistoryLayout {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.82fr) minmax(0, 1.18fr);
+  gap: 18px;
+  min-width: 0;
+}
+
+.factoryJobList,
+.factoryEventLog {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.factoryJobList {
+  max-height: 620px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+
+.factoryJobList > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 9px;
+  min-height: 78px;
+  padding: 10px;
+  border-radius: 7px;
+  text-align: left;
+}
+
+.factoryJobList > button.active {
+  border-color: rgba(217, 168, 0, 0.72);
+  box-shadow: inset 3px 0 0 var(--vault);
+}
+
+.factoryJobList > button > strong {
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factoryJobList > button > small,
+.factoryJobList .historyProgress {
+  grid-column: 1 / -1;
+}
+
+.factoryJobList > button > small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factoryEventLog {
+  padding-left: 18px;
+  border-left: 1px solid var(--line);
+}
+
+.factoryEventLog h3 {
+  margin-bottom: 4px;
+}
+
+.factoryEventLog > div:not(.empty) {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-height: 54px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.factoryEventLog > div > span {
+  display: grid;
+  width: 29px;
+  height: 29px;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.factoryEventLog > div.success > span {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.factoryEventLog > div.warning > span,
+.factoryEventLog > div.running > span {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.factoryEventLog > div.failed > span {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.factoryEventLog strong,
+.factoryEventLog small {
+  display: block;
+}
+
+.factoryEventLog strong {
+  font-size: 12px;
+}
+
+.factoryEventLog small {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+:root[data-theme="dark"] .factoryRoleHome,
+:root[data-theme="dark"] .factoryTabs,
+:root[data-theme="dark"] .factoryTabs button.active,
+:root[data-theme="dark"] .factoryJobTimeline .workflowStep,
+:root[data-theme="dark"] .pluginSearchToolbar > label,
+:root[data-theme="dark"] .generatedFileToolbar > label,
+:root[data-theme="dark"] .pluginRow,
+:root[data-theme="dark"] .comparisonGrid > div,
+:root[data-theme="dark"] .preflightList > div,
+:root[data-theme="dark"] .impactSummary > div,
+:root[data-theme="dark"] .factoryJobList > button {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .templateTrustGrid > div,
+:root[data-theme="dark"] .preflightList > div,
+:root[data-theme="dark"] .comparisonGrid > div,
+:root[data-theme="dark"] .factoryEventLog > div > span {
+  background: var(--panel-soft);
+}
+
+:root[data-theme="dark"] .factoryRoleIcon,
+:root[data-theme="dark"] .factoryTabs button small {
+  background: #090b0f;
+  color: var(--vault);
+}
+
+:root[data-theme="dark"] .codeEditor,
+:root[data-theme="dark"] .codeDiffView pre,
+:root[data-theme="dark"] .codePreview pre {
+  background: #090c12;
+  color: #dce5f2;
+}
+
+@media (max-width: 1100px) {
+  .factoryRoleHome {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .factoryRoleMetric {
+    display: none;
+  }
+
+  .factoryJobTimeline .workflowStrip {
+    grid-template-columns: repeat(5, minmax(130px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .templateTrustGrid,
+  .impactSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .factoryTabs {
+    display: flex;
+  }
+
+  .factoryTabs button {
+    flex: 1 0 122px;
+  }
+
+  .deploymentReviewGrid,
+  .factoryHistoryLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .approvalPanel,
+  .factoryEventLog {
+    padding-top: 16px;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .templateTrustGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .factoryRoleHome {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .factoryRoleHome > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .factoryTimelineHeader {
+    align-items: flex-start;
+  }
+
+  .factoryTimelineHeader > div:last-child {
+    flex: none;
+  }
+
+  .pluginSearchToolbar,
+  .generatedFileToolbar,
+  .fileHeaderActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pluginSearchToolbar > button,
+  .fileHeaderActions > *,
+  .generatedFileToolbar .segmentedControl {
+    width: 100%;
+  }
+
+  .generatedFileToolbar .segmentedControl button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .pluginSelect,
+  .templateTrustGrid,
+  .comparisonGrid,
+  .impactSummary,
+  .codePreview > .codeDiffView {
+    grid-template-columns: 1fr;
+  }
+
+  .pluginRowActions {
+    padding-top: 8px;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .pluginBadges {
+    justify-content: flex-start;
+  }
+
+  .codePreview > div:first-child {
+    align-items: flex-start;
+  }
+
+  .codePreview > div:first-child > div:first-child {
+    padding-top: 4px;
+  }
+
+  .codeDiffView > div + div {
+    border-top: 1px solid #263248;
+    border-left: 0;
+  }
+
+  .codeDiffView pre,
+  .codePreview pre,
+  .codeEditor {
+    height: 360px;
+    min-height: 360px;
+  }
+
+  .codePreview.fullscreen {
+    inset: 6px;
+  }
+
+  .codePreview.fullscreen .codeDiffView {
+    overflow-y: auto;
+  }
+
+  .approvalActions > button,
+  .rolloutControls > button,
+  .rolloutControls label {
+    width: 100%;
+  }
+
+  .rolloutControls .segmentedControl {
+    width: 100%;
+  }
+
+  .rolloutControls .segmentedControl button {
+    flex: 1;
+  }
+}

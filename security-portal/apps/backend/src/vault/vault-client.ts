@@ -3,6 +3,8 @@ import type {
   SystemSummary,
   VaultPluginApplyRequest,
   VaultPluginApplyResult,
+  VaultPluginRollbackRequest,
+  VaultPluginRollbackResult,
   VaultIssueResult,
   VaultMapping,
   VaultMappingHealth
@@ -29,6 +31,7 @@ export interface VaultClient {
   issueCredential(request: AccessRequest, system: SystemSummary): Promise<VaultIssueResult>;
   revokeLease(leaseId: string): Promise<{ revoked: boolean; detail: Record<string, unknown> }>;
   applyPlugin(request: VaultPluginApplyRequest): Promise<VaultPluginApplyResult>;
+  rollbackPlugin(request: VaultPluginRollbackRequest): Promise<VaultPluginRollbackResult>;
 }
 
 export function createVaultClient(config: AppConfig): VaultClient {
@@ -125,6 +128,23 @@ class MockVaultClient implements VaultClient {
         description: request.description,
         note: "Mock Vault mode does not mutate a Vault server"
       }
+    };
+  }
+
+  async rollbackPlugin(request: VaultPluginRollbackRequest): Promise<VaultPluginRollbackResult> {
+    return {
+      mode: "mock",
+      rolledBack: true,
+      pluginName: request.pluginName,
+      mountPath: normalizeMount(request.mountPath),
+      steps: [
+        { label: "Disable mount", status: "success", detail: `Mock disabled ${normalizeMount(request.mountPath)}/` },
+        {
+          label: "Remove catalog entry",
+          status: request.removeCatalog ? "success" : "skipped",
+          detail: request.removeCatalog ? `Mock removed ${request.pluginName}` : "Catalog entry retained"
+        }
+      ]
     };
   }
 }
@@ -325,6 +345,39 @@ class RealVaultClient implements VaultClient {
           verify.body.data?.[mountPath] ??
           "mount list returned but mount key was not directly matched"
       })
+    };
+  }
+
+  async rollbackPlugin(request: VaultPluginRollbackRequest): Promise<VaultPluginRollbackResult> {
+    const pluginName = normalizeMount(request.pluginName);
+    const mountPath = normalizeMount(request.mountPath);
+    const mountApiPath = request.pluginType === "auth" ? `sys/auth/${mountPath}` : `sys/mounts/${mountPath}`;
+    const catalogPath = `sys/plugins/catalog/${request.pluginType}/${pluginName}`;
+    const disable = await this.vaultRequest("DELETE", mountApiPath, {
+      namespace: this.config.vaultNamespace,
+      tolerateStatus: [200, 204, 404]
+    });
+    let catalogStatus: number | undefined;
+    if (request.removeCatalog) {
+      const catalog = await this.vaultRequest("DELETE", catalogPath, {
+        namespace: this.config.vaultNamespace,
+        tolerateStatus: [200, 204, 404]
+      });
+      catalogStatus = catalog.status;
+    }
+    return {
+      mode: "real",
+      rolledBack: [200, 204, 404].includes(disable.status),
+      pluginName,
+      mountPath,
+      steps: [
+        { label: "Disable mount", status: "success", detail: `${mountApiPath} returned ${disable.status}` },
+        {
+          label: "Remove catalog entry",
+          status: request.removeCatalog ? "success" : "skipped",
+          detail: request.removeCatalog ? `${catalogPath} returned ${catalogStatus}` : "Catalog entry retained"
+        }
+      ]
     };
   }
 

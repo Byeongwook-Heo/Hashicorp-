@@ -324,3 +324,104 @@ export interface VaultPluginApplyResult {
   }>;
   detail: Record<string, unknown>;
 }
+
+export interface VaultPluginRollbackRequest {
+  jobId: string;
+  pluginType: VaultPluginType;
+  pluginName: string;
+  mountPath: string;
+  removeCatalog: boolean;
+}
+
+export interface VaultPluginRollbackResult {
+  mode: "mock" | "real";
+  rolledBack: boolean;
+  pluginName: string;
+  mountPath: string;
+  steps: Array<{
+    label: string;
+    status: "skipped" | "success";
+    detail: string;
+  }>;
+}
+
+export type VaultPluginFactoryJobStatus =
+  | "draft"
+  | "running"
+  | "waiting-approval"
+  | "approved"
+  | "rejected"
+  | "scheduled"
+  | "complete"
+  | "failed"
+  | "rolled-back";
+
+export type VaultPluginFactoryJobStage =
+  | "design"
+  | "generate"
+  | "test"
+  | "security-review"
+  | "approval"
+  | "deploy"
+  | "complete";
+
+export interface VaultPluginFactoryJobEvent {
+  id: string;
+  label: string;
+  detail: string;
+  status: "pending" | "running" | "success" | "warning" | "failed";
+  createdAt: string;
+}
+
+export interface VaultPluginFactoryApproval {
+  status: "not-requested" | "requested" | "approved" | "rejected";
+  artifactFingerprint?: string;
+  requestedAt?: string;
+  requestedBy?: string;
+  decidedAt?: string;
+  decidedBy?: string;
+  note?: string;
+}
+
+export interface VaultPluginFactoryDeployment {
+  mode: "full" | "canary";
+  scheduledFor?: string;
+  environment: "dev" | "staging" | "prod";
+  rollbackReady: boolean;
+}
+
+export interface VaultPluginFactoryJob {
+  id: string;
+  ownerId: string;
+  ownerEmail: string;
+  templateId?: string;
+  pluginName: string;
+  status: VaultPluginFactoryJobStatus;
+  stage: VaultPluginFactoryJobStage;
+  progress: number;
+  snapshot: Record<string, unknown>;
+  events: VaultPluginFactoryJobEvent[];
+  approval: VaultPluginFactoryApproval;
+  deployment: VaultPluginFactoryDeployment;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVaultPluginFactoryJobInput {
+  owner: PortalUser;
+  templateId?: string;
+  pluginName: string;
+  status?: VaultPluginFactoryJobStatus;
+  stage?: VaultPluginFactoryJobStage;
+  progress?: number;
+  snapshot?: Record<string, unknown>;
+  events?: VaultPluginFactoryJobEvent[];
+  deployment?: Partial<VaultPluginFactoryDeployment>;
+}
+
+export type UpdateVaultPluginFactoryJobInput = Partial<
+  Pick<
+    VaultPluginFactoryJob,
+    "templateId" | "pluginName" | "status" | "stage" | "progress" | "snapshot" | "events" | "approval" | "deployment"
+  >
+>;

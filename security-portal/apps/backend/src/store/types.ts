@@ -5,7 +5,10 @@ import type {
   ManagedUser,
   PortalUser,
   RequestStatus,
-  SystemSummary
+  SystemSummary,
+  VaultPluginFactoryJob,
+  CreateVaultPluginFactoryJobInput,
+  UpdateVaultPluginFactoryJobInput
 } from "@security-portal/shared";
 
 export interface CreateRequestInput {
@@ -50,4 +53,8 @@ export interface PortalStore {
   markCredentialRevoked(id: string): Promise<IssuedCredential>;
   createAuditEvent(input: Omit<AuditEvent, "id" | "createdAt">): Promise<AuditEvent>;
   listAuditEvents(): Promise<AuditEvent[]>;
+  createFactoryJob(input: CreateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob>;
+  listFactoryJobs(ownerId?: string): Promise<VaultPluginFactoryJob[]>;
+  getFactoryJob(id: string): Promise<VaultPluginFactoryJob | undefined>;
+  updateFactoryJob(id: string, input: UpdateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob>;
 }

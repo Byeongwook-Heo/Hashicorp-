@@ -6,7 +6,10 @@ import type {
   ManagedUser,
   PortalUser,
   RequestStatus,
-  SystemSummary
+  SystemSummary,
+  VaultPluginFactoryJob,
+  CreateVaultPluginFactoryJobInput,
+  UpdateVaultPluginFactoryJobInput
 } from "@security-portal/shared";
 import { seedSystems, seedUsers } from "./seed";
 import type { CreateRequestInput, PortalStore, RequestUpdateFields } from "./types";
@@ -17,6 +20,7 @@ export class MemoryStore implements PortalStore {
   private requests = new Map<string, AccessRequest>();
   private credentials = new Map<string, IssuedCredential>();
   private auditEvents = new Map<string, AuditEvent>();
+  private factoryJobs = new Map<string, VaultPluginFactoryJob>();
 
   async initialize(): Promise<void> {
     return Promise.resolve();
@@ -168,6 +172,56 @@ export class MemoryStore implements PortalStore {
 
   async listAuditEvents(): Promise<AuditEvent[]> {
     return [...this.auditEvents.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async createFactoryJob(input: CreateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob> {
+    const now = new Date().toISOString();
+    const job: VaultPluginFactoryJob = {
+      id: crypto.randomUUID(),
+      ownerId: input.owner.id,
+      ownerEmail: input.owner.email,
+      templateId: input.templateId,
+      pluginName: input.pluginName,
+      status: input.status ?? "draft",
+      stage: input.stage ?? "design",
+      progress: input.progress ?? 0,
+      snapshot: input.snapshot ?? {},
+      events: input.events ?? [],
+      approval: { status: "not-requested" },
+      deployment: {
+        mode: input.deployment?.mode ?? "full",
+        environment: input.deployment?.environment ?? "dev",
+        scheduledFor: input.deployment?.scheduledFor,
+        rollbackReady: input.deployment?.rollbackReady ?? false
+      },
+      createdAt: now,
+      updatedAt: now
+    };
+    this.factoryJobs.set(job.id, job);
+    return job;
+  }
+
+  async listFactoryJobs(ownerId?: string): Promise<VaultPluginFactoryJob[]> {
+    return [...this.factoryJobs.values()]
+      .filter((job) => !ownerId || job.ownerId === ownerId)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async getFactoryJob(id: string): Promise<VaultPluginFactoryJob | undefined> {
+    return this.factoryJobs.get(id);
+  }
+
+  async updateFactoryJob(id: string, input: UpdateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob> {
+    const current = this.factoryJobs.get(id);
+    if (!current) throw new Error("Factory job not found");
+    const next: VaultPluginFactoryJob = {
+      ...current,
+      ...input,
+      progress: Math.max(0, Math.min(100, input.progress ?? current.progress)),
+      updatedAt: new Date().toISOString()
+    };
+    this.factoryJobs.set(id, next);
+    return next;
   }
 
   private requireSystem(id: string): SystemSummary {

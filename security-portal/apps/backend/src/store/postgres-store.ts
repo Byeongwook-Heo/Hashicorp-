@@ -6,7 +6,10 @@ import type {
   PortalUser,
   RequestStatus,
   RequestType,
-  SystemSummary
+  SystemSummary,
+  VaultPluginFactoryJob,
+  CreateVaultPluginFactoryJobInput,
+  UpdateVaultPluginFactoryJobInput
 } from "@security-portal/shared";
 import { Pool } from "pg";
 import { seedSystems, seedUsers } from "./seed";
@@ -288,6 +291,100 @@ export class PostgresStore implements PortalStore {
     return result.rows.map(mapAuditEvent);
   }
 
+  async createFactoryJob(input: CreateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob> {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const approval = { status: "not-requested" as const };
+    const deployment = {
+      mode: input.deployment?.mode ?? "full",
+      environment: input.deployment?.environment ?? "dev",
+      scheduledFor: input.deployment?.scheduledFor,
+      rollbackReady: input.deployment?.rollbackReady ?? false
+    };
+    await this.pool.query(
+      `insert into factory_jobs (
+        id, owner_id, owner_email, template_id, plugin_name, status, stage, progress,
+        snapshot_json, events_json, approval_json, deployment_json, created_at, updated_at
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        id,
+        input.owner.id,
+        input.owner.email,
+        input.templateId ?? null,
+        input.pluginName,
+        input.status ?? "draft",
+        input.stage ?? "design",
+        input.progress ?? 0,
+        JSON.stringify(input.snapshot ?? {}),
+        JSON.stringify(input.events ?? []),
+        JSON.stringify(approval),
+        JSON.stringify(deployment),
+        now,
+        now
+      ]
+    );
+    const job = await this.getFactoryJob(id);
+    if (!job) throw new Error("Failed to create Factory job");
+    return job;
+  }
+
+  async listFactoryJobs(ownerId?: string): Promise<VaultPluginFactoryJob[]> {
+    const result = ownerId
+      ? await this.pool.query("select * from factory_jobs where owner_id = $1 order by updated_at desc limit 50", [ownerId])
+      : await this.pool.query("select * from factory_jobs order by updated_at desc limit 100");
+    return result.rows.map(mapFactoryJob);
+  }
+
+  async getFactoryJob(id: string): Promise<VaultPluginFactoryJob | undefined> {
+    const result = await this.pool.query("select * from factory_jobs where id = $1", [id]);
+    return result.rows[0] ? mapFactoryJob(result.rows[0]) : undefined;
+  }
+
+  async updateFactoryJob(id: string, input: UpdateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob> {
+    const current = await this.getFactoryJob(id);
+    if (!current) throw new Error("Factory job not found");
+    const next = {
+      templateId: input.templateId ?? current.templateId,
+      pluginName: input.pluginName ?? current.pluginName,
+      status: input.status ?? current.status,
+      stage: input.stage ?? current.stage,
+      progress: Math.max(0, Math.min(100, input.progress ?? current.progress)),
+      snapshot: input.snapshot ?? current.snapshot,
+      events: input.events ?? current.events,
+      approval: input.approval ?? current.approval,
+      deployment: input.deployment ?? current.deployment
+    };
+    await this.pool.query(
+      `update factory_jobs set
+        template_id = $2,
+        plugin_name = $3,
+        status = $4,
+        stage = $5,
+        progress = $6,
+        snapshot_json = $7,
+        events_json = $8,
+        approval_json = $9,
+        deployment_json = $10,
+        updated_at = now()
+       where id = $1`,
+      [
+        id,
+        next.templateId ?? null,
+        next.pluginName,
+        next.status,
+        next.stage,
+        next.progress,
+        JSON.stringify(next.snapshot),
+        JSON.stringify(next.events),
+        JSON.stringify(next.approval),
+        JSON.stringify(next.deployment)
+      ]
+    );
+    const updated = await this.getFactoryJob(id);
+    if (!updated) throw new Error("Factory job not found");
+    return updated;
+  }
+
   private async fetchSystems(): Promise<SystemSummary[]> {
     const systemsResult = await this.pool.query("select * from systems order by name asc");
     const mappingsResult = await this.pool.query("select * from system_vault_mappings order by display_name asc");
@@ -424,6 +521,25 @@ export class PostgresStore implements PortalStore {
         payload_json jsonb not null default '{}',
         created_at timestamptz not null default now()
       );
+
+      create table if not exists factory_jobs (
+        id text primary key,
+        owner_id text not null,
+        owner_email text not null,
+        template_id text,
+        plugin_name text not null,
+        status text not null,
+        stage text not null,
+        progress integer not null default 0,
+        snapshot_json jsonb not null default '{}',
+        events_json jsonb not null default '[]',
+        approval_json jsonb not null default '{"status":"not-requested"}',
+        deployment_json jsonb not null default '{"mode":"full","environment":"dev","rollbackReady":false}',
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      );
+
+      create index if not exists factory_jobs_owner_updated_idx on factory_jobs(owner_id, updated_at desc);
     `);
   }
 
@@ -571,5 +687,28 @@ function mapAuditEvent(row: Record<string, any>): AuditEvent {
     result: row.result,
     metadata: row.metadata_json ?? {},
     createdAt: row.created_at?.toISOString?.() ?? row.created_at
+  };
+}
+
+function mapFactoryJob(row: Record<string, any>): VaultPluginFactoryJob {
+  return {
+    id: row.id,
+    ownerId: row.owner_id,
+    ownerEmail: row.owner_email,
+    templateId: row.template_id ?? undefined,
+    pluginName: row.plugin_name,
+    status: row.status,
+    stage: row.stage,
+    progress: Number(row.progress ?? 0),
+    snapshot: row.snapshot_json ?? {},
+    events: row.events_json ?? [],
+    approval: row.approval_json ?? { status: "not-requested" },
+    deployment: row.deployment_json ?? {
+      mode: "full",
+      environment: "dev",
+      rollbackReady: false
+    },
+    createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+    updatedAt: row.updated_at?.toISOString?.() ?? row.updated_at
   };
 }

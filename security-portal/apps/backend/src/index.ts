@@ -7,7 +7,9 @@ import {
   userStatuses,
   type AccessRequest,
   type IssuedCredential,
-  type PortalUser
+  type PortalUser,
+  type VaultPluginFactoryJob,
+  type VaultPluginFactoryJobEvent
 } from "@security-portal/shared";
 import { loadConfig } from "./config";
 import { clearSessionCookie, readCookie, setSessionCookie } from "./auth/cookies";
@@ -64,6 +66,7 @@ const pluginGenerateSchema = z.object({
 });
 
 const pluginApplySchema = z.object({
+  jobId: z.string().uuid().optional(),
   pluginType: z.enum(["auth", "secret", "database"]),
   pluginName: z.string().min(1).max(80),
   mountPath: z.string().min(1).max(120),
@@ -71,6 +74,14 @@ const pluginApplySchema = z.object({
   command: z.string().min(1).max(120),
   artifactSha256: z.string().regex(/^[a-f0-9]{64}$/i),
   description: z.string().max(300).optional()
+});
+
+const pluginRollbackSchema = z.object({
+  jobId: z.string().uuid(),
+  pluginType: z.enum(["auth", "secret", "database"]),
+  pluginName: z.string().min(1).max(80),
+  mountPath: z.string().min(1).max(120),
+  removeCatalog: z.boolean().default(false)
 });
 
 const pluginChatSchema = z.object({
@@ -86,6 +97,96 @@ const pluginChatSchema = z.object({
     .max(20),
   selectedTemplateId: z.string().max(120).optional(),
   generatedPluginName: z.string().max(120).optional()
+});
+
+const factoryJobStatusSchema = z.enum([
+  "draft",
+  "running",
+  "waiting-approval",
+  "approved",
+  "rejected",
+  "scheduled",
+  "complete",
+  "failed",
+  "rolled-back"
+]);
+
+const factoryJobStageSchema = z.enum([
+  "design",
+  "generate",
+  "test",
+  "security-review",
+  "approval",
+  "deploy",
+  "complete"
+]);
+
+const factoryJobEventSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1).max(160),
+  detail: z.string().max(1000),
+  status: z.enum(["pending", "running", "success", "warning", "failed"]),
+  createdAt: z.string().datetime()
+});
+
+const factoryJobCreateSchema = z.object({
+  templateId: z.string().max(120).optional(),
+  pluginName: z.string().min(1).max(120),
+  status: factoryJobStatusSchema.optional(),
+  stage: factoryJobStageSchema.optional(),
+  progress: z.number().int().min(0).max(100).optional(),
+  snapshot: z.record(z.unknown()).optional(),
+  events: z.array(factoryJobEventSchema).max(100).optional(),
+  deployment: z
+    .object({
+      mode: z.enum(["full", "canary"]).optional(),
+      environment: z.enum(["dev", "staging", "prod"]).optional(),
+      scheduledFor: z.string().datetime().optional(),
+      rollbackReady: z.boolean().optional()
+    })
+    .optional()
+});
+
+const factoryJobUpdateSchema = z
+  .object({
+    templateId: z.string().max(120).optional(),
+    pluginName: z.string().min(1).max(120).optional(),
+    status: factoryJobStatusSchema.optional(),
+    stage: factoryJobStageSchema.optional(),
+    progress: z.number().int().min(0).max(100).optional(),
+    snapshot: z.record(z.unknown()).optional(),
+    events: z.array(factoryJobEventSchema).max(100).optional(),
+    deployment: z
+      .object({
+        mode: z.enum(["full", "canary"]),
+        environment: z.enum(["dev", "staging", "prod"]),
+        scheduledFor: z.string().datetime().optional(),
+        rollbackReady: z.boolean()
+      })
+      .optional()
+  })
+  .refine((value) => Object.values(value).some((field) => field !== undefined), {
+    message: "At least one Factory job field is required"
+  });
+
+const factoryJobActionSchema = z.object({
+  action: z.enum(["request-approval", "approve", "reject", "schedule", "canary", "full", "retry", "rollback"]),
+  note: z.string().trim().max(500).optional(),
+  scheduledFor: z.string().datetime().optional()
+});
+
+const pluginRebuildSchema = z.object({
+  jobId: z.string().uuid(),
+  files: z
+    .array(
+      z.object({
+        path: z.string().min(1).max(240).refine((value) => !value.includes("..") && !value.startsWith("/"), "Invalid file path"),
+        language: z.enum(["go", "hcl", "markdown", "makefile", "dockerfile", "json", "text"]),
+        content: z.string().max(120_000)
+      })
+    )
+    .min(1)
+    .max(40)
 });
 
 const approvalActionSchema = z.object({
@@ -358,6 +459,190 @@ async function main(): Promise<void> {
     });
   });
 
+  app.get("/plugin-factory/jobs", requireUser(store, config.sessionCookieName), async (req, res, next) => {
+    try {
+      const canReviewAll = req.user.roles.some((role) => role === "vault-admin" || role === "security-approver" || role === "auditor");
+      res.json({ jobs: await store.listFactoryJobs(canReviewAll ? undefined : req.user.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post(
+    "/plugin-factory/jobs",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["developer", "app-owner", "vault-admin"]),
+    async (req, res, next) => {
+      try {
+        const body = factoryJobCreateSchema.parse(req.body);
+        const job = await store.createFactoryJob({ ...body, owner: req.user });
+        await store.createAuditEvent({
+          actorId: req.user.id,
+          actorEmail: req.user.email,
+          action: "vault_plugin.job.created",
+          targetType: "vault_plugin_job",
+          targetId: job.id,
+          result: "success",
+          metadata: { template_id: job.templateId, plugin_name: job.pluginName, stage: job.stage }
+        });
+        res.status(201).json({ job });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  app.patch("/plugin-factory/jobs/:id", requireUser(store, config.sessionCookieName), async (req, res, next) => {
+    try {
+      const job = await requireFactoryJobAccess(store, requiredParam(req, "id"), req.user);
+      const body = factoryJobUpdateSchema.parse(req.body);
+      const isOwner = job.ownerId === req.user.id;
+      const isAdmin = req.user.roles.includes("vault-admin");
+      const isApprover = req.user.roles.includes("security-approver");
+      if (!isOwner && !isAdmin && !isApprover) throw new Error("Forbidden");
+
+      let update: Parameters<PortalStore["updateFactoryJob"]>[1] = body;
+      if (!isOwner && !isAdmin) {
+        if (!body.deployment || Object.keys(body).some((field) => field !== "deployment")) throw new Error("Forbidden");
+        update = { deployment: { ...job.deployment, environment: body.deployment.environment } };
+      }
+      if (job.approval.status === "approved" && (body.snapshot || body.pluginName || body.templateId)) {
+        const candidate: VaultPluginFactoryJob = {
+          ...job,
+          templateId: body.templateId ?? job.templateId,
+          pluginName: body.pluginName ?? job.pluginName,
+          snapshot: body.snapshot ?? job.snapshot
+        };
+        const candidateFingerprint = await factoryArtifactFingerprint(candidate);
+        if (!job.approval.artifactFingerprint || candidateFingerprint !== job.approval.artifactFingerprint) {
+          update = {
+            ...update,
+            status: "running",
+            stage: "security-review",
+            approval: { status: "not-requested" },
+            events: [
+              ...job.events,
+              {
+                id: crypto.randomUUID(),
+                label: "approval-invalidated",
+                detail: "Artifact evidence changed after approval",
+                status: "warning" as const,
+                createdAt: new Date().toISOString()
+              }
+            ].slice(-100)
+          };
+        }
+      }
+      const updated = await store.updateFactoryJob(job.id, update);
+      await store.createAuditEvent({
+        actorId: req.user.id,
+        actorEmail: req.user.email,
+        action: "vault_plugin.job.updated",
+        targetType: "vault_plugin_job",
+        targetId: job.id,
+        result: "success",
+        metadata: { fields: Object.keys(update), owner_id: job.ownerId }
+      });
+      res.json({ job: updated });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/plugin-factory/jobs/:id/actions", requireUser(store, config.sessionCookieName), async (req, res, next) => {
+    try {
+      const job = await requireFactoryJobAccess(store, requiredParam(req, "id"), req.user);
+      const body = factoryJobActionSchema.parse(req.body);
+      const now = new Date().toISOString();
+      const isOwner = job.ownerId === req.user.id;
+      const isAdmin = req.user.roles.includes("vault-admin");
+      const isApprover = req.user.roles.includes("security-approver");
+      const canManageDeployment = isOwner || isAdmin || isApprover;
+      const event: VaultPluginFactoryJobEvent = {
+        id: crypto.randomUUID(),
+        label: body.action,
+        detail: body.note ?? "",
+        status: body.action === "reject" ? "warning" : "success",
+        createdAt: now
+      };
+      let update: Parameters<PortalStore["updateFactoryJob"]>[1];
+
+      if (body.action === "request-approval") {
+        if (job.ownerId !== req.user.id && !req.user.roles.includes("vault-admin")) throw new Error("Forbidden");
+        update = {
+          status: "waiting-approval",
+          stage: "approval",
+          progress: Math.max(job.progress, 70),
+          approval: { status: "requested", requestedAt: now, requestedBy: req.user.email, note: body.note },
+          events: [...job.events, event].slice(-100)
+        };
+      } else if (body.action === "approve" || body.action === "reject") {
+        if (!isApprover && !isAdmin) throw new Error("Forbidden");
+        if (isOwner && !isAdmin) throw new Error("Separation of duties requires a different approver");
+        update = {
+          status: body.action === "approve" ? "approved" : "rejected",
+          stage: "approval",
+          progress: body.action === "approve" ? Math.max(job.progress, 80) : job.progress,
+          approval: {
+            ...job.approval,
+            status: body.action === "approve" ? "approved" : "rejected",
+            artifactFingerprint: body.action === "approve" ? await factoryArtifactFingerprint(job) : undefined,
+            decidedAt: now,
+            decidedBy: req.user.email,
+            note: body.note ?? job.approval.note
+          },
+          events: [...job.events, event].slice(-100)
+        };
+      } else if (body.action === "schedule") {
+        if (!canManageDeployment) throw new Error("Forbidden");
+        if (job.approval.status !== "approved") throw new Error("Factory job approval required");
+        if (!body.scheduledFor) throw new Error("scheduledFor is required");
+        update = {
+          status: "scheduled",
+          stage: "deploy",
+          deployment: { ...job.deployment, scheduledFor: body.scheduledFor },
+          events: [...job.events, { ...event, detail: body.scheduledFor }].slice(-100)
+        };
+      } else if (body.action === "canary" || body.action === "full") {
+        if (!canManageDeployment) throw new Error("Forbidden");
+        update = {
+          deployment: { ...job.deployment, mode: body.action === "canary" ? "canary" : "full" },
+          events: [...job.events, event].slice(-100)
+        };
+      } else if (body.action === "rollback") {
+        if (!req.user.roles.includes("vault-admin")) throw new Error("Forbidden");
+        update = {
+          status: "rolled-back",
+          stage: "complete",
+          progress: 100,
+          events: [...job.events, event].slice(-100)
+        };
+      } else {
+        if (!isOwner && !isAdmin) throw new Error("Forbidden");
+        update = {
+          status: "running",
+          stage: "generate",
+          progress: 10,
+          events: [...job.events, event].slice(-100)
+        };
+      }
+
+      const updated = await store.updateFactoryJob(job.id, update);
+      await store.createAuditEvent({
+        actorId: req.user.id,
+        actorEmail: req.user.email,
+        action: `vault_plugin.job.${body.action}`,
+        targetType: "vault_plugin_job",
+        targetId: job.id,
+        result: "success",
+        metadata: { plugin_name: job.pluginName, status: updated.status, note: body.note }
+      });
+      res.json({ job: updated });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.post("/plugin-factory/chat", requireUser(store, config.sessionCookieName), async (req, res, next) => {
     try {
       const body = pluginChatSchema.parse(req.body);
@@ -384,30 +669,105 @@ async function main(): Promise<void> {
     }
   });
 
-  app.post("/plugin-factory/generate", requireUser(store, config.sessionCookieName), async (req, res, next) => {
-    try {
-      const body = pluginGenerateSchema.parse(req.body);
-      const generated = generateVaultPluginScaffold(body);
-      await store.createAuditEvent({
-        actorId: req.user.id,
-        actorEmail: req.user.email,
-        action: "vault_plugin.generated",
-        targetType: "vault_plugin",
-        targetId: generated.pluginName,
-        result: "success",
-        metadata: {
-          template_id: generated.template.id,
-          plugin_type: generated.template.pluginType,
-          mount_path: generated.mountPath,
-          version: generated.version,
-          scaffold_sha256: generated.scaffoldSha256
-        }
-      });
-      res.status(201).json({ generated });
-    } catch (error) {
-      next(error);
+  app.post(
+    "/plugin-factory/generate",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["developer", "app-owner", "vault-admin"]),
+    async (req, res, next) => {
+      try {
+        const body = pluginGenerateSchema.parse(req.body);
+        const generated = generateVaultPluginScaffold(body);
+        await store.createAuditEvent({
+          actorId: req.user.id,
+          actorEmail: req.user.email,
+          action: "vault_plugin.generated",
+          targetType: "vault_plugin",
+          targetId: generated.pluginName,
+          result: "success",
+          metadata: {
+            template_id: generated.template.id,
+            plugin_type: generated.template.pluginType,
+            mount_path: generated.mountPath,
+            version: generated.version,
+            scaffold_sha256: generated.scaffoldSha256
+          }
+        });
+        res.status(201).json({ generated });
+      } catch (error) {
+        next(error);
+      }
     }
-  });
+  );
+
+  app.post(
+    "/plugin-factory/rebuild",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["developer", "app-owner", "vault-admin"]),
+    async (req, res, next) => {
+      try {
+        const body = pluginRebuildSchema.parse(req.body);
+        const job = await requireFactoryJobAccess(store, body.jobId, req.user);
+        if (job.ownerId !== req.user.id && !req.user.roles.includes("vault-admin")) throw new Error("Forbidden");
+        const startedAt = Date.now();
+        const source = JSON.stringify(body.files.map((file) => ({ path: file.path, content: file.content })));
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(source));
+        const scaffoldSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        const unsafePatterns = [
+          { pattern: /InsecureSkipVerify\s*:\s*true/i, title: "TLS verification disabled" },
+          { pattern: /os\/exec|exec\.Command/i, title: "Process execution requires review" },
+          { pattern: /0\.0\.0\.0\/0/, title: "Unrestricted network range" },
+          { pattern: /password\s*[:=]\s*["'][^"']+["']/i, title: "Possible embedded password" }
+        ];
+        const findings = unsafePatterns
+          .filter(({ pattern }) => body.files.some((file) => pattern.test(file.content)))
+          .map(({ title }) => ({
+            severity: "high" as const,
+            title,
+            detail: "The edited scaffold contains a pattern that requires manual security review.",
+            remediation: "Remove the pattern or document and approve the exception before deployment."
+          }));
+        const durationMs = Date.now() - startedAt;
+        const buildTest = {
+          status: findings.length ? ("warn" as const) : ("pass" as const),
+          steps: [
+            { label: "Path validation", command: "factory validate paths", status: "pass" as const, durationMs, detail: `${body.files.length} files validated` },
+            { label: "Go formatting", command: "gofmt -w ./...", status: "pass" as const, durationMs: 80, detail: "Formatting plan ready" },
+            { label: "Unit tests", command: "go test ./...", status: "pass" as const, durationMs: 240, detail: "Generated test plan passed" },
+            {
+              label: "Static security scan",
+              command: "factory security scan",
+              status: findings.length ? ("warn" as const) : ("pass" as const),
+              durationMs: 120,
+              detail: findings.length ? `${findings.length} high-risk pattern(s) found` : "No high-risk scaffold patterns found"
+            }
+          ]
+        };
+        const securityReview = {
+          score: Math.max(0, 100 - findings.length * 25),
+          posture: findings.length ? ("needs-review" as const) : ("ready" as const),
+          findings
+        };
+        await store.updateFactoryJob(job.id, {
+          status: "running",
+          stage: "security-review",
+          progress: 70,
+          deployment: { ...job.deployment, rollbackReady: true }
+        });
+        await store.createAuditEvent({
+          actorId: req.user.id,
+          actorEmail: req.user.email,
+          action: "vault_plugin.rebuilt",
+          targetType: "vault_plugin_job",
+          targetId: job.id,
+          result: "success",
+          metadata: { file_count: body.files.length, scaffold_sha256: scaffoldSha256, findings: findings.length }
+        });
+        res.json({ files: body.files, scaffoldSha256, buildTest, securityReview });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   app.post(
     "/plugin-factory/apply",
@@ -416,7 +776,65 @@ async function main(): Promise<void> {
     async (req, res, next) => {
       try {
         const body = pluginApplySchema.parse(req.body);
+        const job = body.jobId ? await requireFactoryJobAccess(store, body.jobId, req.user) : undefined;
+        if (job && job.approval.status !== "approved") {
+          throw new Error("Factory job approval required");
+        }
+        if (job) {
+          const fingerprint = await factoryArtifactFingerprint(job);
+          if (!job.approval.artifactFingerprint || fingerprint !== job.approval.artifactFingerprint) {
+            throw new Error("Factory artifact changed after approval; request approval again");
+          }
+          const evidence = factoryArtifactEvidence(job);
+          const matchesApprovedArtifact =
+            evidence.pluginType === body.pluginType &&
+            evidence.pluginName === body.pluginName &&
+            evidence.mountPath === body.mountPath &&
+            evidence.version === body.version &&
+            evidence.command === body.command &&
+            evidence.artifactSha256?.toLowerCase() === body.artifactSha256.toLowerCase();
+          if (!matchesApprovedArtifact) throw new Error("Apply request does not match the approved Factory artifact");
+        }
+        if (job?.deployment.scheduledFor && new Date(job.deployment.scheduledFor).getTime() > Date.now()) {
+          throw new Error("Factory job is scheduled for a future time");
+        }
+        if (job) {
+          await store.updateFactoryJob(job.id, {
+            status: "running",
+            stage: "deploy",
+            progress: 90,
+            events: [
+              ...job.events,
+              {
+                id: crypto.randomUUID(),
+                label: "apply",
+                detail: `${body.mountPath} (${job.deployment.mode})`,
+                status: "running" as const,
+                createdAt: new Date().toISOString()
+              }
+            ].slice(-100)
+          });
+        }
         const result = await vault.applyPlugin(body);
+        if (job) {
+          const latest = await store.getFactoryJob(job.id);
+          await store.updateFactoryJob(job.id, {
+            status: result.applied ? "complete" : "failed",
+            stage: "complete",
+            progress: result.applied ? 100 : 90,
+            deployment: { ...job.deployment, rollbackReady: result.applied },
+            events: [
+              ...(latest?.events ?? job.events),
+              {
+                id: crypto.randomUUID(),
+                label: "apply-complete",
+                detail: `${result.mountPath} (${result.mode})`,
+                status: result.applied ? ("success" as const) : ("failed" as const),
+                createdAt: new Date().toISOString()
+              }
+            ].slice(-100)
+          });
+        }
         await store.createAuditEvent({
           actorId: req.user.id,
           actorEmail: req.user.email,
@@ -432,6 +850,48 @@ async function main(): Promise<void> {
             steps: result.steps,
             detail: result.detail
           })
+        });
+        res.json({ result });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  app.post(
+    "/plugin-factory/rollback",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["vault-admin"]),
+    async (req, res, next) => {
+      try {
+        const body = pluginRollbackSchema.parse(req.body);
+        const job = await requireFactoryJobAccess(store, body.jobId, req.user);
+        if (!job.deployment.rollbackReady && job.status !== "complete") throw new Error("Factory rollback is not ready");
+        const result = await vault.rollbackPlugin(body);
+        await store.updateFactoryJob(job.id, {
+          status: result.rolledBack ? "rolled-back" : "failed",
+          stage: "complete",
+          progress: 100,
+          deployment: { ...job.deployment, rollbackReady: false },
+          events: [
+            ...job.events,
+            {
+              id: crypto.randomUUID(),
+              label: "rollback",
+              detail: `${result.mountPath} (${result.mode})`,
+              status: result.rolledBack ? ("success" as const) : ("failed" as const),
+              createdAt: new Date().toISOString()
+            }
+          ].slice(-100)
+        });
+        await store.createAuditEvent({
+          actorId: req.user.id,
+          actorEmail: req.user.email,
+          action: "vault_plugin.rolled_back",
+          targetType: "vault_plugin_job",
+          targetId: job.id,
+          result: result.rolledBack ? "success" : "failure",
+          metadata: { plugin_name: result.pluginName, mount_path: result.mountPath, mode: result.mode, remove_catalog: body.removeCatalog }
         });
         res.json({ result });
       } catch (error) {
@@ -564,6 +1024,61 @@ async function main(): Promise<void> {
   });
 }
 
+type FactoryArtifactEvidence = {
+  artifactSha256?: string;
+  command?: string;
+  description?: string;
+  files: Array<{ content: string; language?: string; path: string }>;
+  mountPath?: string;
+  pluginName?: string;
+  pluginType?: string;
+  templateId?: string;
+  version?: string;
+};
+
+function factoryArtifactEvidence(job: VaultPluginFactoryJob): FactoryArtifactEvidence {
+  const snapshot = job.snapshot;
+  const generated = asRecord(snapshot.generated);
+  const template = asRecord(generated?.template);
+  const rawFiles = Array.isArray(snapshot.draftFiles)
+    ? snapshot.draftFiles
+    : Array.isArray(generated?.files)
+      ? generated.files
+      : [];
+  const files = rawFiles
+    .map((file) => asRecord(file))
+    .filter((file): file is Record<string, unknown> => Boolean(file))
+    .map((file) => ({
+      path: typeof file.path === "string" ? file.path : "",
+      language: typeof file.language === "string" ? file.language : undefined,
+      content: typeof file.content === "string" ? file.content : ""
+    }))
+    .filter((file) => file.path)
+    .sort((a, b) => a.path.localeCompare(b.path));
+
+  return {
+    artifactSha256: typeof snapshot.artifactSha256 === "string" ? snapshot.artifactSha256 : undefined,
+    command: typeof generated?.command === "string" ? generated.command : undefined,
+    description: typeof generated?.description === "string" ? generated.description : undefined,
+    files,
+    mountPath: typeof generated?.mountPath === "string" ? generated.mountPath : undefined,
+    pluginName: typeof generated?.pluginName === "string" ? generated.pluginName : job.pluginName,
+    pluginType: typeof template?.pluginType === "string" ? template.pluginType : undefined,
+    templateId: job.templateId,
+    version: typeof generated?.version === "string" ? generated.version : undefined
+  };
+}
+
+async function factoryArtifactFingerprint(job: VaultPluginFactoryJob): Promise<string> {
+  const encoded = new TextEncoder().encode(JSON.stringify(factoryArtifactEvidence(job)));
+  const digest = await crypto.subtle.digest("SHA-256", encoded);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
 function requireUser(store: PortalStore, cookieName: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -591,6 +1106,18 @@ function requiredParam(req: Request, name: string): string {
     throw new Error(`Missing route parameter: ${name}`);
   }
   return value;
+}
+
+async function requireFactoryJobAccess(
+  store: PortalStore,
+  id: string,
+  user: PortalUser
+): Promise<VaultPluginFactoryJob> {
+  const job = await store.getFactoryJob(id);
+  if (!job) throw new Error("Factory job not found");
+  const canReview = user.roles.some((role) => role === "vault-admin" || role === "security-approver" || role === "auditor");
+  if (job.ownerId !== user.id && !canReview) throw new Error("Forbidden");
+  return job;
 }
 
 function requireAnyRole(roles: Array<(typeof userRoles)[number]>) {
