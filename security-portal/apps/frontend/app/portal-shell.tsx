@@ -1228,7 +1228,13 @@ function LoginScreen({
     <main className="login">
       <section>
         <div className="loginTopline">
-          <span className="eyebrow">{t.login.eyebrow}</span>
+          <div className="loginBrandLockup">
+            <span className="brandMark" aria-hidden="true">V</span>
+            <div>
+              <strong>Vault</strong>
+              <small>{t.login.eyebrow}</small>
+            </div>
+          </div>
           <div className="loginControls">
             <div className="languageSwitch compact" aria-label={t.languageLabel}>
               <button aria-pressed={language === "en"} className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>
