@@ -947,7 +947,404 @@ tbody tr:hover {
 }
 
 .requirementsInterview {
+  gap: 14px;
+  padding: 16px;
   border-radius: 3px;
+}
+
+.requirementsStatusBadge,
+.requirementQuestionHeader > strong,
+.requirementReviewHeader > strong {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted-strong) !important;
+  font-size: 10px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.requirementsStatusBadge.ready,
+.requirementsStatusBadge.confirmed,
+.requirementQuestionHeader > strong.complete,
+.requirementReviewHeader > strong.ready {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+  background: color-mix(in srgb, var(--panel) 92%, var(--green));
+  color: var(--green) !important;
+}
+
+.requirementQuestionHeader > strong.required,
+.requirementReviewHeader > strong.pending {
+  border-color: color-mix(in srgb, #c89f00 44%, var(--line));
+  color: #a77f00 !important;
+}
+
+.requirementsStepNav {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.requirementsStepNav button {
+  display: grid;
+  flex: 1 0 88px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 7px;
+  min-width: 88px;
+  min-height: 46px;
+  align-items: center;
+  padding: 7px 8px;
+  border-color: var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--muted-strong);
+  text-align: left;
+}
+
+.requirementsStepNav button > span {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 760;
+}
+
+.requirementsStepNav button strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.requirementsStepNav button.complete > span {
+  border-color: color-mix(in srgb, var(--green) 36%, var(--line));
+  background: color-mix(in srgb, var(--panel) 90%, var(--green));
+  color: var(--green);
+}
+
+.requirementsStepNav button.active {
+  border-color: #c89f00;
+  background: var(--vault-soft);
+  box-shadow: inset 0 -2px 0 var(--vault);
+  color: var(--ink);
+}
+
+.requirementsStepNav button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.requirementQuestionPanel,
+.requirementReviewPanel {
+  display: grid;
+  gap: 13px;
+  min-width: 0;
+  padding-top: 15px;
+  border-top: 1px solid var(--line);
+}
+
+.requirementQuestionHeader,
+.requirementReviewHeader {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.requirementQuestionHeader > span,
+.requirementReviewHeader span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.requirementQuestionPanel h3,
+.requirementReviewHeader h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 730;
+  letter-spacing: 0;
+}
+
+.requirementQuestionPanel > p {
+  max-width: 760px;
+  margin: -5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.requirementQuestionField {
+  display: grid;
+  gap: 6px;
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.requirementQuestionField input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.requirementQuestionField input:focus {
+  border-color: #c89f00;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vault) 16%, transparent);
+}
+
+.requirementSuggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.requirementSuggestions button {
+  min-height: 30px;
+  padding-inline: 9px;
+  border-color: var(--line);
+  border-radius: 4px;
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-size: 10px;
+}
+
+.requirementSuggestions button.active {
+  border-color: #c89f00;
+  background: var(--vault-soft);
+  color: var(--ink);
+}
+
+.requirementNavigation {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.requirementNavigation button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.requirementNavigation button:nth-child(2) {
+  justify-self: start;
+}
+
+.requirementReviewHeader > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.requirementReviewList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.requirementReviewList button {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 9px;
+  min-width: 0;
+  min-height: 62px;
+  align-items: center;
+  padding: 9px 10px;
+  border-color: var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+}
+
+.requirementReviewList button > span:first-child {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.requirementReviewList button.complete > span:first-child {
+  color: var(--green);
+}
+
+.requirementReviewList button.missing > span:first-child {
+  color: #a77f00;
+}
+
+.requirementReviewList small,
+.requirementReviewList strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.requirementReviewList small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.requirementReviewList strong {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.requirementReviewList button:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.requirementEnvironment {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.requirementEnvironment > span,
+.requirementSafetyNote > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.requirementEnvironment strong,
+.requirementEnvironment small,
+.requirementSafetyNote strong,
+.requirementSafetyNote small {
+  display: block;
+}
+
+.requirementEnvironment strong,
+.requirementSafetyNote strong {
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.requirementEnvironment small,
+.requirementSafetyNote small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.requirementEnvironment select {
+  width: 160px;
+  min-width: 160px;
+  min-height: 38px;
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.requirementSafetyNote,
+.requirementConfirmedNotice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 10px 11px;
+  border-left: 2px solid var(--green);
+  background: color-mix(in srgb, var(--panel) 94%, var(--green));
+  color: var(--green);
+}
+
+.requirementConfirmedNotice {
+  align-items: center;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.requirementReviewPanel .requirementsActions {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+@media (max-width: 640px) {
+  .requirementsInterview {
+    padding: 12px;
+  }
+
+  .requirementsStatusBadge,
+  .requirementQuestionHeader > strong,
+  .requirementReviewHeader > strong {
+    align-self: flex-start;
+  }
+
+  .requirementsStepNav button {
+    flex-basis: 82px;
+    min-width: 82px;
+  }
+
+  .requirementQuestionHeader,
+  .requirementReviewHeader {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .requirementNavigation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .requirementNavigation button {
+    width: 100%;
+  }
+
+  .requirementNavigation button:nth-child(2) {
+    justify-self: stretch;
+  }
+
+  .requirementNavigation .primary {
+    grid-column: 1 / -1;
+  }
+
+  .requirementReviewList {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .requirementEnvironment {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .requirementEnvironment select {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .factoryJobTimeline {

@@ -34,6 +34,7 @@ import { createPortal } from "react-dom";
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   Bell,
@@ -65,6 +66,7 @@ import {
   PackageSearch,
   PanelLeftClose,
   PanelLeftOpen,
+  PencilLine,
   PlugZap,
   RefreshCw,
   Rocket,
@@ -3068,6 +3070,16 @@ type PluginApplyAttempt =
   | { status: "approval-required" | "preflight-blocked" | "failed"; detail?: string };
 type FactoryTab = "workspace" | "discover" | "files" | "review" | "build" | "deploy" | "history";
 type FileEditorMode = "preview" | "edit" | "diff";
+type FactoryRequirementStep = VaultPluginRequirementField | "review";
+type FactoryRequirementQuestion = {
+  field: VaultPluginRequirementField;
+  label: string;
+  shortLabel: string;
+  question: string;
+  detail: string;
+  placeholder: string;
+  suggestions: string[];
+};
 type FactoryWorkspaceSnapshot = {
   activeTab?: FactoryTab;
   selectedId?: string;
@@ -3162,6 +3174,7 @@ function PluginFactory({
   const [removeCatalogOnRollback, setRemoveCatalogOnRollback] = useState(false);
   const [rollbackResult, setRollbackResult] = useState<VaultPluginRollbackResult | null>(null);
   const [requirementsInterview, setRequirementsInterview] = useState<VaultPluginRequirementsInterview | null>(null);
+  const [activeRequirementStep, setActiveRequirementStep] = useState<FactoryRequirementStep>("targetSystem");
   const [autoRepair, setAutoRepair] = useState<VaultPluginAutoRepairResult | null>(null);
   const [factoryRuntime, setFactoryRuntime] = useState<FactoryRuntime>({
     vaultMode: "mock",
@@ -3317,6 +3330,17 @@ function PluginFactory({
   const activeFileDiff = fileDiffSummary(originalFile?.content ?? "", activeFile?.content ?? "");
   const highFindings = generated?.securityReview.findings.filter((finding) => finding.severity === "high").length ?? 0;
   const generatedDisplay = generated ? factoryGeneratedDisplay(generated, t) : null;
+  const requirementQuestions = useMemo(() => factoryRequirementQuestions(t, selectedTemplate), [selectedTemplate, t]);
+  const completedRequirementCount = requirementsInterview ? requirementQuestions.length - requirementsInterview.missingFields.length : 0;
+  const activeRequirementQuestion = activeRequirementStep === "review"
+    ? null
+    : requirementQuestions.find((question) => question.field === activeRequirementStep) ?? requirementQuestions[0];
+  const activeRequirementIndex = activeRequirementQuestion
+    ? requirementQuestions.findIndex((question) => question.field === activeRequirementQuestion.field)
+    : -1;
+  const activeRequirementValue = requirementsInterview && activeRequirementQuestion
+    ? requirementsInterview.spec[activeRequirementQuestion.field]
+    : "";
   const preflightChecks = [
     {
       label: factoryLocalize(t, "Build and tests", "빌드 및 테스트"),
@@ -3522,7 +3546,13 @@ function PluginFactory({
     setFavoriteTemplateIds(snapshot.favoriteTemplateIds ?? []);
     setRecentTemplateIds(snapshot.recentTemplateIds ?? []);
     setCompareTemplateIds(snapshot.compareTemplateIds?.slice(0, 2) ?? []);
-    setRequirementsInterview(snapshot.requirementsInterview ?? null);
+    const interview = snapshot.requirementsInterview ?? null;
+    setRequirementsInterview(interview);
+    setActiveRequirementStep(
+      interview?.spec.confirmed || interview?.readyToConfirm
+        ? "review"
+        : interview?.missingFields[0] ?? "targetSystem"
+    );
     setAutoRepair(snapshot.autoRepair ?? null);
   }
 
@@ -3987,6 +4017,7 @@ function PluginFactory({
       });
       chooseTemplate(template);
       setRequirementsInterview(response.interview);
+      setActiveRequirementStep(response.interview.missingFields[0] ?? "review");
       setMountPath(response.interview.spec.mountPath);
       setAutoRepair(null);
       setActiveFactoryTab("workspace");
@@ -4020,6 +4051,22 @@ function PluginFactory({
     });
   }
 
+  function showPreviousRequirement() {
+    if (activeRequirementIndex <= 0) return;
+    const previousQuestion = requirementQuestions[activeRequirementIndex - 1];
+    if (previousQuestion) setActiveRequirementStep(previousQuestion.field);
+  }
+
+  function continueRequirementsInterview() {
+    if (!requirementsInterview || !activeRequirementQuestion || !activeRequirementValue.trim()) return;
+    const nextQuestion = requirementQuestions[activeRequirementIndex + 1];
+    if (nextQuestion) {
+      setActiveRequirementStep(nextQuestion.field);
+      return;
+    }
+    setActiveRequirementStep(requirementsInterview.missingFields[0] ?? "review");
+  }
+
   async function answerRequirementsInterview(prompt: string) {
     if (!requirementsInterview) return;
     if (requirementsInterview.readyToConfirm && /^(?:확정|명세\s*확정|진행|좋아|네|yes|confirm|proceed)[.!\s]*$/i.test(prompt.trim())) {
@@ -4037,6 +4084,7 @@ function PluginFactory({
         })
       });
       setRequirementsInterview(response.interview);
+      setActiveRequirementStep(response.interview.missingFields[0] ?? "review");
       setMountPath(response.interview.spec.mountPath);
       setAssistantRuntime({
         provider: response.interview.provider,
@@ -4067,6 +4115,7 @@ function PluginFactory({
       });
       const confirmed = response.interview;
       setRequirementsInterview(confirmed);
+      setActiveRequirementStep("review");
       setMountPath(confirmed.spec.mountPath);
       addChatMessage("assistant", confirmed.reply, "success");
       setBusy(null);
@@ -4676,119 +4725,180 @@ function PluginFactory({
           ))}
         </div>
         {requirementsInterview ? (
-          <div className={`requirementsInterview ${requirementsInterview.spec.confirmed ? "confirmed" : ""}`}>
+          <div className={`requirementsInterview ${requirementsInterview.spec.confirmed ? "confirmed" : ""}${activeRequirementStep === "review" ? " reviewing" : ""}`}>
             <div className="requirementsHeader">
               <div>
                 <span>{localize(t, "Requirements interview", "요구사항 인터뷰")}</span>
-                <strong>
-                  {requirementsInterview.spec.confirmed
-                    ? localize(t, "Specification confirmed", "생성 명세 확정됨")
-                    : localize(
-                        t,
-                        `${7 - requirementsInterview.missingFields.length}/7 required fields`,
-                        `필수 항목 ${7 - requirementsInterview.missingFields.length}/7`
-                      )}
-                </strong>
+                <strong>{factoryLocalize(t, `${selectedTemplate?.displayName ?? "Plugin"} specification`, `${selectedTemplate?.displayName ?? "Plugin"} 생성 명세`)}</strong>
               </div>
-              <span className="runtimeBadge">
-                {factoryRuntime.vaultMode === "real" ? "Vault real" : "Vault mock"} · {factoryRuntime.buildMode}
+              <span className={`requirementsStatusBadge ${requirementsInterview.spec.confirmed ? "confirmed" : requirementsInterview.readyToConfirm ? "ready" : ""}`}>
+                {requirementsInterview.spec.confirmed
+                  ? localize(t, "Confirmed", "확정됨")
+                  : factoryLocalize(
+                      t,
+                      `${completedRequirementCount}/${requirementQuestions.length} complete`,
+                      `${completedRequirementCount}/${requirementQuestions.length} 완료`
+                    )}
               </span>
             </div>
             <div className="requirementsProgress" aria-hidden="true">
-              <span style={{ width: `${((7 - requirementsInterview.missingFields.length) / 7) * 100}%` }} />
+              <span style={{ width: `${(completedRequirementCount / requirementQuestions.length) * 100}%` }} />
             </div>
-            <div className="requirementsGrid">
-              <label>
-                {localize(t, "Target system", "대상 시스템")}
-                <input
-                  value={requirementsInterview.spec.targetSystem}
-                  onChange={(event) => updateRequirementSpec("targetSystem", event.target.value)}
-                  disabled={requirementsInterview.spec.confirmed || busy !== null}
-                />
-              </label>
-              <label>
-                {localize(t, "Authentication", "인증 방식")}
-                <input
-                  value={requirementsInterview.spec.authMethod}
-                  onChange={(event) => updateRequirementSpec("authMethod", event.target.value)}
-                  disabled={requirementsInterview.spec.confirmed || busy !== null}
-                  placeholder={localize(t, "API key in sealed configuration", "예: Seal-wrap 설정의 API Key")}
-                />
-              </label>
-              <label className="wide">
-                {localize(t, "API path", "API 경로")}
-                <input
-                  value={requirementsInterview.spec.apiBasePath}
-                  onChange={(event) => updateRequirementSpec("apiBasePath", event.target.value)}
-                  disabled={requirementsInterview.spec.confirmed || busy !== null}
-                  placeholder="https://service.example/v1"
-                />
-              </label>
-              <label>
-                TTL
-                <input
-                  value={requirementsInterview.spec.ttl}
-                  onChange={(event) => updateRequirementSpec("ttl", event.target.value)}
-                  disabled={requirementsInterview.spec.confirmed || busy !== null}
-                />
-              </label>
-              <label>
-                {localize(t, "Mount path", "Mount 경로")}
-                <input
-                  value={requirementsInterview.spec.mountPath}
-                  onChange={(event) => updateRequirementSpec("mountPath", event.target.value)}
-                  disabled={requirementsInterview.spec.confirmed || busy !== null}
-                />
-              </label>
-              <label className="wide">
-                Rotation
-                <input
-                  value={requirementsInterview.spec.rotationStrategy}
-                  onChange={(event) => updateRequirementSpec("rotationStrategy", event.target.value)}
-                  disabled={requirementsInterview.spec.confirmed || busy !== null}
-                  placeholder={localize(t, "Rotate every 30 days and on demand", "예: 30일 주기 및 요청 시 교체")}
-                />
-              </label>
-              <label className="wide">
-                Revoke
-                <input
-                  value={requirementsInterview.spec.revokeStrategy}
-                  onChange={(event) => updateRequirementSpec("revokeStrategy", event.target.value)}
-                  disabled={requirementsInterview.spec.confirmed || busy !== null}
-                  placeholder={localize(t, "Disable upstream credential immediately", "예: 상위 시스템 Credential 즉시 폐기")}
-                />
-              </label>
-              <label>
-                {localize(t, "First environment", "최초 환경")}
-                <select
-                  value={requirementsInterview.spec.environment}
-                  onChange={(event) => updateRequirementSpec("environment", event.target.value)}
-                  disabled={requirementsInterview.spec.confirmed || busy !== null}
-                >
-                  <option value="dev">dev</option>
-                  <option value="staging">staging</option>
-                  <option value="prod">prod</option>
-                </select>
-              </label>
+            <div className="requirementsStepNav" role="tablist" aria-label={localize(t, "Required specification fields", "필수 명세 항목")}>
+              {requirementQuestions.map((question, index) => {
+                const complete = Boolean(requirementsInterview.spec[question.field].trim());
+                const active = !requirementsInterview.spec.confirmed && activeRequirementStep === question.field;
+                return (
+                  <button
+                    aria-controls={`requirement-question-${question.field}`}
+                    aria-selected={active}
+                    className={`${active ? "active" : ""}${complete ? " complete" : ""}`}
+                    disabled={requirementsInterview.spec.confirmed}
+                    key={question.field}
+                    onClick={() => setActiveRequirementStep(question.field)}
+                    role="tab"
+                    type="button"
+                  >
+                    <span>{complete ? <CheckCircle2 aria-hidden="true" size={14} /> : index + 1}</span>
+                    <strong>{question.shortLabel}</strong>
+                  </button>
+                );
+              })}
             </div>
-            {!requirementsInterview.spec.confirmed ? (
-              <div className="requirementsActions">
-                <span>
-                  {requirementsInterview.missingFields.length
-                    ? localize(t, "Complete the highlighted fields", "비어 있는 필수 항목을 입력하세요")
-                    : localize(t, "Review before generation", "생성 전 명세를 검토하세요")}
-                </span>
-                <button
-                  className="primary"
-                  type="button"
-                  onClick={() => void confirmRequirementsAndGenerate()}
-                  disabled={!requirementsInterview.readyToConfirm || busy !== null}
-                >
-                  <BadgeCheck aria-hidden="true" size={16} />
-                  {localize(t, "Confirm and generate", "명세 확정 후 생성")}
-                </button>
-              </div>
-            ) : null}
+            {!requirementsInterview.spec.confirmed && activeRequirementStep !== "review" && activeRequirementQuestion ? (
+              <section
+                aria-labelledby={`requirement-title-${activeRequirementQuestion.field}`}
+                className="requirementQuestionPanel"
+                id={`requirement-question-${activeRequirementQuestion.field}`}
+                role="tabpanel"
+              >
+                <div className="requirementQuestionHeader">
+                  <span>{factoryLocalize(t, `Required question ${activeRequirementIndex + 1} of ${requirementQuestions.length}`, `필수 질문 ${activeRequirementIndex + 1}/${requirementQuestions.length}`)}</span>
+                  <strong className={activeRequirementValue.trim() ? "complete" : "required"}>
+                    {activeRequirementValue.trim() ? localize(t, "Answered", "입력됨") : localize(t, "Required", "입력 필요")}
+                  </strong>
+                </div>
+                <h3 id={`requirement-title-${activeRequirementQuestion.field}`}>{activeRequirementQuestion.question}</h3>
+                <p>{activeRequirementQuestion.detail}</p>
+                <label className="requirementQuestionField">
+                  <span>{activeRequirementQuestion.label}</span>
+                  <input
+                    aria-label={activeRequirementQuestion.label}
+                    autoComplete="off"
+                    disabled={busy !== null}
+                    onChange={(event) => updateRequirementSpec(activeRequirementQuestion.field, event.target.value)}
+                    placeholder={activeRequirementQuestion.placeholder}
+                    value={activeRequirementValue}
+                  />
+                </label>
+                {activeRequirementQuestion.suggestions.length ? (
+                  <div className="requirementSuggestions" aria-label={localize(t, "Suggested answers", "추천 답변")}>
+                    {activeRequirementQuestion.suggestions.map((suggestion) => (
+                      <button
+                        aria-pressed={activeRequirementValue === suggestion}
+                        className={activeRequirementValue === suggestion ? "active" : ""}
+                        disabled={busy !== null}
+                        key={suggestion}
+                        onClick={() => updateRequirementSpec(activeRequirementQuestion.field, suggestion)}
+                        type="button"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="requirementNavigation">
+                  <button disabled={activeRequirementIndex <= 0 || busy !== null} onClick={showPreviousRequirement} type="button">
+                    <ArrowLeft aria-hidden="true" size={16} /> {localize(t, "Previous", "이전")}
+                  </button>
+                  <button disabled={busy !== null} onClick={focusFactoryChat} type="button">
+                    <MessageSquare aria-hidden="true" size={16} /> {localize(t, "Answer in chat", "채팅으로 답변")}
+                  </button>
+                  <button className="primary" disabled={!activeRequirementValue.trim() || busy !== null} onClick={continueRequirementsInterview} type="button">
+                    {activeRequirementIndex === requirementQuestions.length - 1
+                      ? localize(t, "Review specification", "명세 검토")
+                      : localize(t, "Next question", "다음 질문")}
+                    <ArrowRight aria-hidden="true" size={16} />
+                  </button>
+                </div>
+              </section>
+            ) : (
+              <section className="requirementReviewPanel" aria-label={localize(t, "Specification review", "생성 명세 검토")}>
+                <div className="requirementReviewHeader">
+                  <div>
+                    <span>{localize(t, "Specification review", "생성 전 명세 검토")}</span>
+                    <h3>{requirementsInterview.spec.confirmed ? localize(t, "Specification confirmed", "생성 명세가 확정되었습니다") : localize(t, "Check every answer before generation", "생성 전에 답변을 확인하세요")}</h3>
+                  </div>
+                  <strong className={requirementsInterview.readyToConfirm ? "ready" : "pending"}>
+                    {requirementsInterview.spec.confirmed
+                      ? localize(t, "Confirmed", "확정 완료")
+                      : requirementsInterview.readyToConfirm
+                        ? localize(t, "Ready", "검토 가능")
+                        : factoryLocalize(t, `${requirementsInterview.missingFields.length} remaining`, `${requirementsInterview.missingFields.length}개 남음`)}
+                  </strong>
+                </div>
+                <div className="requirementReviewList">
+                  {requirementQuestions.map((question) => {
+                    const value = requirementsInterview.spec[question.field].trim();
+                    return (
+                      <button
+                        className={value ? "complete" : "missing"}
+                        disabled={requirementsInterview.spec.confirmed || busy !== null}
+                        key={question.field}
+                        onClick={() => setActiveRequirementStep(question.field)}
+                        type="button"
+                      >
+                        <span>{value ? <CheckCircle2 aria-hidden="true" size={16} /> : <CircleGauge aria-hidden="true" size={16} />}</span>
+                        <span><small>{question.label}</small><strong>{value || localize(t, "Answer required", "입력 필요")}</strong></span>
+                        {!requirementsInterview.spec.confirmed ? <PencilLine aria-hidden="true" size={15} /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+                <label className="requirementEnvironment">
+                  <span>
+                    <strong>{localize(t, "First environment", "최초 적용 환경")}</strong>
+                    <small>{localize(t, "Start in the lowest-risk environment.", "가장 낮은 위험의 환경부터 시작합니다.")}</small>
+                  </span>
+                  <select
+                    disabled={requirementsInterview.spec.confirmed || busy !== null}
+                    onChange={(event) => updateRequirementSpec("environment", event.target.value)}
+                    value={requirementsInterview.spec.environment}
+                  >
+                    <option value="dev">dev</option>
+                    <option value="staging">staging</option>
+                    <option value="prod">prod</option>
+                  </select>
+                </label>
+                <div className="requirementSafetyNote">
+                  <ShieldCheck aria-hidden="true" size={18} />
+                  <span><strong>{localize(t, "Do not enter secret values", "Secret 값 입력 금지")}</strong><small>{factoryLocalize(t, "Use credential types and storage locations only. Never enter an actual token or password.", "Credential 유형과 저장 위치만 작성하고 실제 Token이나 Password는 입력하지 마세요.")}</small></span>
+                </div>
+                {!requirementsInterview.spec.confirmed ? (
+                  <div className="requirementsActions">
+                    <span>
+                      {requirementsInterview.missingFields.length
+                        ? localize(t, "Complete the remaining required answers", "남은 필수 답변을 입력하세요")
+                        : localize(t, "The specification is ready to generate", "Plugin을 생성할 준비가 되었습니다")}
+                    </span>
+                    <button
+                      className="primary"
+                      disabled={!requirementsInterview.readyToConfirm || busy !== null}
+                      onClick={() => void confirmRequirementsAndGenerate()}
+                      type="button"
+                    >
+                      <BadgeCheck aria-hidden="true" size={16} />
+                      {localize(t, "Confirm and generate", "명세 확정 후 생성")}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="requirementConfirmedNotice">
+                    <CheckCircle2 aria-hidden="true" size={18} />
+                    <span>{localize(t, "This confirmed specification is used for generation and review.", "확정된 명세를 기준으로 생성과 검토를 진행합니다.")}</span>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         ) : null}
         {factoryJob ? (
@@ -6481,6 +6591,81 @@ function factoryActionLabel(action: string, t: Copy): string {
 
 function factoryLocalize(t: Copy, en: string, ko: string): string {
   return t === copy.ko ? ko : en;
+}
+
+function factoryRequirementQuestions(t: Copy, template?: VaultPluginTemplate): FactoryRequirementQuestion[] {
+  const targetSuggestions = template?.integrationTarget ? [template.integrationTarget] : [];
+  return [
+    {
+      field: "targetSystem",
+      label: factoryLocalize(t, "Target system", "대상 시스템"),
+      shortLabel: factoryLocalize(t, "System", "시스템"),
+      question: factoryLocalize(t, "Which external system will this plugin connect to?", "플러그인이 연결할 외부 시스템은 무엇인가요?"),
+      detail: factoryLocalize(t, "Enter the product or service name only, without any secret value.", "제품 또는 서비스 이름만 입력하고 Secret 값은 입력하지 마세요."),
+      placeholder: factoryLocalize(t, "e.g. Sectigo SCM", "예: Sectigo SCM"),
+      suggestions: targetSuggestions
+    },
+    {
+      field: "authMethod",
+      label: factoryLocalize(t, "Authentication", "인증 방식"),
+      shortLabel: factoryLocalize(t, "Auth", "인증"),
+      question: factoryLocalize(t, "How should the plugin authenticate to the upstream API?", "외부 API에는 어떤 방식으로 인증하나요?"),
+      detail: factoryLocalize(t, "Describe the credential type and storage method. Never enter an actual token or password.", "Credential 유형과 저장 방식을 설명하고 실제 Token이나 Password는 입력하지 마세요."),
+      placeholder: factoryLocalize(t, "e.g. API key in sealed configuration", "예: Seal-wrap 설정의 API Key"),
+      suggestions: ["API Key", "OAuth 2.0 Client Credentials", "mTLS"]
+    },
+    {
+      field: "apiBasePath",
+      label: factoryLocalize(t, "API path", "API 경로"),
+      shortLabel: "API",
+      question: factoryLocalize(t, "What API base URL should the plugin call?", "호출할 API Base URL은 무엇인가요?"),
+      detail: factoryLocalize(t, "Include the scheme, host, and version prefix used by the integration.", "연동에 사용할 Scheme, Host와 Version Prefix까지 입력하세요."),
+      placeholder: "https://service.example/v1",
+      suggestions: []
+    },
+    {
+      field: "ttl",
+      label: "TTL",
+      shortLabel: "TTL",
+      question: factoryLocalize(t, "How long should issued credentials remain valid?", "발급된 Credential은 얼마 동안 유효해야 하나요?"),
+      detail: factoryLocalize(t, "Use a duration supported by Vault, such as 15m, 1h, or 24h.", "15m, 1h, 24h처럼 Vault에서 사용하는 Duration 형식으로 입력하세요."),
+      placeholder: "15m",
+      suggestions: ["15m", "1h", "24h"]
+    },
+    {
+      field: "rotationStrategy",
+      label: "Rotation",
+      shortLabel: "Rotation",
+      question: factoryLocalize(t, "When and how should credentials be rotated?", "Credential은 언제, 어떤 방식으로 교체해야 하나요?"),
+      detail: factoryLocalize(t, "Define the regular schedule and whether operators can rotate on demand.", "정기 교체 주기와 운영자의 요청 시 교체 가능 여부를 함께 정하세요."),
+      placeholder: factoryLocalize(t, "e.g. Every 30 days and on demand", "예: 30일 주기 및 요청 시 교체"),
+      suggestions: [
+        factoryLocalize(t, "Every 30 days and on demand", "30일 주기 및 요청 시 교체"),
+        factoryLocalize(t, "Every 90 days and on demand", "90일 주기 및 요청 시 교체")
+      ]
+    },
+    {
+      field: "revokeStrategy",
+      label: "Revoke",
+      shortLabel: "Revoke",
+      question: factoryLocalize(t, "What should happen when Vault revokes the credential?", "Vault에서 Credential을 폐기하면 외부 시스템에는 어떤 처리가 필요하나요?"),
+      detail: factoryLocalize(t, "Describe the upstream disable or delete action and its timing.", "외부 시스템의 비활성화 또는 삭제 동작과 실행 시점을 정하세요."),
+      placeholder: factoryLocalize(t, "e.g. Revoke upstream credential immediately", "예: 외부 시스템 Credential 즉시 폐기"),
+      suggestions: [
+        factoryLocalize(t, "Revoke upstream credential immediately", "외부 시스템 Credential 즉시 폐기"),
+        factoryLocalize(t, "Disable immediately, delete after lease expiry", "즉시 비활성화 후 Lease 만료 시 삭제")
+      ]
+    },
+    {
+      field: "mountPath",
+      label: factoryLocalize(t, "Mount path", "Mount 경로"),
+      shortLabel: "Mount",
+      question: factoryLocalize(t, "Which Vault mount path should enable this plugin?", "이 Plugin을 활성화할 Vault Mount 경로는 무엇인가요?"),
+      detail: factoryLocalize(t, "Use a unique path without a leading or trailing slash.", "앞뒤의 /를 제외하고 다른 Mount와 겹치지 않는 경로를 입력하세요."),
+      placeholder: factoryLocalize(t, "e.g. team/sectigo-pki", "예: team/sectigo-pki"),
+      suggestions: []
+    }
+  ];
 }
 
 function factoryStatusLabel(status: string, t: Copy): string {
