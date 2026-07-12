@@ -312,15 +312,17 @@ export class PostgresStore implements PortalStore {
     };
     await this.pool.query(
       `insert into factory_jobs (
-        id, owner_id, owner_email, template_id, plugin_name, status, stage, progress,
+        id, owner_id, owner_email, template_id, plugin_name, history_title, history_note, status, stage, progress,
         snapshot_json, events_json, approval_json, deployment_json, created_at, updated_at
-      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [
         id,
         input.owner.id,
         input.owner.email,
         input.templateId ?? null,
         input.pluginName,
+        input.historyTitle ?? null,
+        input.historyNote ?? null,
         input.status ?? "draft",
         input.stage ?? "design",
         input.progress ?? 0,
@@ -355,6 +357,8 @@ export class PostgresStore implements PortalStore {
     const next = {
       templateId: input.templateId ?? current.templateId,
       pluginName: input.pluginName ?? current.pluginName,
+      historyTitle: input.historyTitle ?? current.historyTitle,
+      historyNote: input.historyNote ?? current.historyNote,
       status: input.status ?? current.status,
       stage: input.stage ?? current.stage,
       progress: Math.max(0, Math.min(100, input.progress ?? current.progress)),
@@ -367,19 +371,23 @@ export class PostgresStore implements PortalStore {
       `update factory_jobs set
         template_id = $2,
         plugin_name = $3,
-        status = $4,
-        stage = $5,
-        progress = $6,
-        snapshot_json = $7,
-        events_json = $8,
-        approval_json = $9,
-        deployment_json = $10,
+        history_title = $4,
+        history_note = $5,
+        status = $6,
+        stage = $7,
+        progress = $8,
+        snapshot_json = $9,
+        events_json = $10,
+        approval_json = $11,
+        deployment_json = $12,
         updated_at = now()
        where id = $1`,
       [
         id,
         next.templateId ?? null,
         next.pluginName,
+        next.historyTitle ?? null,
+        next.historyNote ?? null,
         next.status,
         next.stage,
         next.progress,
@@ -392,6 +400,12 @@ export class PostgresStore implements PortalStore {
     const updated = await this.getFactoryJob(id);
     if (!updated) throw new Error("Factory job not found");
     return updated;
+  }
+
+  async deleteFactoryJob(id: string): Promise<VaultPluginFactoryJob> {
+    const result = await this.pool.query("delete from factory_jobs where id = $1 returning *", [id]);
+    if (!result.rows[0]) throw new Error("Factory job not found");
+    return mapFactoryJob(result.rows[0]);
   }
 
   private async fetchSystems(): Promise<SystemSummary[]> {
@@ -537,6 +551,8 @@ export class PostgresStore implements PortalStore {
         owner_email text not null,
         template_id text,
         plugin_name text not null,
+        history_title text,
+        history_note text,
         status text not null,
         stage text not null,
         progress integer not null default 0,
@@ -549,6 +565,9 @@ export class PostgresStore implements PortalStore {
       );
 
       create index if not exists factory_jobs_owner_updated_idx on factory_jobs(owner_id, updated_at desc);
+
+      alter table factory_jobs add column if not exists history_title text;
+      alter table factory_jobs add column if not exists history_note text;
     `);
   }
 
@@ -706,6 +725,8 @@ function mapFactoryJob(row: Record<string, any>): VaultPluginFactoryJob {
     ownerEmail: row.owner_email,
     templateId: row.template_id ?? undefined,
     pluginName: row.plugin_name,
+    historyTitle: row.history_title ?? undefined,
+    historyNote: row.history_note ?? undefined,
     status: row.status,
     stage: row.stage,
     progress: Number(row.progress ?? 0),

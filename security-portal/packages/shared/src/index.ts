@@ -492,6 +492,8 @@ export interface VaultPluginFactoryJob {
   ownerEmail: string;
   templateId?: string;
   pluginName: string;
+  historyTitle?: string;
+  historyNote?: string;
   status: VaultPluginFactoryJobStatus;
   stage: VaultPluginFactoryJobStage;
   progress: number;
@@ -507,6 +509,8 @@ export interface CreateVaultPluginFactoryJobInput {
   owner: PortalUser;
   templateId?: string;
   pluginName: string;
+  historyTitle?: string;
+  historyNote?: string;
   status?: VaultPluginFactoryJobStatus;
   stage?: VaultPluginFactoryJobStage;
   progress?: number;
@@ -518,6 +522,16 @@ export interface CreateVaultPluginFactoryJobInput {
 export type UpdateVaultPluginFactoryJobInput = Partial<
   Pick<
     VaultPluginFactoryJob,
-    "templateId" | "pluginName" | "status" | "stage" | "progress" | "snapshot" | "events" | "approval" | "deployment"
+    | "templateId"
+    | "pluginName"
+    | "historyTitle"
+    | "historyNote"
+    | "status"
+    | "stage"
+    | "progress"
+    | "snapshot"
+    | "events"
+    | "approval"
+    | "deployment"
   >
 >;

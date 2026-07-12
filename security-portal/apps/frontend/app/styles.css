@@ -5291,34 +5291,52 @@ tbody tr:hover {
   overflow-y: auto;
 }
 
-.factoryJobList > button {
+.factoryJobItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.factoryJobSelect {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 5px 9px;
-  min-height: 78px;
+  width: 100%;
+  min-height: 104px;
   padding: 10px;
-  border-radius: 7px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
   text-align: left;
 }
 
-.factoryJobList > button.active {
+.factoryJobItem.active {
   border-color: rgba(217, 168, 0, 0.72);
   box-shadow: inset 3px 0 0 var(--vault);
 }
 
-.factoryJobList > button > strong {
+.factoryJobSelect > strong {
   align-self: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.factoryJobList > button > small,
+.factoryJobSelect > small,
+.factoryJobSelect > p,
+.factoryJobSelect > time,
 .factoryJobList .historyProgress {
   grid-column: 1 / -1;
 }
 
-.factoryJobList > button > small {
+.factoryJobSelect > small,
+.factoryJobSelect > time {
   overflow: hidden;
   color: var(--muted);
   font-size: 10px;
@@ -5326,16 +5344,68 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+.factoryJobSelect > p {
+  display: -webkit-box;
+  margin: 1px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.factoryJobSelect > time {
+  text-align: right;
+}
+
+.factoryJobActions {
+  display: flex;
+  gap: 5px;
+  padding: 8px 8px 0 0;
+}
+
+.factoryJobActions .iconButton {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  background: var(--panel);
+}
+
+.dangerIconButton:not(:disabled) {
+  color: var(--red);
+}
+
 .factoryEventLog {
   padding-left: 18px;
   border-left: 1px solid var(--line);
 }
 
-.factoryEventLog h3 {
-  margin-bottom: 4px;
+.factoryEventLogHeader {
+  min-width: 0;
+  padding-bottom: 5px;
 }
 
-.factoryEventLog > div:not(.empty) {
+.factoryEventLogHeader h3,
+.factoryEventLogHeader small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factoryEventLogHeader h3 {
+  margin: 0;
+}
+
+.factoryEventLogHeader small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.factoryEventLog > div:not(.empty):not(.factoryEventLogHeader) {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 10px;
@@ -5397,10 +5467,129 @@ tbody tr:hover {
 :root[data-theme="dark"] .comparisonGrid > div,
 :root[data-theme="dark"] .preflightList > div,
 :root[data-theme="dark"] .impactSummary > div,
-:root[data-theme="dark"] .factoryJobList > button {
+:root[data-theme="dark"] .factoryJobItem {
   border-color: var(--line);
   background: var(--panel);
   color: var(--ink);
+}
+
+.impactDialog.factoryHistoryDialog {
+  width: min(620px, 100%);
+}
+
+.factoryHistoryDialog form {
+  display: grid;
+  min-height: 0;
+}
+
+.factoryHistoryForm {
+  display: grid;
+  gap: 16px;
+  padding: 18px 16px;
+  overflow-y: auto;
+}
+
+.factoryHistoryForm label {
+  display: grid;
+  gap: 7px;
+}
+
+.factoryHistoryForm label > span,
+.factoryHistoryContext > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.factoryHistoryForm input,
+.factoryHistoryForm textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.factoryHistoryForm textarea {
+  resize: vertical;
+}
+
+.factoryHistoryForm label > small {
+  justify-self: end;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.factoryHistoryContext {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 12px;
+  align-items: center;
+  padding-top: 15px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.factoryHistoryContext code {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factoryHistoryContext p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.factoryHistoryDialog form > footer,
+.factoryHistoryDialog > footer {
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.factoryHistoryDeleteReview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px 12px;
+  align-items: center;
+  padding: 20px 16px;
+}
+
+.factoryHistoryDeleteIcon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+}
+
+.factoryHistoryDeleteReview strong,
+.factoryHistoryDeleteReview code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factoryHistoryDeleteReview code {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.factoryHistoryDeleteReview > p,
+.factoryHistoryDeleteReview > .error {
+  grid-column: 1 / -1;
+}
+
+.factoryHistoryDeleteReview > p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 :root[data-theme="dark"] .templateTrustGrid > div,

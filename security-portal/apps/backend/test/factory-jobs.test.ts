@@ -59,4 +59,39 @@ describe("Factory job persistence", () => {
     expect(await store.listFactoryJobs(developer!.id)).toHaveLength(1);
     expect(await store.listFactoryJobs()).toHaveLength(2);
   });
+
+  it("updates history details without changing plugin artifact fields", async () => {
+    const store = new MemoryStore();
+    const owner = await store.getUserByEmail("developer@example.com");
+    const job = await store.createFactoryJob({
+      owner: owner!,
+      templateId: "auth-kubernetes",
+      pluginName: "vault-plugin-auth-kubernetes",
+      snapshot: { generated: true }
+    });
+
+    const updated = await store.updateFactoryJob(job.id, {
+      historyTitle: "Kubernetes auth production review",
+      historyNote: "Waiting for platform team feedback"
+    });
+
+    expect(updated.historyTitle).toBe("Kubernetes auth production review");
+    expect(updated.historyNote).toBe("Waiting for platform team feedback");
+    expect(updated.pluginName).toBe(job.pluginName);
+    expect(updated.templateId).toBe(job.templateId);
+    expect(updated.snapshot).toEqual(job.snapshot);
+    expect(updated.approval).toEqual(job.approval);
+  });
+
+  it("deletes a saved Factory job and returns the deleted record", async () => {
+    const store = new MemoryStore();
+    const owner = await store.getUserByEmail("developer@example.com");
+    const job = await store.createFactoryJob({ owner: owner!, pluginName: "temporary-plugin" });
+
+    const deleted = await store.deleteFactoryJob(job.id);
+
+    expect(deleted.id).toBe(job.id);
+    expect(await store.getFactoryJob(job.id)).toBeUndefined();
+    await expect(store.deleteFactoryJob(job.id)).rejects.toThrow("Factory job not found");
+  });
 });

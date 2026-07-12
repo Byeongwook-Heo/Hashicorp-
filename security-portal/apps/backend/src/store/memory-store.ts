@@ -195,6 +195,8 @@ export class MemoryStore implements PortalStore {
       ownerEmail: input.owner.email,
       templateId: input.templateId,
       pluginName: input.pluginName,
+      historyTitle: input.historyTitle,
+      historyNote: input.historyNote,
       status: input.status ?? "draft",
       stage: input.stage ?? "design",
       progress: input.progress ?? 0,
@@ -235,6 +237,13 @@ export class MemoryStore implements PortalStore {
     };
     this.factoryJobs.set(id, next);
     return next;
+  }
+
+  async deleteFactoryJob(id: string): Promise<VaultPluginFactoryJob> {
+    const current = this.factoryJobs.get(id);
+    if (!current) throw new Error("Factory job not found");
+    this.factoryJobs.delete(id);
+    return current;
   }
 
   private requireSystem(id: string): SystemSummary {

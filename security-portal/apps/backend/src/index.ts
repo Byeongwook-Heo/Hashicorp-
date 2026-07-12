@@ -188,6 +188,8 @@ const factoryJobEventSchema = z.object({
 const factoryJobCreateSchema = z.object({
   templateId: z.string().max(120).optional(),
   pluginName: z.string().min(1).max(120),
+  historyTitle: z.string().trim().min(1).max(120).optional(),
+  historyNote: z.string().trim().max(500).optional(),
   status: factoryJobStatusSchema.optional(),
   stage: factoryJobStageSchema.optional(),
   progress: z.number().int().min(0).max(100).optional(),
@@ -207,6 +209,8 @@ const factoryJobUpdateSchema = z
   .object({
     templateId: z.string().max(120).optional(),
     pluginName: z.string().min(1).max(120).optional(),
+    historyTitle: z.string().trim().min(1).max(120).optional(),
+    historyNote: z.string().trim().max(500).optional(),
     status: factoryJobStatusSchema.optional(),
     stage: factoryJobStageSchema.optional(),
     progress: z.number().int().min(0).max(100).optional(),
@@ -224,6 +228,13 @@ const factoryJobUpdateSchema = z
   .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: "At least one Factory job field is required"
   });
+
+const protectedFactoryJobDeleteStatuses = new Set<VaultPluginFactoryJob["status"]>([
+  "running",
+  "waiting-approval",
+  "approved",
+  "scheduled"
+]);
 
 const factoryJobActionSchema = z.object({
   action: z.enum(["request-approval", "approve", "reject", "schedule", "canary", "full", "retry", "rollback"]),
@@ -790,6 +801,39 @@ async function main(): Promise<void> {
         metadata: { fields: Object.keys(update), owner_id: job.ownerId }
       });
       res.json({ job: updated });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/plugin-factory/jobs/:id", requireUser(store, config.sessionCookieName), async (req, res, next) => {
+    try {
+      const job = await requireFactoryJobAccess(store, requiredParam(req, "id"), req.user);
+      const canDelete = job.ownerId === req.user.id || req.user.roles.includes("vault-admin");
+      if (!canDelete) throw new Error("Forbidden");
+      if (protectedFactoryJobDeleteStatuses.has(job.status)) {
+        throw new Error("Active, approved, or scheduled Factory jobs cannot be deleted");
+      }
+
+      const deleted = await store.deleteFactoryJob(job.id);
+      for (const [runId, run] of factoryBuildRuns.entries()) {
+        if (run.jobId === job.id) factoryBuildRuns.delete(runId);
+      }
+      await store.createAuditEvent({
+        actorId: req.user.id,
+        actorEmail: req.user.email,
+        action: "vault_plugin.job.deleted",
+        targetType: "vault_plugin_job",
+        targetId: job.id,
+        result: "success",
+        metadata: {
+          owner_id: job.ownerId,
+          plugin_name: job.pluginName,
+          history_title: job.historyTitle,
+          status: job.status
+        }
+      });
+      res.json({ job: deleted });
     } catch (error) {
       next(error);
     }

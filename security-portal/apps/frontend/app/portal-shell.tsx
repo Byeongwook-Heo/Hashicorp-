@@ -79,6 +79,7 @@ import {
   Sparkles,
   Star,
   Sun,
+  Trash2,
   Upload,
   Undo2,
   UserCheck,
@@ -3080,6 +3081,12 @@ type FactoryRequirementQuestion = {
   placeholder: string;
   suggestions: string[];
 };
+type FactoryHistoryAction = {
+  mode: "edit" | "delete";
+  jobId: string;
+  title: string;
+  note: string;
+};
 type FactoryWorkspaceSnapshot = {
   activeTab?: FactoryTab;
   selectedId?: string;
@@ -3166,6 +3173,9 @@ function PluginFactory({
   const [copiedFilePath, setCopiedFilePath] = useState<string | null>(null);
   const [factoryJobs, setFactoryJobs] = useState<VaultPluginFactoryJob[]>([]);
   const [activeJobId, setActiveJobId] = useState("");
+  const [historyAction, setHistoryAction] = useState<FactoryHistoryAction | null>(null);
+  const [historyActionBusy, setHistoryActionBusy] = useState(false);
+  const [historyActionError, setHistoryActionError] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [approvalNote, setApprovalNote] = useState("");
@@ -3314,6 +3324,7 @@ function PluginFactory({
     localize(t, "Compare Sectigo and DigiCert", "Sectigo와 DigiCert를 비교해줘")
   ];
   const currentJob = factoryJobs.find((job) => job.id === activeJobId);
+  const historyActionJob = historyAction ? factoryJobs.find((job) => job.id === historyAction.jobId) : undefined;
   const factoryProgress = currentJob?.progress ?? (generated ? 70 : 10);
   const ownsCurrentJob = Boolean(currentJob && currentUser && currentJob.ownerId === currentUser.id);
   const canConfigureDeployment = ownsCurrentJob || canReviewJobs;
@@ -3585,7 +3596,7 @@ function PluginFactory({
   }
 
   async function patchFactoryJob(
-    patch: Partial<Pick<VaultPluginFactoryJob, "templateId" | "pluginName" | "status" | "stage" | "progress" | "snapshot" | "events" | "deployment">>
+    patch: Partial<Pick<VaultPluginFactoryJob, "templateId" | "pluginName" | "historyTitle" | "historyNote" | "status" | "stage" | "progress" | "snapshot" | "events" | "deployment">>
   ): Promise<VaultPluginFactoryJob> {
     const job = await ensureFactoryJob();
     return patchFactoryJobById(job.id, patch);
@@ -3593,7 +3604,7 @@ function PluginFactory({
 
   async function patchFactoryJobById(
     jobId: string,
-    patch: Partial<Pick<VaultPluginFactoryJob, "templateId" | "pluginName" | "status" | "stage" | "progress" | "snapshot" | "events" | "deployment">>
+    patch: Partial<Pick<VaultPluginFactoryJob, "templateId" | "pluginName" | "historyTitle" | "historyNote" | "status" | "stage" | "progress" | "snapshot" | "events" | "deployment">>
   ): Promise<VaultPluginFactoryJob> {
     const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${jobId}`, {
       method: "PATCH",
@@ -3670,6 +3681,77 @@ function PluginFactory({
     const updated = response.jobs.find((job) => job.id === activeJobId);
     if (updated) upsertFactoryJob(updated);
     return response.jobs;
+  }
+
+  function canManageFactoryHistory(job: VaultPluginFactoryJob): boolean {
+    return Boolean(currentUser && (job.ownerId === currentUser.id || currentUser.roles.includes("vault-admin")));
+  }
+
+  function canDeleteFactoryHistory(job: VaultPluginFactoryJob): boolean {
+    return canManageFactoryHistory(job) && !(["running", "waiting-approval", "approved", "scheduled"] as VaultPluginFactoryJob["status"][]).includes(job.status);
+  }
+
+  function openFactoryHistoryAction(job: VaultPluginFactoryJob, mode: FactoryHistoryAction["mode"]) {
+    setHistoryAction({
+      mode,
+      jobId: job.id,
+      title: job.historyTitle?.trim() || job.pluginName,
+      note: job.historyNote ?? ""
+    });
+    setHistoryActionError(null);
+  }
+
+  function closeFactoryHistoryAction() {
+    if (historyActionBusy) return;
+    setHistoryAction(null);
+    setHistoryActionError(null);
+  }
+
+  async function saveFactoryHistoryDetails() {
+    if (!historyAction || historyAction.mode !== "edit" || !historyActionJob) return;
+    const title = historyAction.title.trim();
+    if (!title) {
+      setHistoryActionError(localize(t, "Enter a history title.", "이력 제목을 입력해주세요."));
+      return;
+    }
+    setHistoryActionBusy(true);
+    setHistoryActionError(null);
+    try {
+      const updated = await patchFactoryJobById(historyActionJob.id, {
+        historyTitle: title,
+        historyNote: historyAction.note.trim()
+      });
+      setHistoryAction(null);
+      setStatus(localize(t, `History updated: ${updated.historyTitle}.`, `작업 이력을 수정했습니다: ${updated.historyTitle}.`));
+    } catch (err) {
+      setHistoryActionError(err instanceof Error ? err.message : localize(t, "Unable to update job history.", "작업 이력을 수정하지 못했습니다."));
+    } finally {
+      setHistoryActionBusy(false);
+    }
+  }
+
+  async function deleteFactoryHistoryJob() {
+    if (!historyAction || historyAction.mode !== "delete" || !historyActionJob || !canDeleteFactoryHistory(historyActionJob)) return;
+    setHistoryActionBusy(true);
+    setHistoryActionError(null);
+    try {
+      await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${historyActionJob.id}`, { method: "DELETE" });
+      const remainingJobs = factoryJobs.filter((job) => job.id !== historyActionJob.id);
+      setFactoryJobs(remainingJobs);
+      if (activeJobId === historyActionJob.id) {
+        const nextJob = remainingJobs[0];
+        setActiveJobId(nextJob?.id ?? "");
+        activeJobIdRef.current = nextJob?.id ?? "";
+        if (nextJob) hydrateFactoryWorkspace(nextJob.snapshot as FactoryWorkspaceSnapshot, templates);
+        setActiveFactoryTab("history");
+      }
+      setHistoryAction(null);
+      setStatus(localize(t, `Deleted history for ${historyActionJob.pluginName}.`, `${historyActionJob.pluginName} 작업 이력을 삭제했습니다.`));
+    } catch (err) {
+      setHistoryActionError(err instanceof Error ? err.message : localize(t, "Unable to delete job history.", "작업 이력을 삭제하지 못했습니다."));
+    } finally {
+      setHistoryActionBusy(false);
+    }
   }
 
   async function runFactoryJobAction(
@@ -5715,18 +5797,60 @@ function PluginFactory({
           </div>
           <div className="factoryHistoryLayout">
             <div className="factoryJobList">
-              {factoryJobs.map((job) => (
-                <button className={job.id === activeJobId ? "active" : ""} key={job.id} onClick={() => loadFactoryJob(job)} type="button">
-                  <span className={`statusBadge ${job.status}`}>{factoryStatusLabel(job.status, t)}</span>
-                  <strong>{job.pluginName}</strong>
-                  <small>{job.ownerEmail} · {new Date(job.updatedAt).toLocaleString()}</small>
-                  <div className="historyProgress"><span style={{ width: `${job.progress}%` }} /></div>
-                </button>
-              ))}
+              {factoryJobs.map((job) => {
+                const historyTitle = job.historyTitle?.trim() || job.pluginName;
+                const canManageHistory = canManageFactoryHistory(job);
+                const canDeleteHistory = canDeleteFactoryHistory(job);
+                return (
+                  <article className={`factoryJobItem ${job.id === activeJobId ? "active" : ""}`} key={job.id}>
+                    <button
+                      aria-label={localize(t, `Open history ${historyTitle}`, `${historyTitle} 이력 열기`)}
+                      className="factoryJobSelect"
+                      onClick={() => loadFactoryJob(job)}
+                      type="button"
+                    >
+                      <span className={`statusBadge ${job.status}`}>{factoryStatusLabel(job.status, t)}</span>
+                      <strong>{historyTitle}</strong>
+                      <small>{job.pluginName} · {job.ownerEmail}</small>
+                      {job.historyNote ? <p>{job.historyNote}</p> : null}
+                      <div className="historyProgress"><span style={{ width: `${job.progress}%` }} /></div>
+                      <time dateTime={job.updatedAt}>{new Date(job.updatedAt).toLocaleString()}</time>
+                    </button>
+                    {canManageHistory ? (
+                      <div className="factoryJobActions">
+                        <button
+                          aria-label={localize(t, `Edit ${historyTitle}`, `${historyTitle} 수정`)}
+                          className="iconButton"
+                          onClick={() => openFactoryHistoryAction(job, "edit")}
+                          title={localize(t, "Edit history", "이력 수정")}
+                          type="button"
+                        >
+                          <PencilLine aria-hidden="true" size={15} />
+                        </button>
+                        <button
+                          aria-label={localize(t, `Delete ${historyTitle}`, `${historyTitle} 삭제`)}
+                          className="iconButton dangerIconButton"
+                          disabled={!canDeleteHistory}
+                          onClick={() => openFactoryHistoryAction(job, "delete")}
+                          title={canDeleteHistory
+                            ? localize(t, "Delete history", "이력 삭제")
+                            : localize(t, "Active, approved, and scheduled jobs cannot be deleted", "진행 중·승인·예약 작업은 삭제할 수 없습니다")}
+                          type="button"
+                        >
+                          <Trash2 aria-hidden="true" size={15} />
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })}
               {!factoryJobs.length ? <div className="empty compact">{localize(t, "No saved Factory jobs.", "저장된 Factory 작업이 없습니다.")}</div> : null}
             </div>
             <div className="factoryEventLog">
-              <h3>{currentJob?.pluginName ?? localize(t, "Select a job", "작업을 선택하세요")}</h3>
+              <div className="factoryEventLogHeader">
+                <h3>{currentJob ? currentJob.historyTitle?.trim() || currentJob.pluginName : localize(t, "Select a job", "작업을 선택하세요")}</h3>
+                {currentJob ? <small>{currentJob.pluginName}</small> : null}
+              </div>
               {currentJob?.events.length ? currentJob.events.slice().reverse().map((event) => (
                 <div key={event.id} className={event.status}>
                   <span><Activity aria-hidden="true" size={15} /></span>
@@ -5736,6 +5860,94 @@ function PluginFactory({
             </div>
           </div>
         </section>
+      ) : null}
+
+      {historyAction && historyActionJob ? (
+        <PortalOverlay onDismiss={closeFactoryHistoryAction}>
+          <section
+            aria-label={historyAction.mode === "edit"
+              ? localize(t, "Edit Factory job history", "Factory 작업 이력 수정")
+              : localize(t, "Delete Factory job history", "Factory 작업 이력 삭제")}
+            aria-modal="true"
+            className="impactDialog factoryHistoryDialog"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <span>{localize(t, "Saved job", "저장된 작업")}</span>
+                <h2>{historyAction.mode === "edit"
+                  ? localize(t, "Edit job history", "작업 이력 수정")
+                  : localize(t, "Delete job history", "작업 이력 삭제")}</h2>
+              </div>
+              <button
+                aria-label={localize(t, "Close history dialog", "이력 Dialog 닫기")}
+                className="iconButton"
+                disabled={historyActionBusy}
+                onClick={closeFactoryHistoryAction}
+                title={localize(t, "Close", "닫기")}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </header>
+            {historyAction.mode === "edit" ? (
+              <form onSubmit={(event) => { event.preventDefault(); void saveFactoryHistoryDetails(); }}>
+                <div className="factoryHistoryForm">
+                  <label>
+                    <span>{localize(t, "History title", "이력 제목")}</span>
+                    <input
+                      autoFocus
+                      maxLength={120}
+                      onChange={(event) => setHistoryAction((current) => current ? { ...current, title: event.target.value } : current)}
+                      value={historyAction.title}
+                    />
+                  </label>
+                  <label>
+                    <span>{localize(t, "Note", "메모")}</span>
+                    <textarea
+                      maxLength={500}
+                      onChange={(event) => setHistoryAction((current) => current ? { ...current, note: event.target.value } : current)}
+                      placeholder={localize(t, "Record the purpose or next action", "작업 목적이나 다음 조치를 기록하세요")}
+                      rows={4}
+                      value={historyAction.note}
+                    />
+                    <small>{historyAction.note.length}/500</small>
+                  </label>
+                  <div className="factoryHistoryContext">
+                    <span>{localize(t, "Plugin name", "Plugin 이름")}</span>
+                    <code>{historyActionJob.pluginName}</code>
+                    <p>{localize(t, "Editing history details does not change the plugin name, generated files, or approval evidence.", "이력 정보만 수정되며 Plugin 이름, 생성 파일, 승인 근거는 변경되지 않습니다.")}</p>
+                  </div>
+                  {historyActionError ? <div className="error">{historyActionError}</div> : null}
+                </div>
+                <footer className="actions">
+                  <button disabled={historyActionBusy} onClick={closeFactoryHistoryAction} type="button">{localize(t, "Cancel", "취소")}</button>
+                  <button className="primary" disabled={historyActionBusy || !historyAction.title.trim()} type="submit">
+                    {historyActionBusy ? localize(t, "Saving...", "저장 중...") : localize(t, "Save changes", "변경 저장")}
+                  </button>
+                </footer>
+              </form>
+            ) : (
+              <>
+                <div className="factoryHistoryDeleteReview">
+                  <span className="factoryHistoryDeleteIcon"><Trash2 aria-hidden="true" size={20} /></span>
+                  <div>
+                    <strong>{historyActionJob.historyTitle?.trim() || historyActionJob.pluginName}</strong>
+                    <code>{historyActionJob.pluginName}</code>
+                  </div>
+                  <p>{localize(t, "The saved chat, generated files, and job events will be removed. The deletion itself remains in the portal audit log.", "저장된 대화, 생성 파일, 작업 이벤트가 삭제됩니다. 삭제 작업 자체는 포털 감사 로그에 기록됩니다.")}</p>
+                  {historyActionError ? <div className="error">{historyActionError}</div> : null}
+                </div>
+                <footer className="actions">
+                  <button disabled={historyActionBusy} onClick={closeFactoryHistoryAction} type="button">{localize(t, "Cancel", "취소")}</button>
+                  <button className="dangerButton" disabled={historyActionBusy} onClick={() => void deleteFactoryHistoryJob()} type="button">
+                    {historyActionBusy ? localize(t, "Deleting...", "삭제 중...") : localize(t, "Delete history", "이력 삭제")}
+                  </button>
+                </footer>
+              </>
+            )}
+          </section>
+        </PortalOverlay>
       ) : null}
     </div>
   );

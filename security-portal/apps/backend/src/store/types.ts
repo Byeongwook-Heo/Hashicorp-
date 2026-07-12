@@ -58,4 +58,5 @@ export interface PortalStore {
   listFactoryJobs(ownerId?: string): Promise<VaultPluginFactoryJob[]>;
   getFactoryJob(id: string): Promise<VaultPluginFactoryJob | undefined>;
   updateFactoryJob(id: string, input: UpdateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob>;
+  deleteFactoryJob(id: string): Promise<VaultPluginFactoryJob>;
 }
