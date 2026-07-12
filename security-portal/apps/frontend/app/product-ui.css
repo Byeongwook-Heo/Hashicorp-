@@ -1519,25 +1519,12 @@ td,
   text-decoration: none;
 }
 
-.pendingQueuePanel > .emptyWithAction {
-  position: relative;
-  display: block;
-  min-height: 108px;
-}
-
-.pendingQueuePanel > .emptyWithAction > span {
-  position: absolute;
-  top: 14px;
-  right: 16px;
-  left: 16px;
-}
-
-.pendingQueuePanel > .emptyWithAction > a,
-.pendingQueuePanel > .emptyWithAction > button {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+.tablePanel > .emptyWithAction > a,
+.tablePanel > .emptyWithAction > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .permissionNote {
