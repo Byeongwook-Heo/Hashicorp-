@@ -6543,7 +6543,9 @@ function factoryGeneratedDisplay(generated: VaultPluginGenerateResult, t: Copy) 
     "Formatting ran inside the isolated CodeBuild worker.": "격리 CodeBuild Worker에서 포맷 정리를 실행했습니다.",
     "Dependencies are resolved without Vault runtime credentials.": "Vault Runtime Credential 없이 의존성을 확인했습니다.",
     "Waiting for the isolated test runner.": "격리 테스트 Runner 실행을 기다리고 있습니다.",
-    "No deployable binary is available yet.": "아직 배포 가능한 바이너리가 없습니다."
+    "No deployable binary is available yet.": "아직 배포 가능한 바이너리가 없습니다.",
+    "Module file is generated with Vault API and SDK dependencies.": "Vault API 및 SDK 의존성이 포함된 Module 파일을 생성했습니다.",
+    "Generated backend compiles against the logical framework scaffold.": "생성된 Backend를 Logical Framework Scaffold 기준으로 컴파일했습니다."
   };
   const buildSteps = generated.buildTest.steps.map((step) => {
     if (!korean) return step;
@@ -6552,6 +6554,8 @@ function factoryGeneratedDisplay(generated: VaultPluginGenerateResult, t: Copy) 
       detail = `생성 파일 ${generated.files.length}개를 linux/arm64 대상으로 컴파일합니다.`;
     } else if (step.detail === `${generated.files.length} files were packaged for an isolated build.`) {
       detail = `생성 파일 ${generated.files.length}개를 격리 빌드용으로 패키징했습니다.`;
+    } else if (step.detail === `${generated.files.length} generated files are included in the build plan.`) {
+      detail = `생성 파일 ${generated.files.length}개가 빌드 계획에 포함되었습니다.`;
     } else if (step.detail.startsWith("Binary SHA256 ")) {
       detail = `바이너리 SHA-256 ${step.detail.slice("Binary SHA256 ".length)}`;
     }
