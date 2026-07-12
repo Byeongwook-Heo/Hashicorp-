@@ -1529,6 +1529,7 @@ function Dashboard({
         emptyLabel={t.table.noData}
       />
       <Table
+        className="pendingQueuePanel"
         title={t.dashboard.pendingQueue}
         columns={[t.table.system, t.table.type, t.table.requester, t.table.risk]}
         rows={requests
@@ -6331,12 +6332,14 @@ function PostureRow({ label, value, max }: { label: string; value: number; max: 
 }
 
 function Table({
+  className,
   title,
   columns,
   rows,
   emptyLabel = "No data.",
   emptyAction
 }: {
+  className?: string;
   title: string;
   columns: string[];
   rows: string[][];
@@ -6344,7 +6347,7 @@ function Table({
   emptyAction?: { href: string; label: string };
 }) {
   return (
-    <section className="tablePanel">
+    <section className={`tablePanel${className ? ` ${className}` : ""}`}>
       <div className="tablePanelHeader">
         <h2>{title}</h2>
         <span className="tableCount" aria-label={`${rows.length} rows`}>{rows.length.toLocaleString()}</span>
