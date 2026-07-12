@@ -1542,7 +1542,7 @@ function Dashboard({
         {credentials.length === 0 ? (
           <div className="empty compact">{t.secrets.noIssued}</div>
         ) : (
-          <table>
+          <table className="responsiveTable">
             <thead>
               <tr>
                 <th>{t.table.system}</th>
@@ -1557,17 +1557,17 @@ function Dashboard({
             <tbody>
               {credentials.map((credential) => (
                 <tr key={credential.id}>
-                  <td>{credential.systemName}</td>
-                  <td>{credential.requestType}</td>
-                  <td>
+                  <td data-label={t.table.system}>{credential.systemName}</td>
+                  <td data-label={t.table.secretType}>{credential.requestType}</td>
+                  <td data-label={t.table.status}>
                     <span className={`statusBadge ${credential.status}`}>{credential.status}</span>
                   </td>
-                  <td>
+                  <td data-label={t.table.maskedValue}>
                     <code>{credential.maskedDisplayValue}</code>
                   </td>
-                  <td>{credential.ttl}</td>
-                  <td>{formatDate(credential.expiresAt)}</td>
-                  <td className="monoCell">{shortId(credential.vaultLeaseId)}</td>
+                  <td data-label={t.table.ttl}>{credential.ttl}</td>
+                  <td data-label={t.table.expires}>{formatDate(credential.expiresAt)}</td>
+                  <td className="monoCell" data-label={t.table.lease}>{shortId(credential.vaultLeaseId)}</td>
                 </tr>
               ))}
             </tbody>
