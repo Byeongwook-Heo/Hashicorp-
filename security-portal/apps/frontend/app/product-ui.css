@@ -2585,3 +2585,577 @@ textarea:focus {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Vault Plugin Factory: chat-first guided workspace */
+.view-plugins .pageSurface {
+  animation: none;
+  transform: none;
+}
+
+.view-plugins .pluginFactory {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  column-gap: 0;
+}
+
+.view-plugins .factoryChatPanel {
+  grid-column: 1;
+  grid-row: 2;
+  height: clamp(560px, calc(100svh - 180px), 760px);
+  min-height: 560px;
+  border-radius: 5px 0 0 5px;
+}
+
+.view-plugins .factoryJobTimeline {
+  position: static;
+  grid-column: 2;
+  grid-row: 2;
+  height: clamp(560px, calc(100svh - 180px), 760px);
+  min-height: 560px;
+  margin-top: 16px;
+  border-left: 0;
+  border-radius: 0 5px 5px 0;
+}
+
+.factoryWorkspaceHeader {
+  min-height: 58px;
+  padding-bottom: 14px;
+}
+
+.factoryWorkspaceActions button {
+  min-height: 36px;
+}
+
+.factoryChatPanel {
+  display: flex;
+  overflow-x: hidden;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px;
+}
+
+.factoryChatPanel .panelHeader {
+  min-height: 64px;
+  padding-bottom: 18px;
+}
+
+.factoryChatPanel .panelHeader h2 {
+  margin: 0 0 7px;
+  font-size: 22px;
+  font-weight: 740;
+}
+
+.factoryChatPanel .panelHeader p {
+  max-width: 680px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.chatMessages {
+  display: grid;
+  min-height: 0;
+  flex: 0 0 auto;
+  max-height: none;
+  gap: 10px;
+  padding: 2px 0 6px;
+  overflow: visible;
+  overscroll-behavior: contain;
+}
+
+.chatBubble.assistant {
+  padding: 10px 12px 10px 48px;
+}
+
+.chatBubble.assistant::before {
+  left: 2px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+.chatBubble.user {
+  width: min(700px, 86%);
+  margin-left: auto;
+  padding: 12px 14px;
+}
+
+.requirementsInterview.conversational {
+  position: relative;
+  gap: 13px;
+  min-height: 0;
+  max-height: none;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 4px 0 2px 48px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.requirementsInterview.conversational::before {
+  content: "V";
+  position: absolute;
+  top: 4px;
+  left: 2px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--graphite);
+  color: var(--vault);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.requirementsInterview.conversational .requirementsHeader {
+  min-height: 38px;
+  align-items: start;
+  padding-bottom: 10px;
+}
+
+.requirementsInterview.conversational .requirementsHeader > div > span {
+  color: var(--vault-deep);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.requirementsInterview.conversational .requirementsHeader > div > strong {
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.requirementsInterview.conversational .requirementsProgress {
+  height: 3px;
+}
+
+.requirementsInterview.conversational .requirementQuestionPanel {
+  gap: 10px;
+  padding: 16px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.requirementsInterview.conversational .requirementQuestionPanel h3 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.requirementsInterview.conversational .requirementQuestionPanel > p {
+  max-width: 680px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.requirementsInterview.conversational .requirementSuggestions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 7px;
+}
+
+.requirementsInterview.conversational .requirementSuggestions button {
+  display: grid;
+  min-height: 46px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  justify-content: stretch;
+  padding: 0 13px;
+  border-color: var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+}
+
+.requirementsInterview.conversational .requirementSuggestions button:hover:not(:disabled),
+.requirementsInterview.conversational .requirementSuggestions button.active {
+  border-color: #c89f00;
+  background: var(--vault-soft);
+}
+
+.requirementsInterview.conversational .requirementSuggestions button svg {
+  color: var(--muted);
+}
+
+.requirementsInterview.conversational .requirementSuggestions button.active svg {
+  color: var(--vault-deep);
+}
+
+.requirementsInterview.conversational .requirementQuestionField {
+  max-width: none;
+}
+
+.requirementsInterview.conversational .requirementQuestionField input {
+  min-height: 46px;
+}
+
+.requirementsInterview.conversational .requirementNavigation {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.requirementsInterview.conversational .requirementNavigation button {
+  width: auto;
+  min-width: 104px;
+}
+
+.chatExamples {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-top: 5px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.chatExamples > span,
+.chatExamples button {
+  flex: 0 0 auto;
+}
+
+.chatComposer {
+  position: sticky;
+  z-index: 8;
+  bottom: -1px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding: 9px;
+  border: 1px solid #c89f00;
+  border-radius: 5px;
+  background: var(--panel);
+  box-shadow: 0 -12px 22px var(--panel);
+}
+
+.chatComposer textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 70px;
+  max-height: 150px;
+  padding: 8px 9px;
+  resize: vertical;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.chatComposer textarea:focus {
+  outline: 0;
+  box-shadow: none;
+}
+
+.chatComposer textarea::placeholder {
+  color: var(--muted);
+}
+
+.chatComposer .chatSendButton {
+  position: static;
+  display: inline-flex;
+  width: auto;
+  min-width: 86px;
+  min-height: 44px;
+  align-self: end;
+  gap: 7px;
+  padding: 0 14px;
+  border-color: var(--vault);
+  background: var(--vault);
+  color: #121419;
+  transform: none;
+}
+
+.chatComposer .chatSendButton:hover:not(:disabled) {
+  border-color: #d5ad0b;
+  background: #f1c21b;
+}
+
+.chatComposer .chatSendButton:disabled {
+  border-color: var(--line);
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.factoryJobTimeline {
+  padding: 22px 18px;
+}
+
+.factoryJobTimeline .workflowStep.current {
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--vault);
+}
+
+.factoryViewLauncher {
+  grid-column: 1 / -1;
+  margin-top: 14px;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.factoryAdvancedToggle {
+  display: grid;
+  width: 100%;
+  min-height: 52px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.factoryAdvancedToggle > span,
+.factoryAdvancedToggle strong,
+.factoryAdvancedToggle small {
+  display: block;
+  min-width: 0;
+}
+
+.factoryAdvancedToggle small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.factoryAdvancedToggle > svg:last-child {
+  transition: transform 160ms ease;
+}
+
+.factoryViewLauncher.open .factoryAdvancedToggle > svg:last-child {
+  transform: rotate(90deg);
+}
+
+.factoryViewLauncher .factoryLauncherGrid {
+  display: flex;
+  gap: 0;
+  padding: 0 0 10px;
+  overflow-x: auto;
+}
+
+.factoryViewLauncher .factoryLauncherGrid > button {
+  min-width: max-content;
+  flex: 1 0 auto;
+  border-radius: 0;
+}
+
+.factoryMobileProgress {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .view-plugins .pluginFactory {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .factoryMobileProgress {
+    position: sticky;
+    top: 66px;
+    z-index: 18;
+    display: grid;
+    grid-column: 1 / -1;
+    min-height: 54px;
+    grid-template-columns: 24px minmax(0, 1fr) auto 18px;
+    gap: 10px;
+    align-items: center;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--panel) 96%, transparent);
+    color: var(--ink);
+    text-align: left;
+    backdrop-filter: blur(10px);
+  }
+
+  .factoryMobileProgress span,
+  .factoryMobileProgress strong,
+  .factoryMobileProgress small {
+    display: block;
+    min-width: 0;
+  }
+
+  .factoryMobileProgress small {
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--vault-deep);
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .factoryMobileProgress em {
+    color: var(--muted);
+    font-size: 10px;
+    font-style: normal;
+    white-space: nowrap;
+  }
+
+  .factoryMobileProgress > svg:last-child {
+    transition: transform 160ms ease;
+  }
+
+  .factoryMobileProgress.active > svg:last-child {
+    transform: rotate(90deg);
+  }
+
+  .view-plugins .factoryChatPanel,
+  .view-plugins .factoryJobTimeline {
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: auto;
+    height: auto;
+    min-height: 0;
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+  }
+
+  .view-plugins .factoryJobTimeline:not(.mobileActive) {
+    display: none;
+  }
+
+  .view-plugins .factoryChatPanel {
+    display: flex;
+  }
+}
+
+@media (max-width: 640px) {
+  .factoryWorkspaceHeader {
+    min-height: 54px;
+    align-items: center;
+    flex-direction: row;
+    padding-bottom: 12px;
+  }
+
+  .factoryWorkspaceStatus small {
+    display: none;
+  }
+
+  .factoryWorkspaceActions .primary {
+    width: auto;
+    min-width: 44px;
+    padding-inline: 10px;
+  }
+
+  .factoryWorkspaceActions {
+    width: auto;
+  }
+
+  .factoryChatPanel {
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .pluginFactory.workspaceFocused .factoryChatPanel {
+    padding-bottom: 118px;
+    margin-bottom: 16px;
+  }
+
+  .pluginFactory.workspaceFocused .factoryViewLauncher {
+    margin-bottom: 124px;
+  }
+
+  .factoryChatPanel .panelHeader h2 {
+    font-size: 20px;
+  }
+
+  .chatMessages {
+    max-height: none;
+  }
+
+  .requirementsInterview.conversational {
+    max-height: none;
+    flex-basis: auto;
+    padding-left: 0;
+    overflow: visible;
+  }
+
+  .requirementsInterview.conversational::before {
+    display: none;
+  }
+
+  .requirementsInterview.conversational .requirementNavigation {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .requirementsInterview.conversational .requirementNavigation button {
+    min-width: 0;
+  }
+
+  .chatExamples {
+    padding-bottom: 3px;
+    scrollbar-width: none;
+  }
+
+  .chatExamples::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chatExamples button {
+    max-width: 240px;
+    white-space: normal;
+  }
+
+  .pluginFactory.workspaceFocused .chatComposer {
+    position: fixed;
+    right: 14px;
+    bottom: 12px;
+    left: 14px;
+    z-index: 60;
+    width: auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px;
+    box-shadow: 0 14px 36px rgb(0 0 0 / 28%);
+  }
+
+  .chatComposer textarea {
+    min-height: 62px;
+    resize: none;
+  }
+
+  .chatComposer .chatSendButton {
+    min-width: 48px;
+    padding-inline: 12px;
+  }
+
+  .chatComposer .chatSendButton span {
+    display: none;
+  }
+
+  .factoryViewLauncher .factoryLauncherGrid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .factoryViewLauncher .factoryLauncherGrid > button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .factoryAdvancedToggle > svg:last-child,
+  .factoryMobileProgress > svg:last-child {
+    transition: none;
+  }
+}

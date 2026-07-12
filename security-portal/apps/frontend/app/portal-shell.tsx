@@ -3160,6 +3160,7 @@ function PluginFactory({
   const [pluginHistory, setPluginHistory] = useState<PluginFactoryHistoryItem[]>([]);
   const [rollbackPreview, setRollbackPreview] = useState<string | null>(null);
   const [activeFactoryTab, setActiveFactoryTab] = useState<FactoryTab>("workspace");
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
   const [mobileFactoryPane, setMobileFactoryPane] = useState<"design" | "status">("design");
   const [templateQuery, setTemplateQuery] = useState("");
   const [favoriteOnly, setFavoriteOnly] = useState(false);
@@ -3193,7 +3194,8 @@ function PluginFactory({
   });
   const jobCreationRef = useRef<Promise<VaultPluginFactoryJob> | null>(null);
   const activeJobIdRef = useRef("");
-  const chatInputRef = useRef<HTMLInputElement | null>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const factoryChatPanelRef = useRef<HTMLElement | null>(null);
   const canApply = currentUser?.roles.includes("vault-admin") ?? false;
   const canReviewJobs = currentUser?.roles.some((role) => role === "security-approver" || role === "vault-admin") ?? false;
   const canAuthorJobs = currentUser?.roles.some((role) => role === "developer" || role === "app-owner" || role === "vault-admin") ?? false;
@@ -3272,6 +3274,37 @@ function PluginFactory({
   useEffect(() => {
     activeJobIdRef.current = activeJobId;
   }, [activeJobId]);
+
+  useEffect(() => {
+    if (!requirementsInterview || activeRequirementStep === "review") return;
+    const frame = window.requestAnimationFrame(() => {
+      const panel = factoryChatPanelRef.current;
+      const question = panel?.querySelector<HTMLElement>(`#requirement-question-${activeRequirementStep}`);
+      if (!panel || !question) return;
+      const panelRect = panel.getBoundingClientRect();
+      const questionRect = question.getBoundingClientRect();
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+      if (window.matchMedia("(max-width: 640px)").matches) {
+        window.scrollTo({
+          top: Math.max(0, window.scrollY + questionRect.top - 148),
+          behavior
+        });
+        return;
+      }
+      const composer = panel.querySelector<HTMLElement>(".chatComposer");
+      const composerTop = composer?.getBoundingClientRect().top ?? panelRect.bottom;
+      let scrollDelta = questionRect.top - (panelRect.top + 84);
+      const projectedQuestionBottom = questionRect.bottom - scrollDelta;
+      if (projectedQuestionBottom > composerTop - 16) {
+        scrollDelta += projectedQuestionBottom - (composerTop - 16);
+      }
+      panel.scrollTo({
+        top: Math.max(0, panel.scrollTop + scrollDelta),
+        behavior
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeRequirementStep, requirementsInterview?.id]);
 
   useEffect(() => {
     if (!status) return;
@@ -3385,18 +3418,20 @@ function PluginFactory({
     {
       id: "design",
       label: localize(t, "Requirements", "요구사항"),
-      complete: Boolean(requirementsInterview?.spec.confirmed || selectedTemplate)
+      complete: Boolean(requirementsInterview?.spec.confirmed || generated)
     },
     { id: "generate", label: localize(t, "Code generation", "코드 생성"), complete: Boolean(generated) },
-    { id: "test", label: localize(t, "Build and test", "빌드 및 테스트"), complete: generated?.buildTest.status === "pass" },
+    { id: "test", label: factoryLocalize(t, "Build and test", "빌드 및 테스트"), complete: generated?.buildTest.status === "pass" },
     {
       id: "security-review",
-      label: localize(t, "Diff review", "Diff 검토"),
+      label: factoryLocalize(t, "Diff review", "변경 사항 검토"),
       complete: Boolean(generated && generated.securityReview.posture !== "blocked")
     },
     { id: "approval", label: localize(t, "Approval", "승인"), complete: currentJob?.approval.status === "approved" },
     { id: "deploy", label: localize(t, "Vault apply", "Vault 적용"), complete: Boolean(applyResult?.applied) }
   ];
+  const currentWorkflowStage = workflowStages.find((stage) => !stage.complete) ?? workflowStages[workflowStages.length - 1];
+  const completedWorkflowCount = workflowStages.filter((stage) => stage.complete).length;
   const roleHome = factoryRoleHome(currentUser, factoryJobs, generated, favoriteTemplateIds.length, t);
   const factoryLaunchers: Array<{ id: Exclude<FactoryTab, "workspace">; icon: LucideIcon; label: string; status: string }> = [
     {
@@ -3842,21 +3877,43 @@ function PluginFactory({
     setActiveFactoryTab(job.approval.status === "requested" && canReviewJobs ? "deploy" : "workspace");
   }
 
-  function openRoleHomeAction() {
-    const pendingJob = canReviewJobs ? factoryJobs.find((job) => job.approval.status === "requested") : undefined;
-    if (pendingJob) {
-      loadFactoryJob(pendingJob);
-      return;
-    }
-    setActiveFactoryTab(roleHome.tab);
+  function toggleFactoryView(tab: Exclude<FactoryTab, "workspace">) {
+    setAdvancedToolsOpen(true);
+    setActiveFactoryTab((current) => (current === tab ? "workspace" : tab));
   }
 
-  function toggleFactoryView(tab: Exclude<FactoryTab, "workspace">) {
-    setActiveFactoryTab((current) => (current === tab ? "workspace" : tab));
+  function toggleAdvancedTools() {
+    setAdvancedToolsOpen((open) => {
+      if (open) setActiveFactoryTab("workspace");
+      return !open;
+    });
+  }
+
+  function startNewFactoryConversation() {
+    const initialTemplate = templates[0];
+    if (initialTemplate) chooseTemplate(initialTemplate);
+    setActiveJobId("");
+    activeJobIdRef.current = "";
+    setRequirementsInterview(null);
+    setActiveRequirementStep("targetSystem");
+    setAutoRepair(null);
+    setFactoryJob(null);
+    setChatInput("");
+    setChatMessages([{ id: `welcome-${Date.now()}`, role: "assistant", content: welcomeMessage }]);
+    setActiveChatPrompt(null);
+    setApprovalNote("");
+    setScheduleAt("");
+    setRollbackConfirmed(false);
+    setAdvancedToolsOpen(false);
+    setActiveFactoryTab("workspace");
+    setMobileFactoryPane("design");
+    setStatus(null);
+    window.requestAnimationFrame(() => chatInputRef.current?.focus());
   }
 
   function focusFactoryChat() {
     setActiveFactoryTab("workspace");
+    setMobileFactoryPane("design");
     window.requestAnimationFrame(() => {
       const input = chatInputRef.current;
       if (!input) return;
@@ -4137,6 +4194,15 @@ function PluginFactory({
     if (activeRequirementIndex <= 0) return;
     const previousQuestion = requirementQuestions[activeRequirementIndex - 1];
     if (previousQuestion) setActiveRequirementStep(previousQuestion.field);
+  }
+
+  function chooseRequirementSuggestion(suggestion: string) {
+    if (!activeRequirementQuestion || busy !== null) return;
+    updateRequirementSpec(activeRequirementQuestion.field, suggestion);
+    const nextQuestion = requirementQuestions[activeRequirementIndex + 1];
+    window.setTimeout(() => {
+      setActiveRequirementStep(nextQuestion?.field ?? "review");
+    }, 180);
   }
 
   function continueRequirementsInterview() {
@@ -4657,7 +4723,7 @@ function PluginFactory({
   }
 
   return (
-    <div className="stack pluginFactory">
+    <div className={`stack pluginFactory${activeFactoryTab === "workspace" ? " workspaceFocused" : ""}`}>
       <section className="factoryWorkspaceHeader">
         <div className="factoryWorkspaceStatus">
           <span className={`factoryConnectionDot ${assistantRuntime.provider}`} aria-hidden="true" />
@@ -4670,50 +4736,39 @@ function PluginFactory({
             <small>
               {localize(
                 t,
-                "Clarify the requirements in conversation, then generate and review the plugin.",
-                "대화로 요구사항을 정리한 뒤 플러그인을 생성하고 검토합니다."
+                "Describe it once. AI guides requirements, generation, verification, and Vault apply.",
+                "원하는 기능을 말하면 AI가 요구사항부터 생성·검증·Vault 적용까지 안내합니다."
               )}
             </small>
           </div>
         </div>
         <div className="factoryWorkspaceActions">
-          <button type="button" onClick={openRoleHomeAction}>
-            <History aria-hidden="true" size={16} />
-            {roleHome.action}
-            <span>{roleHome.metricValue}</span>
-          </button>
-          <button className="primary" type="button" onClick={focusFactoryChat} disabled={busy === "load"}>
+          <button className="primary" type="button" onClick={startNewFactoryConversation} disabled={busy !== null}>
             <MessageSquare aria-hidden="true" size={16} />
-            {localize(t, "New plugin", "새 플러그인")}
+            {localize(t, "New conversation", "새 대화")}
           </button>
         </div>
       </section>
 
-      <div className="factoryMobileTabs" role="tablist" aria-label={localize(t, "Factory workspace", "Factory 작업 화면")}>
-        <button
-          aria-controls="factory-mobile-design"
-          aria-selected={mobileFactoryPane === "design"}
-          className={mobileFactoryPane === "design" ? "active" : ""}
-          onClick={() => setMobileFactoryPane("design")}
-          role="tab"
-          type="button"
-        >
-          <MessageSquare aria-hidden="true" size={15} />
-          {localize(t, "Plugin design", "Plugin 설계")}
-        </button>
-        <button
-          aria-controls="factory-mobile-status"
-          aria-selected={mobileFactoryPane === "status"}
-          className={mobileFactoryPane === "status" ? "active" : ""}
-          onClick={() => setMobileFactoryPane("status")}
-          role="tab"
-          type="button"
-        >
-          <Activity aria-hidden="true" size={15} />
-          {localize(t, "Build status", "Build 상태")}
-          <span>{factoryProgress}%</span>
-        </button>
-      </div>
+      <button
+        aria-controls="factory-mobile-status"
+        aria-expanded={mobileFactoryPane === "status"}
+        className={`factoryMobileProgress${mobileFactoryPane === "status" ? " active" : ""}`}
+        onClick={() => setMobileFactoryPane((pane) => pane === "status" ? "design" : "status")}
+        type="button"
+      >
+        <Activity aria-hidden="true" size={18} />
+        <span>
+          <strong>{localize(t, "Current job", "현재 작업")}</strong>
+          <small>{currentWorkflowStage?.label ?? localize(t, "Requirements", "요구사항")}</small>
+        </span>
+        <em>
+          {requirementsInterview && !requirementsInterview.spec.confirmed
+            ? `${completedRequirementCount}/${requirementQuestions.length}`
+            : `${completedWorkflowCount}/${workflowStages.length}`}
+        </em>
+        <ArrowRight aria-hidden="true" size={17} />
+      </button>
 
       <section
         className={`factoryJobTimeline${mobileFactoryPane === "status" ? " mobileActive" : ""}`}
@@ -4722,7 +4777,7 @@ function PluginFactory({
       >
         <div className="factoryTimelineHeader">
           <div>
-            <span>{localize(t, "Build status", "빌드 상태")}</span>
+            <span>{localize(t, "Current job", "현재 작업")}</span>
             <strong>{currentJob?.pluginName || pluginName || localize(t, "New plugin draft", "새 플러그인 초안")}</strong>
             <small>
               {currentJob
@@ -4733,17 +4788,23 @@ function PluginFactory({
             </small>
           </div>
           <div>
-            <span>{currentJob?.status ?? "draft"}</span>
+            <span>{factoryStatusLabel(currentJob?.status ?? "draft", t)}</span>
             <strong>{factoryProgress}%</strong>
           </div>
         </div>
         <div className="factoryProgressTrack"><span style={{ width: `${factoryProgress}%` }} /></div>
         <div className="workflowStrip">
           {workflowStages.map((stage, index) => (
-            <div key={stage.id} className={`workflowStep ${stage.complete ? "complete" : currentJob?.stage === stage.id ? "current" : "pending"}`}>
+            <div key={stage.id} className={`workflowStep ${stage.complete ? "complete" : currentWorkflowStage?.id === stage.id ? "current" : "pending"}`}>
               <span>{stage.complete ? <CheckCircle2 aria-hidden="true" size={17} /> : index + 1}</span>
               <strong>{stage.label}</strong>
-              <small>{stage.complete ? localize(t, "Complete", "완료") : localize(t, "Pending", "대기")}</small>
+              <small>
+                {stage.complete
+                  ? localize(t, "Complete", "완료")
+                  : currentWorkflowStage?.id === stage.id
+                    ? localize(t, "In progress", "진행 중")
+                    : localize(t, "Pending", "대기")}
+              </small>
             </div>
           ))}
         </div>
@@ -4773,13 +4834,14 @@ function PluginFactory({
       </section>
 
       <section
-        className={`factoryChatPanel ${busy === "chat" || busy === "generate" || busy === "repair" || busy === "apply" ? "running" : ""}${mobileFactoryPane === "design" ? " mobileActive" : ""}`}
+        className={`factoryChatPanel mobileActive ${busy === "chat" || busy === "generate" || busy === "repair" || busy === "apply" ? "running" : ""}`}
         id="factory-mobile-design"
+        ref={factoryChatPanelRef}
       >
         <div className="panelHeader">
           <div>
-            <h2>{localize(t, "Plugin design", "플러그인 설계")}</h2>
-            <p>{localize(t, "Describe the system and credential you need.", "연결할 시스템과 필요한 자격 증명을 설명해주세요.")}</p>
+            <h2>{localize(t, "What should we build?", "무엇을 만들까요?")}</h2>
+            <p>{localize(t, "Describe the outcome in natural language. AI will ask only what is missing.", "원하는 결과를 자연어로 설명해주세요. AI가 부족한 조건만 하나씩 질문합니다.")}</p>
           </div>
           {canApply && generated ? <div className="chatQuickActions">
             <button
@@ -4792,22 +4854,25 @@ function PluginFactory({
             </button>
           </div> : null}
         </div>
-        <div className="chatExamples" aria-label={localize(t, "Example prompts", "예시 프롬프트")}>
-          <span>{localize(t, "Examples", "예시")}</span>
-          {chatExamples.slice(0, 3).map((example) => (
-            <button
-              key={example}
-              type="button"
-              className={activeChatPrompt === example ? "launching" : undefined}
-              onClick={() => void submitChatPrompt(example)}
-              disabled={busy !== null}
-            >
-              {example}
-            </button>
+        <div className="chatMessages" aria-live="polite">
+          {chatMessages.map((message) => (
+            <div key={message.id} className={`chatBubble ${message.role} ${message.tone ?? "default"}`}>
+              <span>{message.role === "user" ? localize(t, "You", "나") : "Factory"}</span>
+              <p>{message.content}</p>
+            </div>
           ))}
+          {busy === "chat" ? (
+            <div className="chatBubble assistant thinking">
+              <span>Factory</span>
+              <p>
+                {localize(t, "Thinking with the local model", "AI가 답변을 구성하고 있습니다")}
+                <i aria-hidden="true">...</i>
+              </p>
+            </div>
+          ) : null}
         </div>
         {requirementsInterview ? (
-          <div className={`requirementsInterview ${requirementsInterview.spec.confirmed ? "confirmed" : ""}${activeRequirementStep === "review" ? " reviewing" : ""}`}>
+          <div className={`requirementsInterview conversational ${requirementsInterview.spec.confirmed ? "confirmed" : ""}${activeRequirementStep === "review" ? " reviewing" : ""}`}>
             <div className="requirementsHeader">
               <div>
                 <span>{localize(t, "Requirements interview", "요구사항 인터뷰")}</span>
@@ -4826,27 +4891,6 @@ function PluginFactory({
             <div className="requirementsProgress" aria-hidden="true">
               <span style={{ width: `${(completedRequirementCount / requirementQuestions.length) * 100}%` }} />
             </div>
-            <div className="requirementsStepNav" role="tablist" aria-label={localize(t, "Required specification fields", "필수 명세 항목")}>
-              {requirementQuestions.map((question, index) => {
-                const complete = Boolean(requirementsInterview.spec[question.field].trim());
-                const active = !requirementsInterview.spec.confirmed && activeRequirementStep === question.field;
-                return (
-                  <button
-                    aria-controls={`requirement-question-${question.field}`}
-                    aria-selected={active}
-                    className={`${active ? "active" : ""}${complete ? " complete" : ""}`}
-                    disabled={requirementsInterview.spec.confirmed}
-                    key={question.field}
-                    onClick={() => setActiveRequirementStep(question.field)}
-                    role="tab"
-                    type="button"
-                  >
-                    <span>{complete ? <CheckCircle2 aria-hidden="true" size={14} /> : index + 1}</span>
-                    <strong>{question.shortLabel}</strong>
-                  </button>
-                );
-              })}
-            </div>
             {!requirementsInterview.spec.confirmed && activeRequirementStep !== "review" && activeRequirementQuestion ? (
               <section
                 aria-labelledby={`requirement-title-${activeRequirementQuestion.field}`}
@@ -4862,17 +4906,6 @@ function PluginFactory({
                 </div>
                 <h3 id={`requirement-title-${activeRequirementQuestion.field}`}>{activeRequirementQuestion.question}</h3>
                 <p>{activeRequirementQuestion.detail}</p>
-                <label className="requirementQuestionField">
-                  <span>{activeRequirementQuestion.label}</span>
-                  <input
-                    aria-label={activeRequirementQuestion.label}
-                    autoComplete="off"
-                    disabled={busy !== null}
-                    onChange={(event) => updateRequirementSpec(activeRequirementQuestion.field, event.target.value)}
-                    placeholder={activeRequirementQuestion.placeholder}
-                    value={activeRequirementValue}
-                  />
-                </label>
                 {activeRequirementQuestion.suggestions.length ? (
                   <div className="requirementSuggestions" aria-label={localize(t, "Suggested answers", "추천 답변")}>
                     {activeRequirementQuestion.suggestions.map((suggestion) => (
@@ -4881,20 +4914,37 @@ function PluginFactory({
                         className={activeRequirementValue === suggestion ? "active" : ""}
                         disabled={busy !== null}
                         key={suggestion}
-                        onClick={() => updateRequirementSpec(activeRequirementQuestion.field, suggestion)}
+                        onClick={() => chooseRequirementSuggestion(suggestion)}
                         type="button"
                       >
+                        {activeRequirementValue === suggestion
+                          ? <CheckCircle2 aria-hidden="true" size={18} />
+                          : <CircleGauge aria-hidden="true" size={18} />}
                         {suggestion}
                       </button>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <label className="requirementQuestionField">
+                    <span>{activeRequirementQuestion.label}</span>
+                    <input
+                      aria-label={activeRequirementQuestion.label}
+                      autoComplete="off"
+                      disabled={busy !== null}
+                      onChange={(event) => updateRequirementSpec(activeRequirementQuestion.field, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key !== "Enter" || event.nativeEvent.isComposing || !activeRequirementValue.trim()) return;
+                        event.preventDefault();
+                        continueRequirementsInterview();
+                      }}
+                      placeholder={activeRequirementQuestion.placeholder}
+                      value={activeRequirementValue}
+                    />
+                  </label>
+                )}
                 <div className="requirementNavigation">
                   <button disabled={activeRequirementIndex <= 0 || busy !== null} onClick={showPreviousRequirement} type="button">
                     <ArrowLeft aria-hidden="true" size={16} /> {localize(t, "Previous", "이전")}
-                  </button>
-                  <button disabled={busy !== null} onClick={focusFactoryChat} type="button">
-                    <MessageSquare aria-hidden="true" size={16} /> {localize(t, "Answer in chat", "채팅으로 답변")}
                   </button>
                   <button className="primary" disabled={!activeRequirementValue.trim() || busy !== null} onClick={continueRequirementsInterview} type="button">
                     {activeRequirementIndex === requirementQuestions.length - 1
@@ -4997,31 +5047,36 @@ function PluginFactory({
             </pre>
           </div>
         ) : null}
-        <div className="chatMessages" aria-live="polite">
-          {chatMessages.map((message) => (
-            <div key={message.id} className={`chatBubble ${message.role} ${message.tone ?? "default"}`}>
-              <span>{message.role === "user" ? localize(t, "You", "나") : "Factory"}</span>
-              <p>{message.content}</p>
-            </div>
-          ))}
-          {busy === "chat" ? (
-            <div className="chatBubble assistant thinking">
-              <span>Factory</span>
-              <p>
-                {localize(t, "Thinking with the local model", "로컬 모델이 답변을 구성하고 있습니다")}
-                <i aria-hidden="true">...</i>
-              </p>
-            </div>
-          ) : null}
-        </div>
+        {!requirementsInterview ? (
+          <div className="chatExamples" aria-label={localize(t, "Example prompts", "예시 프롬프트")}>
+            <span>{localize(t, "Try one", "예시")}</span>
+            {chatExamples.slice(0, 3).map((example) => (
+              <button
+                key={example}
+                type="button"
+                className={activeChatPrompt === example ? "launching" : undefined}
+                onClick={() => void submitChatPrompt(example)}
+                disabled={busy !== null}
+              >
+                {example}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <form className="chatComposer" onSubmit={handleChatSubmit}>
-          <input
+          <textarea
             id="factory-chat-input"
             ref={chatInputRef}
             value={chatInput}
             onChange={(event) => setChatInput(event.target.value)}
-            placeholder={localize(t, "Describe the Vault plugin you want to build", "만들고 싶은 Vault 플러그인을 설명해주세요")}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || !chatInput.trim()) return;
+              event.preventDefault();
+              void submitChatPrompt(chatInput);
+            }}
+            placeholder={localize(t, "Describe the plugin and where it should be applied", "원하는 Plugin과 적용 대상을 설명해주세요")}
             disabled={busy !== null}
+            rows={3}
           />
           <button
             aria-label={localize(t, "Send message", "메시지 전송")}
@@ -5031,27 +5086,48 @@ function PluginFactory({
             disabled={busy !== null || !chatInput.trim()}
           >
             <Send aria-hidden="true" size={18} />
+            <span>{localize(t, "Send", "전송")}</span>
           </button>
         </form>
       </section>
 
-      <section className="factoryViewLauncher" aria-label={localize(t, "Factory views", "Factory 메뉴")}>
-        <div className="factoryLauncherGrid">
-          {factoryLaunchers.map(({ id: launcherId, icon: Icon, label, status: launcherStatus }) => (
-            <button
-              aria-controls={`factory-view-${launcherId}`}
-              aria-expanded={activeFactoryTab === launcherId}
-              className={activeFactoryTab === launcherId ? "active" : ""}
-              key={launcherId}
-              onClick={() => toggleFactoryView(launcherId)}
-              type="button"
-            >
-              <span className="factoryLauncherIcon"><Icon aria-hidden="true" size={18} /></span>
-              <strong>{label}</strong>
-              <small>{launcherStatus}</small>
-            </button>
-          ))}
-        </div>
+      <section className={`factoryViewLauncher${advancedToolsOpen ? " open" : ""}`} aria-label={localize(t, "Advanced Factory tools", "Factory 고급 도구")}>
+        <button
+          aria-controls="factory-advanced-tools"
+          aria-expanded={advancedToolsOpen}
+          className="factoryAdvancedToggle"
+          onClick={toggleAdvancedTools}
+          type="button"
+        >
+          <Wrench aria-hidden="true" size={18} />
+          <span>
+            <strong>{localize(t, "Advanced tools", "고급 도구")}</strong>
+            <small>
+              {activeFactoryTab === "workspace"
+                ? `${roleHome.metricLabel} ${roleHome.metricValue}`
+                : factoryLaunchers.find((launcher) => launcher.id === activeFactoryTab)?.label}
+            </small>
+          </span>
+          <ArrowRight aria-hidden="true" size={17} />
+        </button>
+        {advancedToolsOpen ? (
+          <div className="factoryLauncherGrid" id="factory-advanced-tools">
+            {factoryLaunchers.map(({ id: launcherId, icon: Icon, label, status: launcherStatus }) => (
+              <button
+                aria-controls={`factory-view-${launcherId}`}
+                aria-expanded={activeFactoryTab === launcherId}
+                className={activeFactoryTab === launcherId ? "active" : ""}
+                key={launcherId}
+                onClick={() => toggleFactoryView(launcherId)}
+                type="button"
+              >
+                <span className="factoryLauncherIcon"><Icon aria-hidden="true" size={18} /></span>
+                <strong>{label}</strong>
+                <small>{launcherStatus}</small>
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       {activeFactoryTab === "discover" ? (
@@ -7310,8 +7386,8 @@ function pluginCatalogSummary(templates: VaultPluginTemplate[], t: Copy, filter:
 function factoryWelcomeMessage(t: Copy): string {
   return localize(
     t,
-    "Tell me which system needs which credential. I will ask about any missing conditions, confirm the specification with you, then build, verify, and prepare the Vault apply flow.",
-    "어떤 시스템에 어떤 자격 증명이 필요한지 말씀해주세요. 모호한 조건은 제가 하나씩 질문해 명세를 정리하고, 확인된 내용으로 플러그인을 만든 뒤 검증과 Vault 적용까지 함께 진행할게요."
+    "Describe the plugin you need in your own words. I will ask only for missing details, then generate, verify, and guide the Vault apply flow.",
+    "만들고 싶은 Plugin을 편하게 말씀해주세요. 부족한 조건만 하나씩 확인한 뒤 생성·검증하고 Vault 적용까지 안내하겠습니다."
   );
 }
 
