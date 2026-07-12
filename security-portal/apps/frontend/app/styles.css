@@ -5286,6 +5286,7 @@ tbody tr:hover {
 }
 
 .factoryJobList {
+  grid-auto-rows: max-content;
   max-height: 620px;
   padding-right: 4px;
   overflow-y: auto;
