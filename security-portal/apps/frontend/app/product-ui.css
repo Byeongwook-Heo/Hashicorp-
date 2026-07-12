@@ -791,8 +791,8 @@ tbody tr:hover {
 }
 
 .view-plugins .factoryJobTimeline {
-  position: sticky;
-  top: 80px;
+  position: static;
+  top: auto;
   grid-column: 2;
   grid-row: 2;
   min-height: 640px;
@@ -1078,11 +1078,14 @@ tbody tr:hover {
   display: flex;
   gap: 0;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .factoryLauncherGrid > button {
-  min-width: 138px;
+  width: auto;
+  min-width: max-content;
   min-height: 52px;
+  flex: 1 0 max-content;
   grid-template-columns: 22px minmax(0, 1fr) auto;
   padding: 0 15px;
   border: 0;
@@ -1090,6 +1093,10 @@ tbody tr:hover {
   border-radius: 0;
   background: transparent;
   font-size: 12px;
+}
+
+.factoryLauncherGrid strong {
+  white-space: nowrap;
 }
 
 .factoryLauncherGrid > button:last-child {
@@ -1114,10 +1121,28 @@ tbody tr:hover {
   border: 0;
   background: var(--panel-soft);
   font-size: 9px;
+  white-space: nowrap;
 }
 
 .factoryViewPanel {
   margin-top: 16px;
+}
+
+.generatedFilesPanel > .panelHeader {
+  min-height: 76px;
+  padding: 14px 16px;
+}
+
+.generatedFilesPanel > .panelHeader > div:first-child {
+  min-width: 0;
+}
+
+.generatedFilesPanel > .panelHeader h2 {
+  margin: 0 0 5px;
+}
+
+.generatedFilesPanel > .panelHeader p {
+  margin: 0;
 }
 
 .pluginWorkspace {
@@ -1382,7 +1407,7 @@ tbody tr:hover {
   }
 
   .factoryLauncherGrid > button {
-    min-width: 124px;
+    min-width: max-content;
   }
 }
 
