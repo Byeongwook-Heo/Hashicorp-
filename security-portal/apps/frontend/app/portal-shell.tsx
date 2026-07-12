@@ -3316,15 +3316,18 @@ function PluginFactory({
   const originalFile = generated?.files.find((file) => file.path === activeFile?.path);
   const activeFileDiff = fileDiffSummary(originalFile?.content ?? "", activeFile?.content ?? "");
   const highFindings = generated?.securityReview.findings.filter((finding) => finding.severity === "high").length ?? 0;
+  const generatedDisplay = generated ? factoryGeneratedDisplay(generated, t) : null;
   const preflightChecks = [
     {
-      label: localize(t, "Build and tests", "빌드 및 테스트"),
-      detail: generated?.buildTest.status ?? localize(t, "Not run", "미실행"),
+      label: factoryLocalize(t, "Build and tests", "빌드 및 테스트"),
+      detail: generated ? factoryStatusLabel(generated.buildTest.status, t) : factoryLocalize(t, "Not run", "미실행"),
       pass: generated?.buildTest.status === "pass"
     },
     {
       label: localize(t, "Security review", "보안 검토"),
-      detail: generated ? `${generated.securityReview.score}/100 · ${highFindings} high` : localize(t, "Not run", "미실행"),
+      detail: generated
+        ? factoryLocalize(t, `${generated.securityReview.score}/100 · ${highFindings} high`, `${generated.securityReview.score}/100 · 높음 ${highFindings}건`)
+        : localize(t, "Not run", "미실행"),
       pass: Boolean(generated && generated.securityReview.posture !== "blocked" && highFindings === 0)
     },
     {
@@ -3338,7 +3341,7 @@ function PluginFactory({
     },
     {
       label: localize(t, "Approval", "승인"),
-      detail: currentJob?.approval.status ?? localize(t, "Not requested", "요청 전"),
+      detail: factoryStatusLabel(currentJob?.approval.status ?? "not-requested", t),
       pass: currentJob?.approval.status === "approved"
     }
   ];
@@ -3384,8 +3387,8 @@ function PluginFactory({
           {
             id: "build" as const,
             icon: Code2,
-            label: localize(t, "Build plan", "빌드 계획"),
-            status: generated.buildTest.status
+            label: factoryLocalize(t, "Build plan", "빌드 계획"),
+            status: factoryStatusLabel(generated.buildTest.status, t)
           },
           {
             id: "deploy" as const,
@@ -3393,11 +3396,14 @@ function PluginFactory({
             label: applyResult
               ? localize(t, "Apply result", "적용 결과")
               : localize(t, "Apply", "적용"),
-            status: rollbackResult?.rolledBack
-              ? localize(t, "Rolled back", "롤백됨")
-              : applyResult?.applied
-                ? localize(t, "Applied", "적용됨")
-                : currentJob?.approval.status ?? localize(t, "Draft", "초안")
+            status: factoryStatusLabel(
+              rollbackResult?.rolledBack
+                ? "rolled-back"
+                : applyResult?.applied
+                  ? "complete"
+                  : currentJob?.approval.status ?? "draft",
+              t
+            )
           }
         ]
       : []),
@@ -5327,7 +5333,7 @@ function PluginFactory({
 
       {activeFactoryTab === "build" && generated ? (
         <section className="tablePanel commandPanel factoryViewPanel" id="factory-view-build">
-          <h2>{localize(t, "Build and apply plan", "빌드 및 적용 계획")}</h2>
+          <h2>{factoryLocalize(t, "Build and apply plan", "빌드 및 적용 계획")}</h2>
           {generated ? (
             <>
               <div className="commandList">
@@ -5337,8 +5343,8 @@ function PluginFactory({
               </div>
               <div className="buildTestPanel">
                 <div className="resultBanner compactBanner">
-                  <strong>{localize(t, "Isolated Build/Test", "격리 Build/Test")}</strong>
-                  <span>{generated.buildTest.status}</span>
+                  <strong>{factoryLocalize(t, "Isolated build and test", "격리 빌드 및 테스트")}</strong>
+                  <span>{factoryStatusLabel(generated.buildTest.status, t)}</span>
                 </div>
                 {autoRepair ? (
                   <div className="repairAttemptList">
@@ -5368,10 +5374,10 @@ function PluginFactory({
                     ) : null}
                   </div>
                 ) : null}
-                {generated.buildTest.steps.map((step) => (
+                {generatedDisplay?.buildSteps.map((step) => (
                   <div className="applyStep" key={`${step.label}-${step.command}`}>
                     <span className={step.status === "pass" ? "success" : step.status === "warn" ? "planned" : step.status}>
-                      {step.status}
+                      {factoryStatusLabel(step.status, t)}
                     </span>
                     <div>
                       <strong>{step.label}</strong>
@@ -5385,14 +5391,14 @@ function PluginFactory({
                 ))}
               </div>
               <div className="applyTimeline">
-                {generated.applyPlan.map((step, index) => (
+                {generatedDisplay?.applyPlan.map((step, index) => (
                   <div key={step}>
                     <span>{index + 1}</span>
                     <p>{step}</p>
                   </div>
                 ))}
               </div>
-              {generated.warnings.map((warning) => (
+              {generatedDisplay?.warnings.map((warning) => (
                 <div className="warningLine" key={warning}>
                   {warning}
                 </div>
@@ -5430,7 +5436,7 @@ function PluginFactory({
                 <div className="impactSummary">
                   <div><span>{localize(t, "Mount", "Mount")}</span><strong>{generated.mountPath}/</strong></div>
                   <div><span>{localize(t, "Plugin", "플러그인")}</span><strong>{generated.command}</strong></div>
-                  <div><span>{localize(t, "Role impact", "Role 영향")}</span><strong>{generated.template.pluginType === "auth" ? "auth method" : "secret consumers"}</strong></div>
+                  <div><span>{factoryLocalize(t, "Role impact", "영향 대상")}</span><strong>{generated.template.pluginType === "auth" ? factoryLocalize(t, "Auth method", "인증 방식") : factoryLocalize(t, "Secret consumers", "Secret 사용 대상")}</strong></div>
                   <div><span>{localize(t, "Changes", "변경 수")}</span><strong>{generated.dryRun.changes.length}</strong></div>
                 </div>
               ) : null}
@@ -5438,7 +5444,7 @@ function PluginFactory({
 
             <section className="approvalPanel">
               <div className="panelHeader">
-                <div><h3>{localize(t, "Approval and rollout", "승인 및 배포 방식")}</h3><p>{currentJob?.approval.status ?? localize(t, "Not requested", "요청 전")}</p></div>
+                <div><h3>{localize(t, "Approval and rollout", "승인 및 배포 방식")}</h3><p>{factoryStatusLabel(currentJob?.approval.status ?? "not-requested", t)}</p></div>
                 <UserCheck aria-hidden="true" size={20} />
               </div>
               <label>
@@ -5505,15 +5511,15 @@ function PluginFactory({
             <div className="dryRunPanel">
               <div className="resultBanner compactBanner">
                 <strong>{localize(t, "Dry-run apply diff", "Dry-run 적용 변경점")}</strong>
-                <span>{generated.dryRun.mode}</span>
+                <span>{factoryModeLabel(generated.dryRun.mode, t)}</span>
               </div>
-              <p>{generated.dryRun.summary}</p>
-              {generated.dryRun.changes.map((change) => (
+              <p>{generatedDisplay?.dryRunSummary}</p>
+              {generatedDisplay?.dryRunChanges.map((change) => (
                 <div className="diffRow" key={`${change.action}-${change.target}`}>
-                  <span className={change.risk}>{change.risk}</span>
+                  <span className={change.risk}>{change.riskLabel}</span>
                   <div>
                     <strong>
-                      {change.action} {change.target}
+                      {change.actionLabel} {change.target}
                     </strong>
                     <small>
                       {change.before} → {change.after}
@@ -5522,7 +5528,7 @@ function PluginFactory({
                 </div>
               ))}
               <div className="safetyList">
-                {generated.dryRun.collisions.concat(generated.dryRun.approvals).map((item) => (
+                {generatedDisplay?.safetyItems.map((item) => (
                   <span key={item}>{item}</span>
                 ))}
               </div>
@@ -5544,14 +5550,14 @@ function PluginFactory({
               <div className="applyResult">
                 <div className="resultBanner">
                   <strong>{applyResult.pluginName}</strong>
-                  <span>{applyResult.mode}</span>
+                  <span>{factoryModeLabel(applyResult.mode, t)}</span>
                 </div>
                 {applyResult.steps.map((step) => (
                   <div className="applyStep" key={`${step.label}-${step.detail}`}>
-                    <span className={step.status}>{step.status}</span>
+                    <span className={step.status}>{factoryStatusLabel(step.status, t)}</span>
                     <div>
-                      <strong>{step.label}</strong>
-                      <small>{step.detail}</small>
+                      <strong>{factoryResultStepLabel(step.label, t)}</strong>
+                      <small>{factoryResultStepDetail(step.detail, t)}</small>
                     </div>
                   </div>
                 ))}
@@ -5561,7 +5567,7 @@ function PluginFactory({
           {applyResult?.applied && generated.rollbackPlan.available ? (
             <section className="rollbackZone">
               <div className="panelHeader">
-                <div><h3>{localize(t, "Rollback", "롤백")}</h3><p>{generated.rollbackPlan.summary}</p></div>
+                <div><h3>{localize(t, "Rollback", "롤백")}</h3><p>{factoryRollbackSummary(generated, t)}</p></div>
                 <Undo2 aria-hidden="true" size={20} />
               </div>
               <label className="toggleLine">
@@ -5580,7 +5586,7 @@ function PluginFactory({
               </div>
               {rollbackResult ? (
                 <div className="applyResult">
-                  {rollbackResult.steps.map((step) => <div className="applyStep" key={step.label}><span className={step.status}>{step.status}</span><div><strong>{step.label}</strong><small>{step.detail}</small></div></div>)}
+                  {rollbackResult.steps.map((step) => <div className="applyStep" key={step.label}><span className={step.status}>{factoryStatusLabel(step.status, t)}</span><div><strong>{factoryResultStepLabel(step.label, t)}</strong><small>{factoryResultStepDetail(step.detail, t)}</small></div></div>)}
                 </div>
               ) : null}
             </section>
@@ -5601,7 +5607,7 @@ function PluginFactory({
             <div className="factoryJobList">
               {factoryJobs.map((job) => (
                 <button className={job.id === activeJobId ? "active" : ""} key={job.id} onClick={() => loadFactoryJob(job)} type="button">
-                  <span className={`statusBadge ${job.status}`}>{job.status}</span>
+                  <span className={`statusBadge ${job.status}`}>{factoryStatusLabel(job.status, t)}</span>
                   <strong>{job.pluginName}</strong>
                   <small>{job.ownerEmail} · {new Date(job.updatedAt).toLocaleString()}</small>
                   <div className="historyProgress"><span style={{ width: `${job.progress}%` }} /></div>
@@ -6471,6 +6477,207 @@ function factoryActionLabel(action: string, t: Copy): string {
   };
   const label = labels[action];
   return label ? localize(t, label[0], label[1]) : action;
+}
+
+function factoryLocalize(t: Copy, en: string, ko: string): string {
+  return t === copy.ko ? ko : en;
+}
+
+function factoryStatusLabel(status: string, t: Copy): string {
+  const labels: Record<string, [string, string]> = {
+    approved: ["Approved", "승인됨"],
+    blocked: ["Blocked", "차단됨"],
+    complete: ["Complete", "완료"],
+    draft: ["Draft", "초안"],
+    fail: ["Failed", "실패"],
+    failed: ["Failed", "실패"],
+    high: ["High", "높음"],
+    low: ["Low", "낮음"],
+    medium: ["Medium", "보통"],
+    "needs-review": ["Needs review", "검토 필요"],
+    "not-requested": ["Not requested", "요청 전"],
+    pass: ["Passed", "통과"],
+    pending: ["Pending", "대기"],
+    planned: ["Planned", "예정"],
+    ready: ["Ready", "준비 완료"],
+    rejected: ["Rejected", "반려됨"],
+    requested: ["Requested", "승인 요청됨"],
+    "rolled-back": ["Rolled back", "롤백됨"],
+    running: ["Running", "진행 중"],
+    scheduled: ["Scheduled", "예약됨"],
+    skipped: ["Skipped", "건너뜀"],
+    success: ["Success", "성공"],
+    warn: ["Needs review", "검토 필요"],
+    warning: ["Warning", "주의"],
+    "waiting-approval": ["Waiting approval", "승인 대기"]
+  };
+  const label = labels[status];
+  return label ? factoryLocalize(t, label[0], label[1]) : status;
+}
+
+function factoryModeLabel(mode: string, t: Copy): string {
+  const labels: Record<string, [string, string]> = {
+    "dry-run": ["Dry-run", "Dry-run"],
+    mock: ["Mock", "Mock"],
+    real: ["Real Vault", "실제 Vault"]
+  };
+  const label = labels[mode];
+  return label ? factoryLocalize(t, label[0], label[1]) : mode;
+}
+
+function factoryGeneratedDisplay(generated: VaultPluginGenerateResult, t: Copy) {
+  const korean = t === copy.ko;
+  const buildStepLabels: Record<string, string> = {
+    "Source package": "소스 패키지",
+    "Go formatting": "Go 포맷 정리",
+    "Dependency tidy": "의존성 정리",
+    "Unit tests": "단위 테스트",
+    "Plugin binary": "플러그인 바이너리",
+    "ARM64 plugin binary": "ARM64 플러그인 바이너리",
+    "Binary checksum": "바이너리 Checksum"
+  };
+  const buildStepDetails: Record<string, string> = {
+    "Waiting for the isolated CodeBuild runner.": "격리 CodeBuild Runner 실행을 기다리고 있습니다.",
+    "Generated unit tests have not run yet.": "생성된 단위 테스트가 아직 실행되지 않았습니다.",
+    "Run this against the compiled binary before real Vault registration.": "실제 Vault 등록 전에 컴파일된 바이너리의 Checksum을 검증합니다.",
+    "Formatting ran inside the isolated CodeBuild worker.": "격리 CodeBuild Worker에서 포맷 정리를 실행했습니다.",
+    "Dependencies are resolved without Vault runtime credentials.": "Vault Runtime Credential 없이 의존성을 확인했습니다.",
+    "Waiting for the isolated test runner.": "격리 테스트 Runner 실행을 기다리고 있습니다.",
+    "No deployable binary is available yet.": "아직 배포 가능한 바이너리가 없습니다."
+  };
+  const buildSteps = generated.buildTest.steps.map((step) => {
+    if (!korean) return step;
+    let detail = buildStepDetails[step.detail] ?? step.detail;
+    if (step.detail === `${generated.files.length} generated files will be compiled for linux/arm64.`) {
+      detail = `생성 파일 ${generated.files.length}개를 linux/arm64 대상으로 컴파일합니다.`;
+    } else if (step.detail === `${generated.files.length} files were packaged for an isolated build.`) {
+      detail = `생성 파일 ${generated.files.length}개를 격리 빌드용으로 패키징했습니다.`;
+    } else if (step.detail.startsWith("Binary SHA256 ")) {
+      detail = `바이너리 SHA-256 ${step.detail.slice("Binary SHA256 ".length)}`;
+    }
+    return {
+      ...step,
+      label: buildStepLabels[step.label] ?? step.label,
+      detail
+    };
+  });
+  const pluginTypeLabel = generated.template.pluginType === "auth"
+    ? "Auth"
+    : generated.template.pluginType === "database"
+      ? "Database"
+      : "Secret";
+  const koreanApplyPlan = [
+    "Vault 상태, plugin_directory, api_addr 및 최소 권한 Plugin AppRole을 확인합니다.",
+    "확정된 명세를 격리 Factory CodeBuild Runner에서 컴파일하고 테스트합니다.",
+    `dist/${generated.command} 바이너리를 모든 Vault 노드의 plugin_directory에 복사합니다.`,
+    `${generated.pluginName}: 바이너리 SHA-256을 사용해 ${pluginTypeLabel} Plugin Catalog에 등록합니다.`,
+    `${generated.pluginName}: 등록 버전 ${generated.version}으로 ${generated.mountPath}/ 경로에 활성화합니다.`,
+    "Mount/Read Smoke Test를 실행하고 Plugin 버전과 실행 중인 SHA-256을 기록합니다."
+  ];
+  const applyPlan = korean
+    ? generated.applyPlan.map((step, index) => koreanApplyPlan[index] ?? step)
+    : generated.applyPlan;
+  const koreanWarnings = [
+    "Scaffold SHA는 생성 소스 검토용입니다. 실제 Vault 등록에는 컴파일된 바이너리 SHA-256이 필요합니다.",
+    "Mock 모드 적용은 안전하게 시뮬레이션됩니다. 실제 모드에서는 Vault plugin_directory에 바이너리가 먼저 배치되어야 합니다.",
+    generated.template.pluginType === "auth"
+      ? "Auth Plugin을 적용하려면 sys/auth에 대한 sudo 권한이 필요하며 승인 절차를 거쳐야 합니다."
+      : "Secret 및 Database Plugin을 적용하려면 sys/mounts에 대한 create/update 권한과 Catalog 등록 권한이 필요합니다."
+  ];
+  const warnings = korean
+    ? generated.warnings.map((warning, index) => koreanWarnings[index] ?? warning)
+    : generated.warnings;
+  const koreanDryRunChanges = [
+    { before: "Vault 상태 미확인", after: "정상 Vault Cluster 필요" },
+    { before: "Factory에서 등록하지 않은 Plugin", after: `${generated.command}를 ${generated.version}, 컴파일 바이너리 SHA-256으로 등록` },
+    { before: `${generated.mountPath}/는 현재 Factory 작업에서 관리되지 않음`, after: `${generated.mountPath}/에 ${generated.pluginName} 활성화` },
+    { before: "Mount 상태 미확인", after: `running_plugin_version이 ${generated.version}과 일치해야 함` }
+  ];
+  const dryRunChanges = generated.dryRun.changes.map((change, index) => {
+    const localizedChange = korean ? koreanDryRunChanges[index] : undefined;
+    return {
+      ...change,
+      actionLabel: factoryDryRunActionLabel(change.action, t),
+      riskLabel: factoryStatusLabel(change.risk, t),
+      before: localizedChange?.before ?? change.before,
+      after: localizedChange?.after ?? change.after
+    };
+  });
+  const sourceSafetyItems = generated.dryRun.collisions.concat(generated.dryRun.approvals);
+  const koreanSafetyItems = [
+    `${generated.mountPath}/ 경로에 다른 Plugin 유형이 이미 있으면 적용을 차단합니다.`,
+    `${generated.pluginName} Catalog 항목의 command 또는 SHA-256이 다르면 적용을 차단합니다.`,
+    "모든 적용 작업에는 vault-admin 역할이 필요합니다.",
+    generated.template.pluginType === "auth"
+      ? "Auth Method 활성화 전 Security Approver 승인이 필요합니다."
+      : "운영 Mount 생성 전 Service Owner 승인이 필요합니다."
+  ];
+  const safetyItems = korean
+    ? sourceSafetyItems.map((item, index) => koreanSafetyItems[index] ?? item)
+    : sourceSafetyItems;
+
+  return {
+    applyPlan,
+    buildSteps,
+    dryRunChanges,
+    dryRunSummary: korean
+      ? `Dry-run에서 ${generated.pluginName} 등록, ${generated.mountPath}/ 활성화, 승격 전 실행 버전 검증을 수행합니다.`
+      : generated.dryRun.summary,
+    safetyItems,
+    warnings
+  };
+}
+
+function factoryDryRunActionLabel(action: string, t: Copy): string {
+  const labels: Record<string, [string, string]> = {
+    create: ["Create", "생성"],
+    skip: ["Skip", "건너뜀"],
+    update: ["Update", "수정"],
+    verify: ["Verify", "검증"]
+  };
+  const label = labels[action];
+  return label ? factoryLocalize(t, label[0], label[1]) : action;
+}
+
+function factoryResultStepLabel(label: string, t: Copy): string {
+  const labels: Record<string, string> = {
+    "Catalog registration": "Catalog 등록",
+    "Disable mount": "Mount 비활성화",
+    "Enable mount": "Mount 활성화",
+    "Remove catalog entry": "Catalog 항목 제거",
+    "Smoke test": "Smoke Test",
+    "Verify mount list": "Mount 목록 확인"
+  };
+  return t === copy.ko ? labels[label] ?? label : label;
+}
+
+function factoryResultStepDetail(detail: string, t: Copy): string {
+  if (t !== copy.ko) return detail;
+  const mockRegistered = detail.match(/^Mock registered (.+) as (.+)$/);
+  if (mockRegistered) return `Mock 등록: ${mockRegistered[1]} (${mockRegistered[2]})`;
+  const mockEnabled = detail.match(/^Mock enabled (.+)$/);
+  if (mockEnabled) return `Mock 활성화: ${mockEnabled[1]}`;
+  const mockDisabled = detail.match(/^Mock disabled (.+)$/);
+  if (mockDisabled) return `Mock 비활성화: ${mockDisabled[1]}`;
+  const mockRemoved = detail.match(/^Mock removed (.+)$/);
+  if (mockRemoved) return `Mock Catalog 제거: ${mockRemoved[1]}`;
+  const returned = detail.match(/^(.*) returned (\d+)$/);
+  if (returned) return `${returned[1]} 응답 코드 ${returned[2]}`;
+  const verified = detail.match(/^Verified via (.+)$/);
+  if (verified) return `${verified[1]}에서 확인했습니다.`;
+  if (detail === "Run against a real Vault dev server before production promotion") {
+    return "운영 승격 전 실제 Vault Dev Server에서 실행합니다.";
+  }
+  if (detail === "Catalog entry retained") return "Catalog 항목을 유지했습니다.";
+  return detail;
+}
+
+function factoryRollbackSummary(generated: VaultPluginGenerateResult, t: Copy): string {
+  return factoryLocalize(
+    t,
+    generated.rollbackPlan.summary,
+    `Traffic Drain 후 ${generated.mountPath}/를 비활성화하고 선택에 따라 Plugin Catalog에서 ${generated.pluginName} ${generated.version}을 제거합니다.`
+  );
 }
 
 function factoryRoleHome(

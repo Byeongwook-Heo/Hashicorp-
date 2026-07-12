@@ -1145,6 +1145,71 @@ tbody tr:hover {
   margin: 0;
 }
 
+.generatedFilesPanel > .generatedFileToolbar {
+  padding: 10px 16px 12px;
+}
+
+.generatedFilesPanel > .generatedFileWorkspace {
+  padding: 0 16px 16px;
+}
+
+.factoryOpsPanel > .panelHeader,
+.factoryHistoryPanel > .panelHeader {
+  min-height: 76px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.factoryOpsPanel > .panelHeader > div:first-child,
+.factoryHistoryPanel > .panelHeader > div:first-child {
+  min-width: 0;
+}
+
+.factoryOpsPanel > .panelHeader h2,
+.factoryHistoryPanel > .panelHeader h2 {
+  margin: 0 0 5px;
+}
+
+.factoryOpsPanel > .panelHeader p,
+.factoryHistoryPanel > .panelHeader p {
+  margin: 0;
+}
+
+.factoryOpsPanel > .capabilityGrid {
+  margin-inline: 16px;
+}
+
+.factoryOpsPanel > .factoryOpsGrid {
+  margin: 0 16px 16px;
+}
+
+#factory-view-build > h2,
+#factory-view-deploy > h2 {
+  margin: 0;
+}
+
+#factory-view-build > :not(h2),
+#factory-view-deploy > :not(h2) {
+  margin-inline: 16px;
+}
+
+#factory-view-build > :last-child,
+#factory-view-deploy > :last-child {
+  margin-bottom: 16px;
+}
+
+#factory-view-deploy .rolloutControls label input,
+#factory-view-deploy .rolloutControls label select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.factoryHistoryPanel > .factoryHistoryLayout {
+  padding: 0 16px 16px;
+}
+
 .pluginWorkspace {
   gap: 0;
   overflow: hidden;
@@ -1961,6 +2026,45 @@ textarea:focus {
 }
 
 @media (max-width: 640px) {
+  .generatedFilesPanel > .panelHeader,
+  .factoryOpsPanel > .panelHeader,
+  .factoryHistoryPanel > .panelHeader {
+    min-height: 68px;
+    padding: 12px;
+  }
+
+  .generatedFilesPanel > .generatedFileToolbar {
+    padding: 10px 12px 12px;
+  }
+
+  .generatedFilesPanel > .generatedFileWorkspace {
+    padding: 0 12px 12px;
+  }
+
+  .factoryOpsPanel > .capabilityGrid,
+  #factory-view-build > :not(h2),
+  #factory-view-deploy > :not(h2) {
+    margin-inline: 12px;
+  }
+
+  .factoryOpsPanel > .factoryOpsGrid {
+    margin: 0 12px 12px;
+  }
+
+  #factory-view-build > h2,
+  #factory-view-deploy > h2 {
+    padding-inline: 12px;
+  }
+
+  #factory-view-build > :last-child,
+  #factory-view-deploy > :last-child {
+    margin-bottom: 12px;
+  }
+
+  .factoryHistoryPanel > .factoryHistoryLayout {
+    padding: 0 12px 12px;
+  }
+
   .factoryMobileTabs {
     top: 64px;
     border-radius: 5px;
