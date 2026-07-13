@@ -1955,13 +1955,35 @@ textarea {
   animation: consoleSweep 1.8s linear infinite;
 }
 
-.factoryCodeConsole > div {
+.factoryCodeConsoleHeader {
   position: relative;
   z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
   align-items: center;
+}
+
+.factoryCodeConsoleTitle {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.factoryCodeConsoleTitle small {
+  overflow: hidden;
+  color: #94a3b8;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.factoryCodeConsoleActions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
 }
 
 .factoryCodeConsole strong {
@@ -1969,7 +1991,7 @@ textarea {
   font-size: 13px;
 }
 
-.factoryCodeConsole > div span {
+.factoryCodeConsoleStatus {
   min-height: 24px;
   display: inline-flex;
   align-items: center;
@@ -1982,19 +2004,91 @@ textarea {
   text-transform: uppercase;
 }
 
-.factoryCodeConsole.running > div span {
+.factoryCodeConsole.running .factoryCodeConsoleStatus {
   border-color: rgba(255, 207, 37, 0.42);
   color: var(--vault);
 }
 
-.factoryCodeConsole.complete > div span {
+.factoryCodeConsole.complete .factoryCodeConsoleStatus {
   border-color: rgba(34, 197, 94, 0.34);
   color: #86efac;
 }
 
-.factoryCodeConsole.failed > div span {
+.factoryCodeConsole.failed .factoryCodeConsoleStatus,
+.factoryCodeConsole.cancelled .factoryCodeConsoleStatus {
   border-color: rgba(248, 113, 113, 0.38);
   color: #fca5a5;
+}
+
+.factoryCancelButton {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  border-radius: 6px;
+  background: rgba(127, 29, 29, 0.18);
+  color: #fecaca;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.factoryCancelButton:hover:not(:disabled) {
+  border-color: rgba(248, 113, 113, 0.7);
+  background: rgba(127, 29, 29, 0.34);
+}
+
+.factoryBuildTracker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 7px;
+}
+
+.factoryBuildProgress {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.factoryBuildProgress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vault);
+  transition: width 320ms ease;
+}
+
+.factoryCodeConsole.complete .factoryBuildProgress > span {
+  background: #4ade80;
+}
+
+.factoryCodeConsole.failed .factoryBuildProgress > span,
+.factoryCodeConsole.cancelled .factoryBuildProgress > span {
+  background: #f87171;
+}
+
+.factoryBuildMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  color: #94a3b8;
+  font-size: 10px;
+}
+
+.factoryBuildMeta span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.factoryBuildMeta strong {
+  color: #e2e8f0;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .factoryCodeConsole pre {
@@ -2019,6 +2113,22 @@ textarea {
 
 .factoryCodeConsole.running code:last-child {
   animation: consoleLineIn 420ms ease both;
+}
+
+@media (max-width: 640px) {
+  .factoryCodeConsoleTitle,
+  .factoryCodeConsoleActions {
+    width: 100%;
+  }
+
+  .factoryCodeConsoleActions {
+    justify-content: space-between;
+  }
+
+  .factoryBuildMeta {
+    justify-content: space-between;
+    gap: 5px 8px;
+  }
 }
 
 .consoleCursor {
@@ -5260,7 +5370,8 @@ tbody tr:hover {
   color: #166534;
 }
 
-.statusBadge.failed {
+.statusBadge.failed,
+.statusBadge.cancelled {
   background: #fee2e2;
   color: #991b1b;
 }
@@ -5376,6 +5487,10 @@ tbody tr:hover {
 
 .dangerIconButton:not(:disabled) {
   color: var(--red);
+}
+
+.cancelIconButton:not(:disabled) {
+  color: #b45309;
 }
 
 .factoryEventLog {

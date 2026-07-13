@@ -94,4 +94,49 @@ describe("FactoryBuildService", () => {
     expect(result.artifact?.sha256).toBe("a".repeat(64));
     expect(repair).toHaveBeenCalledOnce();
   });
+
+  it("stops the active CodeBuild run when the Factory job is cancelled", async () => {
+    const controller = new AbortController();
+    const phases: Array<string | undefined> = [];
+    const s3 = {
+      send: vi.fn(async () => ({}))
+    } as unknown as S3Client;
+    const codeBuild = {
+      send: vi.fn(async (command: { constructor: { name: string } }) => {
+        if (command.constructor.name === "StartBuildCommand") return { build: { id: "build-cancel-1" } };
+        if (command.constructor.name === "BatchGetBuildsCommand") {
+          return { builds: [{ buildStatus: "IN_PROGRESS", currentPhase: "BUILD" }] };
+        }
+        return {};
+      })
+    } as unknown as CodeBuildClient;
+    const service = new FactoryBuildService(
+      {
+        mode: "codebuild",
+        projectName: "factory-build",
+        bucket: "factory-bucket",
+        prefix: "factory",
+        maxAttempts: 3,
+        pollIntervalMs: 1,
+        timeoutMs: 1000
+      },
+      vi.fn(),
+      { codeBuild, s3 }
+    );
+
+    const result = await service.run(
+      { runId: "run-cancel", pluginName: "test", command: "test", files, requirements },
+      (progress) => {
+        phases.push(progress.phase);
+        if (progress.phase === "building") controller.abort();
+      },
+      controller.signal
+    );
+
+    expect(result.status).toBe("cancelled");
+    expect(result.phase).toBe("cancelled");
+    expect(result.completedAt).toBeTruthy();
+    expect(phases).toContain("building");
+    expect(codeBuild.send).toHaveBeenCalledWith(expect.objectContaining({ input: { id: "build-cancel-1" } }));
+  });
 });

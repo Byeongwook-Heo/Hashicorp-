@@ -2895,7 +2895,7 @@ textarea:focus {
   flex: 0 0 auto;
 }
 
-.factoryChatPanel > .factoryCodeConsole > div {
+.factoryChatPanel > .factoryCodeConsole > .factoryCodeConsoleHeader {
   min-height: 28px;
 }
 

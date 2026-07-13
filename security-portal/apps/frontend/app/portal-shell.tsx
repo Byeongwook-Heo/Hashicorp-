@@ -41,6 +41,7 @@ import {
   Boxes,
   CalendarClock,
   CheckCircle2,
+  CircleStop,
   CircleGauge,
   ClipboardCopy,
   ClipboardCheck,
@@ -3055,7 +3056,8 @@ type FactoryRuntime = {
 type FactoryJobState = {
   kind: "generate" | "apply";
   label: string;
-  status: "running" | "complete" | "failed";
+  status: "running" | "complete" | "failed" | "cancelled";
+  startedAt: number;
   lines: string[];
 };
 type PluginFactoryHistoryItem = {
@@ -3174,6 +3176,8 @@ function PluginFactory({
   const [copiedFilePath, setCopiedFilePath] = useState<string | null>(null);
   const [factoryJobs, setFactoryJobs] = useState<VaultPluginFactoryJob[]>([]);
   const [activeJobId, setActiveJobId] = useState("");
+  const [cancellingJobId, setCancellingJobId] = useState<string | null>(null);
+  const [factoryClock, setFactoryClock] = useState(() => Date.now());
   const [historyAction, setHistoryAction] = useState<FactoryHistoryAction | null>(null);
   const [historyActionBusy, setHistoryActionBusy] = useState(false);
   const [historyActionError, setHistoryActionError] = useState<string | null>(null);
@@ -3353,6 +3357,13 @@ function PluginFactory({
   }, [factoryJob?.label, factoryJob?.lines.length, factoryJob?.status]);
 
   useEffect(() => {
+    if (factoryJob?.status !== "running") return;
+    setFactoryClock(Date.now());
+    const interval = window.setInterval(() => setFactoryClock(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [factoryJob?.status, factoryJob?.startedAt]);
+
+  useEffect(() => {
     if (!status) return;
     const statusClass = factoryStatusClassName(status);
     notifyPortal(status, statusClass === "error" ? "danger" : statusClass === "warningLine" ? "warning" : "success");
@@ -3403,6 +3414,16 @@ function PluginFactory({
     localize(t, "Compare Sectigo and DigiCert", "Sectigo와 DigiCert를 비교해줘")
   ];
   const currentJob = factoryJobs.find((job) => job.id === activeJobId);
+  const factoryBuildPhase = autoRepair?.phase ?? (autoRepair?.status === "pass" ? "complete" : autoRepair?.status === "cancelled" ? "cancelled" : "queued");
+  const factoryBuildAttempt = autoRepair
+    ? Math.min(autoRepair.activeAttempt ?? autoRepair.attempts.length + 1, autoRepair.maxAttempts)
+    : 1;
+  const factoryBuildProgressValue = autoRepair ? factoryAutoRepairProgress(autoRepair) : 10;
+  const factoryBuildElapsedMs = autoRepair?.startedAt
+    ? Math.max(0, Date.parse(autoRepair.completedAt ?? new Date(factoryClock).toISOString()) - Date.parse(autoRepair.startedAt))
+    : factoryJob
+      ? Math.max(0, factoryClock - factoryJob.startedAt)
+      : 0;
   const historyActionJob = historyAction ? factoryJobs.find((job) => job.id === historyAction.jobId) : undefined;
   const factoryProgress = currentJob?.progress ?? (generated ? 70 : 10);
   const ownsCurrentJob = Boolean(currentJob && currentUser && currentJob.ownerId === currentUser.id);
@@ -3459,6 +3480,7 @@ function PluginFactory({
       pass: currentJob?.approval.status === "approved"
     }
   ];
+  const approvalPreflightPassed = preflightChecks.slice(0, 3).every((check) => check.pass);
   const preflightPassed = preflightChecks.every((check) => check.pass);
   const workflowStages = [
     {
@@ -3772,6 +3794,34 @@ function PluginFactory({
     return canManageFactoryHistory(job) && !(["running", "waiting-approval", "approved", "scheduled"] as VaultPluginFactoryJob["status"][]).includes(job.status);
   }
 
+  function canCancelFactoryJob(job: VaultPluginFactoryJob): boolean {
+    return canManageFactoryHistory(job) && (["running", "waiting-approval", "approved", "scheduled"] as VaultPluginFactoryJob["status"][]).includes(job.status);
+  }
+
+  async function cancelFactoryJob(job: VaultPluginFactoryJob) {
+    if (!canCancelFactoryJob(job) || cancellingJobId) return;
+    setCancellingJobId(job.id);
+    setStatus(null);
+    try {
+      const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${job.id}/actions`, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "cancel",
+          note: localize(t, "Cancelled by the operator before Vault apply", "Vault 적용 전 운영자가 작업을 취소함")
+        })
+      });
+      upsertFactoryJob(response.job);
+      if (job.id === activeJobIdRef.current) {
+        finishFactoryJob("cancelled", localize(t, "■ build cancelled before Vault apply", "■ Vault 적용 전 빌드 취소 완료"));
+      }
+      setStatus(localize(t, `Cancelled ${job.pluginName}. It can now be deleted from history.`, `${job.pluginName} 작업을 취소했습니다. 이제 이력에서 삭제할 수 있습니다.`));
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : localize(t, "Unable to cancel the Factory job.", "Factory 작업을 취소하지 못했습니다."));
+    } finally {
+      setCancellingJobId(null);
+    }
+  }
+
   function openFactoryHistoryAction(job: VaultPluginFactoryJob, mode: FactoryHistoryAction["mode"]) {
     setHistoryAction({
       mode,
@@ -3846,6 +3896,10 @@ function PluginFactory({
     setStatus(null);
     try {
       if (action === "request-approval") {
+        if (!approvalPreflightPassed) {
+          setStatus(localize(t, "Build, security review, and artifact verification must pass before approval.", "빌드, 보안 검토, 아티팩트 검증을 통과한 뒤 승인 요청을 할 수 있습니다."));
+          return;
+        }
         await patchFactoryJobById(job.id, {
           templateId: selectedTemplate?.id,
           pluginName: pluginName || selectedTemplate?.name || job.pluginName,
@@ -4060,6 +4114,12 @@ function PluginFactory({
         }
       }
       if (run.status === "running") throw new Error(localize(t, "The isolated build timed out.", "격리 빌드 시간이 초과되었습니다."));
+      if (run.status === "cancelled") {
+        finishFactoryJob("cancelled", localize(t, "■ build cancelled before Vault apply", "■ Vault 적용 전 빌드 취소 완료"));
+        await refreshFactoryJobs();
+        setStatus(localize(t, "The isolated build was cancelled safely.", "격리 빌드를 안전하게 취소했습니다."));
+        return null;
+      }
       const nextGenerated: VaultPluginGenerateResult = {
         ...target,
         files: run.files,
@@ -4107,6 +4167,7 @@ function PluginFactory({
       kind,
       label,
       status: "running",
+      startedAt: Date.now(),
       lines: []
     });
   }
@@ -5081,10 +5142,47 @@ function PluginFactory({
         ) : null}
         {factoryJob ? (
           <div className={`factoryCodeConsole ${factoryJob.status}`} aria-live="polite" ref={factoryCodeConsoleRef}>
-            <div>
-              <strong>{factoryJob.label}</strong>
-              <span>{factoryJob.status}</span>
+            <div className="factoryCodeConsoleHeader">
+              <div className="factoryCodeConsoleTitle">
+                <strong>{factoryJob.label}</strong>
+                {factoryJob.kind === "generate" && autoRepair ? <small>{factoryBuildPhaseLabel(factoryBuildPhase, t)}</small> : null}
+              </div>
+              <div className="factoryCodeConsoleActions">
+                <span className="factoryCodeConsoleStatus">{factoryStatusLabel(factoryJob.status, t)}</span>
+                {currentJob && factoryJob.status === "running" && canCancelFactoryJob(currentJob) ? (
+                  <button
+                    aria-label={localize(t, `Cancel ${currentJob.pluginName}`, `${currentJob.pluginName} 작업 취소`)}
+                    className="factoryCancelButton"
+                    disabled={cancellingJobId === currentJob.id}
+                    onClick={() => void cancelFactoryJob(currentJob)}
+                    title={localize(t, "Cancel before Vault apply", "Vault 적용 전 작업 취소")}
+                    type="button"
+                  >
+                    <CircleStop aria-hidden="true" size={15} />
+                    {cancellingJobId === currentJob.id ? localize(t, "Cancelling...", "취소 중...") : localize(t, "Cancel", "작업 취소")}
+                  </button>
+                ) : null}
+              </div>
             </div>
+            {factoryJob.kind === "generate" && autoRepair ? (
+              <section className="factoryBuildTracker" aria-label={localize(t, "Build progress", "빌드 진행 상태")}>
+                <div
+                  aria-valuemax={100}
+                  aria-valuemin={0}
+                  aria-valuenow={factoryBuildProgressValue}
+                  aria-valuetext={factoryBuildPhaseLabel(factoryBuildPhase, t)}
+                  className="factoryBuildProgress"
+                  role="progressbar"
+                >
+                  <span style={{ width: `${factoryBuildProgressValue}%` }} />
+                </div>
+                <div className="factoryBuildMeta">
+                  <span>{localize(t, "Attempt", "시도")} <strong>{factoryBuildAttempt}/{autoRepair.maxAttempts}</strong></span>
+                  <span>{localize(t, "Elapsed", "경과")} <strong>{formatElapsedDuration(factoryBuildElapsedMs)}</strong></span>
+                  <span>{localize(t, "Runner", "실행 환경")} <strong>CodeBuild ARM64</strong></span>
+                </div>
+              </section>
+            ) : null}
             <pre ref={factoryCodeConsoleLogRef}>
               {factoryJob.lines.map((line, index) => (
                 <code key={`${index}-${line}`}>{line}</code>
@@ -5767,7 +5865,7 @@ function PluginFactory({
               </label>
               <div className="approvalActions">
                 <button
-                  disabled={!generated || !canRequestApproval || currentJob?.approval.status === "requested" || currentJob?.approval.status === "approved"}
+                  disabled={!generated || !approvalPreflightPassed || !canRequestApproval || currentJob?.approval.status === "requested" || currentJob?.approval.status === "approved"}
                   onClick={() => void runFactoryJobAction("request-approval")}
                   type="button"
                 >
@@ -5922,6 +6020,7 @@ function PluginFactory({
               {factoryJobs.map((job) => {
                 const historyTitle = job.historyTitle?.trim() || job.pluginName;
                 const canManageHistory = canManageFactoryHistory(job);
+                const canCancelHistory = canCancelFactoryJob(job);
                 const canDeleteHistory = canDeleteFactoryHistory(job);
                 return (
                   <article className={`factoryJobItem ${job.id === activeJobId ? "active" : ""}`} key={job.id}>
@@ -5949,6 +6048,18 @@ function PluginFactory({
                         >
                           <PencilLine aria-hidden="true" size={15} />
                         </button>
+                        {canCancelHistory ? (
+                          <button
+                            aria-label={localize(t, `Cancel ${historyTitle}`, `${historyTitle} 작업 취소`)}
+                            className="iconButton cancelIconButton"
+                            disabled={cancellingJobId === job.id}
+                            onClick={() => void cancelFactoryJob(job)}
+                            title={localize(t, "Cancel before Vault apply", "Vault 적용 전 작업 취소")}
+                            type="button"
+                          >
+                            <CircleStop aria-hidden="true" size={15} />
+                          </button>
+                        ) : null}
                         <button
                           aria-label={localize(t, `Delete ${historyTitle}`, `${historyTitle} 삭제`)}
                           className="iconButton dangerIconButton"
@@ -5956,7 +6067,7 @@ function PluginFactory({
                           onClick={() => openFactoryHistoryAction(job, "delete")}
                           title={canDeleteHistory
                             ? localize(t, "Delete history", "이력 삭제")
-                            : localize(t, "Active, approved, and scheduled jobs cannot be deleted", "진행 중·승인·예약 작업은 삭제할 수 없습니다")}
+                            : localize(t, "Cancel active, approved, or scheduled jobs before deleting them", "진행 중·승인·예약 작업은 먼저 취소한 뒤 삭제할 수 있습니다")}
                           type="button"
                         >
                           <Trash2 aria-hidden="true" size={15} />
@@ -6914,6 +7025,7 @@ function factoryActionLabel(action: string, t: Copy): string {
     canary: ["Select canary rollout", "카나리 배포 선택"],
     full: ["Select full rollout", "전체 배포 선택"],
     retry: ["Retry job", "작업 재시도"],
+    cancel: ["Cancel job", "작업 취소"],
     apply: ["Apply to Vault", "Vault 적용"],
     "apply-complete": ["Vault apply complete", "Vault 적용 완료"],
     rollback: ["Rollback", "롤백"],
@@ -7002,10 +7114,50 @@ function factoryRequirementQuestions(t: Copy, template?: VaultPluginTemplate): F
   ];
 }
 
+function factoryBuildPhaseLabel(phase: NonNullable<VaultPluginAutoRepairResult["phase"]>, t: Copy): string {
+  const labels: Record<NonNullable<VaultPluginAutoRepairResult["phase"]>, [string, string]> = {
+    queued: ["Waiting for an isolated runner", "격리 실행 환경 대기 중"],
+    preparing: ["Preparing source and dependencies", "소스와 의존성 준비 중"],
+    building: ["Compiling and running tests", "컴파일 및 테스트 실행 중"],
+    verifying: ["Verifying the ARM64 artifact", "ARM64 아티팩트 검증 중"],
+    repairing: ["Analyzing errors and repairing code", "오류 분석 및 코드 자동 수정 중"],
+    complete: ["Build verification complete", "빌드 검증 완료"],
+    cancelled: ["Build cancelled safely", "빌드가 안전하게 취소됨"]
+  };
+  return factoryLocalize(t, labels[phase][0], labels[phase][1]);
+}
+
+function factoryAutoRepairProgress(result: VaultPluginAutoRepairResult): number {
+  if (result.status === "pass" || result.status === "failed" || result.status === "cancelled") return 100;
+  switch (result.phase) {
+    case "preparing":
+      return 28;
+    case "building":
+      return 58;
+    case "verifying":
+      return 84;
+    case "repairing":
+      return 68;
+    default:
+      return 12;
+  }
+}
+
+function formatElapsedDuration(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function factoryStatusLabel(status: string, t: Copy): string {
   const labels: Record<string, [string, string]> = {
     approved: ["Approved", "승인됨"],
     blocked: ["Blocked", "차단됨"],
+    cancelled: ["Cancelled", "취소됨"],
     complete: ["Complete", "완료"],
     draft: ["Draft", "초안"],
     fail: ["Failed", "실패"],

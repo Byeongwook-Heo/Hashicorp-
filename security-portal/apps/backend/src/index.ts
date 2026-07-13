@@ -158,6 +158,7 @@ const pluginChatSchema = z.object({
 const factoryJobStatusSchema = z.enum([
   "draft",
   "running",
+  "cancelled",
   "waiting-approval",
   "approved",
   "rejected",
@@ -237,7 +238,7 @@ const protectedFactoryJobDeleteStatuses = new Set<VaultPluginFactoryJob["status"
 ]);
 
 const factoryJobActionSchema = z.object({
-  action: z.enum(["request-approval", "approve", "reject", "schedule", "canary", "full", "retry", "rollback"]),
+  action: z.enum(["request-approval", "approve", "reject", "schedule", "canary", "full", "retry", "rollback", "cancel"]),
   note: z.string().trim().max(500).optional(),
   scheduledFor: z.string().datetime().optional()
 });
@@ -289,6 +290,8 @@ type FactoryBuildRunRecord = {
   ownerId: string;
   jobId: string;
   result: VaultPluginAutoRepairResult;
+  controller: AbortController;
+  cancelled: boolean;
 };
 
 type FactoryRequirementsRecord = {
@@ -852,13 +855,21 @@ async function main(): Promise<void> {
         id: crypto.randomUUID(),
         label: body.action,
         detail: body.note ?? "",
-        status: body.action === "reject" ? "warning" : "success",
+        status: body.action === "reject" || body.action === "cancel" ? "warning" : "success",
         createdAt: now
       };
       let update: Parameters<PortalStore["updateFactoryJob"]>[1];
 
       if (body.action === "request-approval") {
         if (job.ownerId !== req.user.id && !req.user.roles.includes("vault-admin")) throw new Error("Forbidden");
+        const evidence = factoryArtifactEvidence(job);
+        const autoRepair = asRecord(job.snapshot.autoRepair);
+        const hasVerifiedArtifact =
+          autoRepair?.status === "pass" &&
+          typeof evidence.artifactSha256 === "string" &&
+          /^[a-f0-9]{64}$/i.test(evidence.artifactSha256) &&
+          (config.vaultMode !== "real" || Boolean(evidence.artifactBucket && evidence.artifactKey));
+        if (!hasVerifiedArtifact) throw new Error("A verified build artifact is required before approval");
         update = {
           status: "waiting-approval",
           stage: "approval",
@@ -906,6 +917,52 @@ async function main(): Promise<void> {
           stage: "complete",
           progress: 100,
           events: [...job.events, event].slice(-100)
+        };
+      } else if (body.action === "cancel") {
+        if (!isOwner && !isAdmin) throw new Error("Forbidden");
+        if (!(new Set<VaultPluginFactoryJob["status"]>(["running", "waiting-approval", "approved", "scheduled"])).has(job.status)) {
+          throw new Error("Only active, approval, or scheduled Factory jobs can be cancelled");
+        }
+        let cancelledBuildResult: VaultPluginAutoRepairResult | undefined;
+        for (const [runId, run] of factoryBuildRuns.entries()) {
+          if (run.jobId !== job.id || run.result.status !== "running") continue;
+          const cancelledResult: VaultPluginAutoRepairResult = {
+            ...run.result,
+            status: "cancelled",
+            phase: "cancelled",
+            completedAt: now,
+            summary: "The isolated build was cancelled before Vault apply."
+          };
+          cancelledBuildResult = cancelledResult;
+          factoryBuildRuns.set(runId, { ...run, result: cancelledResult, cancelled: true });
+          run.controller.abort();
+        }
+        update = {
+          status: "cancelled",
+          stage: job.stage,
+          progress: job.progress,
+          snapshot: cancelledBuildResult
+            ? { ...job.snapshot, autoRepair: cancelledBuildResult }
+            : job.snapshot,
+          approval:
+            job.approval.status === "not-requested"
+              ? job.approval
+              : {
+                  ...job.approval,
+                  status: "rejected",
+                  artifactFingerprint: undefined,
+                  decidedAt: now,
+                  decidedBy: req.user.email,
+                  note: body.note ?? "Factory job cancelled before Vault apply"
+                },
+          deployment: { ...job.deployment, scheduledFor: undefined },
+          events: [
+            ...job.events,
+            {
+              ...event,
+              detail: body.note ?? "Cancelled before Vault apply"
+            }
+          ].slice(-100)
         };
       } else {
         if (!isOwner && !isAdmin) throw new Error("Forbidden");
@@ -1015,10 +1072,13 @@ async function main(): Promise<void> {
         const job = await requireFactoryJobAccess(store, body.jobId, req.user);
         if (job.ownerId !== req.user.id && !req.user.roles.includes("vault-admin")) throw new Error("Forbidden");
         const runId = crypto.randomUUID();
+        const controller = new AbortController();
         const startedAt = new Date().toISOString();
         const initialResult: VaultPluginAutoRepairResult = {
           id: runId,
           status: "running",
+          phase: "queued",
+          activeAttempt: 1,
           maxAttempts: config.factoryBuildMaxAttempts ?? 3,
           attempts: [],
           files: body.files,
@@ -1028,7 +1088,13 @@ async function main(): Promise<void> {
           startedAt,
           summary: "The isolated build is queued."
         };
-        factoryBuildRuns.set(runId, { ownerId: req.user.id, jobId: job.id, result: initialResult });
+        factoryBuildRuns.set(runId, {
+          ownerId: req.user.id,
+          jobId: job.id,
+          result: initialResult,
+          controller,
+          cancelled: false
+        });
         await store.updateFactoryJob(job.id, {
           status: "running",
           stage: "test",
@@ -1061,8 +1127,17 @@ async function main(): Promise<void> {
               requirements: body.requirements
             },
             async (result) => {
-              factoryBuildRuns.set(runId, { ownerId: req.user.id, jobId: job.id, result });
+              const activeRun = factoryBuildRuns.get(runId);
+              if (activeRun?.cancelled) return;
+              factoryBuildRuns.set(runId, {
+                ownerId: req.user.id,
+                jobId: job.id,
+                result,
+                controller,
+                cancelled: false
+              });
               const latest = (await store.getFactoryJob(job.id)) ?? job;
+              if (factoryBuildRuns.get(runId)?.cancelled) return;
               const generated = asRecord(latest.snapshot.generated) ?? {};
               const final = result.status !== "running";
               const nextGenerated = {
@@ -1078,9 +1153,9 @@ async function main(): Promise<void> {
               const attempt = result.attempts.at(-1);
               const buildEvents = latest.events.filter((event) => !event.label.startsWith("build-attempt-"));
               await store.updateFactoryJob(job.id, {
-                status: result.status === "failed" ? "failed" : "running",
-                stage: result.status === "failed" ? "test" : "security-review",
-                progress: result.status === "running" ? 55 : result.status === "pass" ? 75 : 55,
+                status: result.status === "failed" ? "failed" : result.status === "cancelled" ? "cancelled" : "running",
+                stage: result.status === "pass" ? "security-review" : "test",
+                progress: factoryBuildProgress(result),
                 snapshot: {
                   ...latest.snapshot,
                   generated: nextGenerated,
@@ -1126,12 +1201,16 @@ async function main(): Promise<void> {
                   }
                 });
               }
-            }
+            },
+            controller.signal
           )
           .catch(async (error) => {
+            const activeRun = factoryBuildRuns.get(runId);
+            if (activeRun?.cancelled) return;
             const failed: VaultPluginAutoRepairResult = {
               ...initialResult,
               status: "failed",
+              phase: "complete",
               completedAt: new Date().toISOString(),
               buildTest: {
                 status: "fail",
@@ -1147,8 +1226,15 @@ async function main(): Promise<void> {
               },
               summary: error instanceof Error ? error.message : String(error)
             };
-            factoryBuildRuns.set(runId, { ownerId: req.user.id, jobId: job.id, result: failed });
+            factoryBuildRuns.set(runId, {
+              ownerId: req.user.id,
+              jobId: job.id,
+              result: failed,
+              controller,
+              cancelled: false
+            });
             const latest = (await store.getFactoryJob(job.id)) ?? job;
+            if (factoryBuildRuns.get(runId)?.cancelled) return;
             await store.updateFactoryJob(job.id, {
               status: "failed",
               stage: "test",
@@ -1497,6 +1583,23 @@ async function factoryArtifactFingerprint(job: VaultPluginFactoryJob): Promise<s
   const encoded = new TextEncoder().encode(JSON.stringify(factoryArtifactEvidence(job)));
   const digest = await crypto.subtle.digest("SHA-256", encoded);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function factoryBuildProgress(result: VaultPluginAutoRepairResult): number {
+  if (result.status === "pass") return 75;
+  if (result.status === "failed" || result.status === "cancelled") return 55;
+  switch (result.phase) {
+    case "preparing":
+      return 50;
+    case "building":
+      return 58;
+    case "verifying":
+      return 68;
+    case "repairing":
+      return 62;
+    default:
+      return 45;
+  }
 }
 
 function hashFactoryFiles(files: Array<{ path: string; content: string }>): string {

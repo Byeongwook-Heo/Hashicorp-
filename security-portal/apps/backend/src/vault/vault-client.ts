@@ -316,6 +316,17 @@ class RealVaultClient implements VaultClient {
       credentialScope: "plugin",
       tolerateStatus: [200]
     });
+    const mounted = verify.body.data?.[`${mountPath}/`] ?? verify.body.data?.[mountPath];
+    if (!mounted) {
+      throw new Error(`Vault mounted plugin ${mountPath} was not present in ${enableListPath}`);
+    }
+    const smokePath =
+      request.pluginType === "auth" ? `auth/${mountPath}/login` : `${mountPath}/config`;
+    const smoke = await this.vaultRequest("GET", smokePath, {
+      namespace: this.config.vaultNamespace,
+      credentialScope: "plugin",
+      tolerateStatus: [200]
+    });
 
     return {
       mode: "real",
@@ -339,15 +350,19 @@ class RealVaultClient implements VaultClient {
           label: "Verify mount list",
           status: "success",
           detail: `Verified via ${enableListPath}`
+        },
+        {
+          label: "Plugin read smoke test",
+          status: "success",
+          detail: `${smokePath} returned ${smoke.status}`
         }
       ],
       detail: redact({
         register_status: register.status,
         enable_status: enable.status,
-        mounted:
-          verify.body.data?.[`${mountPath}/`] ??
-          verify.body.data?.[mountPath] ??
-          "mount list returned but mount key was not directly matched"
+        smoke_status: smoke.status,
+        smoke_response_keys: Object.keys(smoke.body.data ?? {}),
+        mounted
       })
     };
   }

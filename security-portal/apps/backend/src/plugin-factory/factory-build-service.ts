@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import {
   BatchGetBuildsCommand,
   CodeBuildClient,
-  StartBuildCommand
+  StartBuildCommand,
+  StopBuildCommand
 } from "@aws-sdk/client-codebuild";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type {
@@ -52,6 +53,15 @@ type RepairFunction = (input: {
   requirements: VaultPluginRequirements;
 }) => Promise<FactoryRepairResult>;
 
+type FactoryBuildPhase = Exclude<VaultPluginAutoRepairResult["phase"], undefined>;
+
+class FactoryBuildCancelledError extends Error {
+  constructor() {
+    super("Factory build cancelled");
+    this.name = "FactoryBuildCancelledError";
+  }
+}
+
 export class FactoryBuildService {
   private readonly codeBuild: CodeBuildClient;
   private readonly s3: S3Client;
@@ -67,7 +77,8 @@ export class FactoryBuildService {
 
   async run(
     input: FactoryBuildInput,
-    onProgress?: (result: VaultPluginAutoRepairResult) => Promise<void> | void
+    onProgress?: (result: VaultPluginAutoRepairResult) => Promise<void> | void,
+    signal?: AbortSignal
   ): Promise<VaultPluginAutoRepairResult> {
     const id = input.runId ?? crypto.randomUUID();
     const startedAt = new Date().toISOString();
@@ -83,11 +94,44 @@ export class FactoryBuildService {
         attempts,
         files,
         startedAt,
+        phase: "queued",
+        activeAttempt: attempt,
         summary: `Build attempt ${attempt} is running.`
       });
       await onProgress?.(running);
 
-      const execution = await this.executeBuild({ ...input, runId: id, files }, attempt);
+      if (signal?.aborted) {
+        return this.cancelledResult({ id, attempts, files, startedAt, activeAttempt: attempt, onProgress });
+      }
+
+      let execution: BuildExecutionResult;
+      try {
+        execution = await this.executeBuild(
+          { ...input, runId: id, files },
+          attempt,
+          signal,
+          async (phase, detail) => {
+            await onProgress?.(
+              buildResult({
+                id,
+                status: "running",
+                maxAttempts: this.config.maxAttempts,
+                attempts,
+                files,
+                startedAt,
+                phase,
+                activeAttempt: attempt,
+                summary: detail
+              })
+            );
+          }
+        );
+      } catch (error) {
+        if (error instanceof FactoryBuildCancelledError || signal?.aborted) {
+          return this.cancelledResult({ id, attempts, files, startedAt, activeAttempt: attempt, onProgress });
+        }
+        throw error;
+      }
       lastExecution = execution;
       const buildAttempt: VaultPluginBuildAttempt = {
         attempt,
@@ -113,6 +157,8 @@ export class FactoryBuildService {
           completedAt: new Date().toISOString(),
           artifact: execution.artifact,
           execution,
+          phase: "complete",
+          activeAttempt: attempt,
           summary: `The plugin compiled successfully after ${attempt} attempt${attempt === 1 ? "" : "s"}.`
         });
         await onProgress?.(result);
@@ -120,6 +166,23 @@ export class FactoryBuildService {
       }
 
       if (attempt >= this.config.maxAttempts || this.config.mode !== "codebuild") break;
+      await onProgress?.(
+        buildResult({
+          id,
+          status: "running",
+          maxAttempts: this.config.maxAttempts,
+          attempts,
+          files,
+          startedAt,
+          execution,
+          phase: "repairing",
+          activeAttempt: attempt,
+          summary: `Build attempt ${attempt} failed. The repair model is analyzing the diagnostics.`
+        })
+      );
+      if (signal?.aborted) {
+        return this.cancelledResult({ id, attempts, files, startedAt, activeAttempt: attempt, onProgress });
+      }
       let repaired: FactoryRepairResult;
       try {
         repaired = await this.repair({
@@ -150,16 +213,45 @@ export class FactoryBuildService {
       startedAt,
       completedAt: new Date().toISOString(),
       execution: lastExecution,
+      phase: "complete",
+      activeAttempt: attempts.length || 1,
       summary: `The plugin did not pass the build after ${attempts.length} attempt${attempts.length === 1 ? "" : "s"}.`
     });
     await onProgress?.(result);
     return result;
   }
 
+  private async cancelledResult(input: {
+    id: string;
+    attempts: VaultPluginBuildAttempt[];
+    files: VaultPluginGeneratedFile[];
+    startedAt: string;
+    activeAttempt: number;
+    onProgress?: (result: VaultPluginAutoRepairResult) => Promise<void> | void;
+  }): Promise<VaultPluginAutoRepairResult> {
+    const result = buildResult({
+      id: input.id,
+      status: "cancelled",
+      maxAttempts: this.config.maxAttempts,
+      attempts: input.attempts,
+      files: input.files,
+      startedAt: input.startedAt,
+      completedAt: new Date().toISOString(),
+      phase: "cancelled",
+      activeAttempt: input.activeAttempt,
+      summary: "The isolated build was cancelled before Vault apply."
+    });
+    await input.onProgress?.(result);
+    return result;
+  }
+
   private async executeBuild(
     input: FactoryBuildInput & { runId: string },
-    attempt: number
+    attempt: number,
+    signal?: AbortSignal,
+    onPhase?: (phase: FactoryBuildPhase, detail: string) => Promise<void> | void
   ): Promise<BuildExecutionResult> {
+    if (signal?.aborted) throw new FactoryBuildCancelledError();
     if (this.config.mode !== "codebuild") {
       return {
         status: "fail",
@@ -192,6 +284,7 @@ export class FactoryBuildService {
         ServerSideEncryption: "AES256"
       })
     );
+    if (signal?.aborted) throw new FactoryBuildCancelledError();
 
     const startedAt = Date.now();
     const started = await this.codeBuild.send(
@@ -212,11 +305,26 @@ export class FactoryBuildService {
 
     const deadline = Date.now() + this.config.timeoutMs;
     let buildStatus = "IN_PROGRESS";
-    while (Date.now() < deadline) {
-      await delay(this.config.pollIntervalMs);
-      const response = await this.codeBuild.send(new BatchGetBuildsCommand({ ids: [buildId] }));
-      buildStatus = response.builds?.[0]?.buildStatus ?? "UNKNOWN";
-      if (["SUCCEEDED", "FAILED", "FAULT", "STOPPED", "TIMED_OUT"].includes(buildStatus)) break;
+    let previousPhase = "";
+    try {
+      while (Date.now() < deadline) {
+        await delay(this.config.pollIntervalMs, signal);
+        const response = await this.codeBuild.send(new BatchGetBuildsCommand({ ids: [buildId] }));
+        const build = response.builds?.[0];
+        buildStatus = build?.buildStatus ?? "UNKNOWN";
+        const phase = codeBuildPhase(build?.currentPhase, buildStatus);
+        if (phase !== previousPhase) {
+          previousPhase = phase;
+          await onPhase?.(phase, `CodeBuild ${build?.currentPhase ?? buildStatus} for attempt ${attempt}.`);
+        }
+        if (["SUCCEEDED", "FAILED", "FAULT", "STOPPED", "TIMED_OUT"].includes(buildStatus)) break;
+      }
+    } catch (error) {
+      if (signal?.aborted || error instanceof FactoryBuildCancelledError) {
+        await this.codeBuild.send(new StopBuildCommand({ id: buildId })).catch(() => undefined);
+        throw new FactoryBuildCancelledError();
+      }
+      throw error;
     }
     if (buildStatus === "IN_PROGRESS") throw new Error("Factory CodeBuild timed out");
 
@@ -280,11 +388,15 @@ function buildResult(input: {
   completedAt?: string;
   artifact?: VaultPluginBuildArtifact;
   execution?: BuildExecutionResult;
+  phase?: FactoryBuildPhase;
+  activeAttempt?: number;
   summary: string;
 }): VaultPluginAutoRepairResult {
   return {
     id: input.id,
     status: input.status,
+    phase: input.phase,
+    activeAttempt: input.activeAttempt,
     maxAttempts: input.maxAttempts,
     attempts: input.attempts,
     files: input.files,
@@ -389,6 +501,40 @@ function buildStepStatus(
   return status === "skipped" ? "warn" : status;
 }
 
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function codeBuildPhase(currentPhase: string | undefined, buildStatus: string): FactoryBuildPhase {
+  if (["SUCCEEDED", "FAILED", "FAULT", "STOPPED", "TIMED_OUT"].includes(buildStatus)) return "verifying";
+  switch (currentPhase) {
+    case "SUBMITTED":
+    case "QUEUED":
+      return "queued";
+    case "PROVISIONING":
+    case "DOWNLOAD_SOURCE":
+    case "INSTALL":
+    case "PRE_BUILD":
+      return "preparing";
+    case "BUILD":
+    case "POST_BUILD":
+      return "building";
+    case "UPLOAD_ARTIFACTS":
+    case "FINALIZING":
+    case "COMPLETED":
+      return "verifying";
+    default:
+      return "queued";
+  }
+}
+
+function delay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new FactoryBuildCancelledError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(new FactoryBuildCancelledError());
+    };
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }

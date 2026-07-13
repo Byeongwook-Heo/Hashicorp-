@@ -381,7 +381,9 @@ export interface VaultPluginBuildAttempt {
 
 export interface VaultPluginAutoRepairResult {
   id: string;
-  status: "running" | "pass" | "failed";
+  status: "running" | "pass" | "failed" | "cancelled";
+  phase?: "queued" | "preparing" | "building" | "verifying" | "repairing" | "complete" | "cancelled";
+  activeAttempt?: number;
   maxAttempts: number;
   attempts: VaultPluginBuildAttempt[];
   files: VaultPluginGeneratedFile[];
@@ -444,6 +446,7 @@ export interface VaultPluginRollbackResult {
 export type VaultPluginFactoryJobStatus =
   | "draft"
   | "running"
+  | "cancelled"
   | "waiting-approval"
   | "approved"
   | "rejected"

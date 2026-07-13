@@ -452,6 +452,9 @@ describe("Vault plugin factory", () => {
           }),
           { status: 200 }
         )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { status: "generated" } }), { status: 200 })
       );
 
     const client = createVaultClient({
@@ -476,8 +479,12 @@ describe("Vault plugin factory", () => {
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
       "http://vault.service:8200/v1/sys/plugins/catalog/secret/vault-plugin-secrets-minio",
       "http://vault.service:8200/v1/sys/mounts/minio",
-      "http://vault.service:8200/v1/sys/mounts"
+      "http://vault.service:8200/v1/sys/mounts",
+      "http://vault.service:8200/v1/minio/config"
     ]);
+    expect(result.steps.at(-1)).toEqual(
+      expect.objectContaining({ label: "Plugin read smoke test", status: "success" })
+    );
     expect(fetchMock.mock.calls[1]?.[1]).toEqual(
       expect.objectContaining({
         method: "POST",
