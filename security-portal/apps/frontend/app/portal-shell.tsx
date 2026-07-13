@@ -3196,6 +3196,8 @@ function PluginFactory({
   const activeJobIdRef = useRef("");
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const factoryChatPanelRef = useRef<HTMLElement | null>(null);
+  const factoryCodeConsoleRef = useRef<HTMLDivElement | null>(null);
+  const factoryCodeConsoleLogRef = useRef<HTMLPreElement | null>(null);
   const canApply = currentUser?.roles.includes("vault-admin") ?? false;
   const canReviewJobs = currentUser?.roles.some((role) => role === "security-approver" || role === "vault-admin") ?? false;
   const canAuthorJobs = currentUser?.roles.some((role) => role === "developer" || role === "app-owner" || role === "vault-admin") ?? false;
@@ -3305,6 +3307,50 @@ function PluginFactory({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [activeRequirementStep, requirementsInterview?.id]);
+
+  useEffect(() => {
+    if (!factoryJob) return;
+    const frame = window.requestAnimationFrame(() => {
+      const panel = factoryChatPanelRef.current;
+      const consoleElement = factoryCodeConsoleRef.current;
+      const logElement = factoryCodeConsoleLogRef.current;
+      if (logElement) logElement.scrollTop = logElement.scrollHeight;
+      if (!panel || !consoleElement) return;
+
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (window.matchMedia("(max-width: 900px)").matches) {
+        const consoleRect = consoleElement.getBoundingClientRect();
+        if (consoleRect.top < 76 || consoleRect.bottom > window.innerHeight - 24) {
+          consoleElement.scrollIntoView({ block: "center", behavior: reducedMotion ? "auto" : "smooth" });
+        }
+        return;
+      }
+
+      const panelRect = panel.getBoundingClientRect();
+      const consoleRect = consoleElement.getBoundingClientRect();
+      const composerTop = panel.querySelector<HTMLElement>(".chatComposer")?.getBoundingClientRect().top ?? panelRect.bottom;
+      const visibleTop = panelRect.top + 16;
+      const visibleBottom = composerTop - 16;
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      let scrollDelta = 0;
+
+      if (consoleRect.height >= visibleHeight) {
+        scrollDelta = consoleRect.top - visibleTop;
+      } else if (consoleRect.bottom > visibleBottom) {
+        scrollDelta = consoleRect.bottom - visibleBottom;
+      } else if (consoleRect.top < visibleTop) {
+        scrollDelta = consoleRect.top - visibleTop;
+      }
+
+      if (Math.abs(scrollDelta) > 1) {
+        panel.scrollTo({
+          top: Math.max(0, panel.scrollTop + scrollDelta),
+          behavior: reducedMotion ? "auto" : "smooth"
+        });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [factoryJob?.label, factoryJob?.lines.length, factoryJob?.status]);
 
   useEffect(() => {
     if (!status) return;
@@ -5034,12 +5080,12 @@ function PluginFactory({
           </div>
         ) : null}
         {factoryJob ? (
-          <div className={`factoryCodeConsole ${factoryJob.status}`} aria-live="polite">
+          <div className={`factoryCodeConsole ${factoryJob.status}`} aria-live="polite" ref={factoryCodeConsoleRef}>
             <div>
               <strong>{factoryJob.label}</strong>
               <span>{factoryJob.status}</span>
             </div>
-            <pre>
+            <pre ref={factoryCodeConsoleLogRef}>
               {factoryJob.lines.map((line, index) => (
                 <code key={`${index}-${line}`}>{line}</code>
               ))}

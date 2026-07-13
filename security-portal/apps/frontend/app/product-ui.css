@@ -2890,6 +2890,19 @@ textarea:focus {
   color: var(--muted);
 }
 
+.factoryChatPanel > .factoryCodeConsole {
+  min-height: 112px;
+  flex: 0 0 auto;
+}
+
+.factoryChatPanel > .factoryCodeConsole > div {
+  min-height: 28px;
+}
+
+.factoryChatPanel > .factoryCodeConsole pre {
+  min-height: 48px;
+}
+
 .factoryJobTimeline {
   padding: 22px 18px;
 }
