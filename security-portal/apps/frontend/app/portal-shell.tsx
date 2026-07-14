@@ -28,10 +28,13 @@ import {
   type VaultPluginRequirementsInterview,
   type VaultPluginTemplate,
   type VaultPluginType,
+  type VaultHealthStatus,
+  type VaultInventory,
+  type VaultLiveStatus,
   type VaultMappingHealth
 } from "@security-portal/shared";
 import Link from "next/link";
-import { type FormEvent, type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Activity,
@@ -117,11 +120,7 @@ type DashboardStats = {
   failures: number;
   expiringSoon: number;
 };
-type VaultHealthResponse = {
-  mode: "mock" | "real";
-  healthy: boolean;
-  detail: Record<string, unknown>;
-};
+type VaultHealthResponse = VaultHealthStatus;
 type GlobalSearchItem = {
   id: string;
   category: "system" | "request" | "credential";
@@ -506,6 +505,10 @@ export default function PortalShell({ view }: { view: View }) {
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [vaultHealth, setVaultHealth] = useState<VaultHealthResponse | null>(null);
   const [mappingHealth, setMappingHealth] = useState<VaultMappingHealth[]>([]);
+  const [vaultInventory, setVaultInventory] = useState<VaultInventory | null>(null);
+  const [vaultSyncedAt, setVaultSyncedAt] = useState<string | null>(null);
+  const [vaultSyncing, setVaultSyncing] = useState(false);
+  const [vaultSyncError, setVaultSyncError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -513,6 +516,7 @@ export default function PortalShell({ view }: { view: View }) {
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const [toast, setToast] = useState<PortalToast | null>(null);
+  const vaultSyncInFlight = useRef(false);
   const t = copy[language];
 
   function setPortalLanguage(nextLanguage: Language) {
@@ -538,6 +542,31 @@ export default function PortalShell({ view }: { view: View }) {
     }
   }
 
+  const applyVaultStatus = useCallback((status: VaultLiveStatus) => {
+    setVaultHealth(status.health);
+    setMappingHealth(status.mappings);
+    setVaultInventory(status.inventory ?? null);
+    setVaultSyncedAt(status.syncedAt);
+    setVaultSyncError(null);
+  }, []);
+
+  const refreshVaultStatus = useCallback(async (forceRefresh = false, showActivity = true) => {
+    if (vaultSyncInFlight.current) return false;
+    vaultSyncInFlight.current = true;
+    if (showActivity) setVaultSyncing(true);
+    try {
+      const status = await api<VaultLiveStatus>(`/vault/status${forceRefresh ? "?refresh=true" : ""}`);
+      applyVaultStatus(status);
+      return true;
+    } catch (err) {
+      setVaultSyncError(err instanceof Error ? err.message : "Unable to synchronize Vault status");
+      return false;
+    } finally {
+      vaultSyncInFlight.current = false;
+      if (showActivity) setVaultSyncing(false);
+    }
+  }, [applyVaultStatus]);
+
   async function refresh() {
     setError(null);
     if (!user) {
@@ -557,17 +586,7 @@ export default function PortalShell({ view }: { view: View }) {
       setCredentials(credentialsResponse.credentials);
       setAuditEvents(auditResponse.auditEvents);
 
-      try {
-        const [vaultHealthResponse, mappingHealthResponse] = await Promise.all([
-          api<VaultHealthResponse>("/health/vault"),
-          api<{ mappings: VaultMappingHealth[] }>("/health/vault/mappings")
-        ]);
-        setVaultHealth(vaultHealthResponse);
-        setMappingHealth(mappingHealthResponse.mappings);
-      } catch {
-        setVaultHealth(null);
-        setMappingHealth([]);
-      }
+      await refreshVaultStatus(false, false);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to load portal data";
       if (message.includes("401")) {
@@ -583,6 +602,26 @@ export default function PortalShell({ view }: { view: View }) {
   useEffect(() => {
     void refresh();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    void refreshVaultStatus(false, false);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshVaultStatus(false, false);
+      }
+    }, 15_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshVaultStatus(false, false);
+      }
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refreshVaultStatus, user?.id]);
 
   useEffect(() => {
     const storedLanguage =
@@ -674,6 +713,9 @@ export default function PortalShell({ view }: { view: View }) {
       setAuditEvents([]);
       setVaultHealth(null);
       setMappingHealth([]);
+      setVaultInventory(null);
+      setVaultSyncedAt(null);
+      setVaultSyncError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to sign out");
     }
@@ -796,12 +838,14 @@ export default function PortalShell({ view }: { view: View }) {
 
   const visibleNavItems = navItems.filter((item) => canUseNavItem(user.roles, item));
   const canAccessView = visibleNavItems.some((item) => item.view === view);
-  const vaultStatusTone = vaultHealth?.healthy ? "success" : vaultHealth ? "danger" : "neutral";
-  const vaultStatusLabel = vaultHealth
-    ? vaultHealth.healthy
-      ? localize(t, `Vault connected · ${vaultHealth.mode}`, `Vault 연결됨 · ${vaultHealth.mode}`)
-      : localize(t, "Vault needs attention", "Vault 확인 필요")
-    : localize(t, "Checking Vault status", "Vault 상태 확인 중");
+  const vaultStatusTone = vaultSyncError ? "danger" : vaultHealth?.healthy ? "success" : vaultHealth ? "danger" : "neutral";
+  const vaultStatusLabel = vaultSyncError
+    ? localize(t, "Vault sync delayed", "Vault 동기화 지연")
+    : vaultHealth
+      ? vaultHealth.healthy
+        ? localize(t, "Vault connected · Live", "Vault 연결됨 · Live")
+        : localize(t, "Vault needs attention", "Vault 확인 필요")
+      : localize(t, "Checking Vault status", "Vault 상태 확인 중");
 
   const ToastIcon = toast?.tone === "success" ? CheckCircle2 : toast?.tone === "info" ? Activity : AlertTriangle;
 
@@ -1011,9 +1055,9 @@ export default function PortalShell({ view }: { view: View }) {
           />
         ) : null}
         {!loading && canAccessView && view === "secrets" ? (
-          <SecretInventory t={t} systems={systems} requests={requests} credentials={credentials} />
+          <SecretInventory t={t} systems={systems} requests={requests} credentials={credentials} mappingHealth={mappingHealth} />
         ) : null}
-        {!loading && canAccessView && view === "systems" ? <Systems t={t} systems={systems} /> : null}
+        {!loading && canAccessView && view === "systems" ? <Systems t={t} systems={systems} mappingHealth={mappingHealth} /> : null}
         {!loading && canAccessView && view === "requests" ? (
           <RequestForm currentUser={user} requests={requests} t={t} systems={systems} onChanged={refresh} />
         ) : null}
@@ -1025,14 +1069,33 @@ export default function PortalShell({ view }: { view: View }) {
         ) : null}
         {!loading && canAccessView && view === "audit" ? <Audit t={t} events={auditEvents} /> : null}
         {!loading && canAccessView && view === "health" ? (
-          <PlatformHealth t={t} vaultHealth={vaultHealth} mappingHealth={mappingHealth} />
+          <PlatformHealth
+            t={t}
+            vaultHealth={vaultHealth}
+            mappingHealth={mappingHealth}
+            inventory={vaultInventory}
+            syncedAt={vaultSyncedAt}
+            syncing={vaultSyncing}
+            syncError={vaultSyncError}
+            onRefresh={() => void refreshVaultStatus(true)}
+          />
         ) : null}
         {!loading && canAccessView && view === "plugins" ? <PluginFactory t={t} currentUser={user} onChanged={refresh} /> : null}
         {!loading && canAccessView && view === "users" ? (
           <UserManagement t={t} currentUser={user} systems={systems} auditEvents={auditEvents} onChanged={refresh} />
         ) : null}
         {!loading && canAccessView && view === "admin" ? (
-          <Admin t={t} systems={systems} vaultHealth={vaultHealth} mappingHealth={mappingHealth} />
+          <Admin
+            t={t}
+            systems={systems}
+            vaultHealth={vaultHealth}
+            mappingHealth={mappingHealth}
+            inventory={vaultInventory}
+            syncedAt={vaultSyncedAt}
+            syncing={vaultSyncing}
+            syncError={vaultSyncError}
+            onRefresh={() => void refreshVaultStatus(true)}
+          />
         ) : null}
         </div>
         {toast ? (
@@ -1613,12 +1676,14 @@ function SecretInventory({
   t,
   systems,
   requests,
-  credentials
+  credentials,
+  mappingHealth
 }: {
   t: Copy;
   systems: SystemSummary[];
   requests: AccessRequest[];
   credentials: IssuedCredential[];
+  mappingHealth: VaultMappingHealth[];
 }) {
   const secretSurfaces = useMemo(() => buildSecretSurfaces(systems), [systems]);
   const active = credentials.filter((credential) => credential.status === "active");
@@ -1642,6 +1707,10 @@ function SecretInventory({
     acc[surface.mountPath] = (acc[surface.mountPath] ?? 0) + 1;
     return acc;
   }, {});
+  const liveMappings = mappingHealth.filter((mapping) => mapping.reachable).length;
+  const mountHealth = new Map(
+    mappingHealth.map((mapping) => [normalizePortalMount(mapping.mountPath), mapping.reachable])
+  );
 
   return (
     <div className="dependencyStack">
@@ -1654,6 +1723,7 @@ function SecretInventory({
           <MiniStat label={t.secrets.nodes} value={mapModel.nodes.length} />
           <MiniStat label={t.secrets.edges} value={mapModel.edges.length} />
           <MiniStat label={t.secrets.leases} value={credentials.length} />
+          <MiniStat label={localize(t, "Live mounts", "Live Mount")} value={liveMappings} tone="good" />
         </div>
       </section>
 
@@ -1727,9 +1797,14 @@ function SecretInventory({
         <section className="dependencyPanel">
           <h2>{t.secrets.mounts}</h2>
           <div className="dependencyChipCloud">
-            {Object.entries(mountGroups).map(([mount, count]) => (
-              <span key={mount}>{mount} · {count}</span>
-            ))}
+            {Object.entries(mountGroups).map(([mount, count]) => {
+              const live = mountHealth.get(normalizePortalMount(mount));
+              return (
+                <span className={live === undefined ? "" : live ? "live" : "missing"} key={mount}>
+                  {mount} · {count} · {live === undefined ? localize(t, "Checking", "확인 중") : live ? "Live" : localize(t, "Not mounted", "Mount 없음")}
+                </span>
+              );
+            })}
           </div>
         </section>
         <section className="dependencyPanel">
@@ -1903,8 +1978,18 @@ function DependencyDetail({
   );
 }
 
-function Systems({ t, systems }: { t: Copy; systems: SystemSummary[] }) {
+function Systems({ t, systems, mappingHealth }: { t: Copy; systems: SystemSummary[]; mappingHealth: VaultMappingHealth[] }) {
   const { filters, replace, reset, update } = usePortalFilters({ q: "", environment: "all", sort: "name" });
+  const mappingCounts = useMemo(() => {
+    const counts = new Map<string, { live: number; total: number }>();
+    for (const mapping of mappingHealth) {
+      const current = counts.get(mapping.systemId) ?? { live: 0, total: 0 };
+      current.total += 1;
+      if (mapping.reachable) current.live += 1;
+      counts.set(mapping.systemId, current);
+    }
+    return counts;
+  }, [mappingHealth]);
   const filteredSystems = [...systems]
     .filter((system) => {
       const query = filters.q.toLowerCase();
@@ -1953,7 +2038,9 @@ function Systems({ t, systems }: { t: Copy; systems: SystemSummary[] }) {
         </div>
       ) : null}
       <div className="grid">
-      {filteredSystems.map((system) => (
+      {filteredSystems.map((system) => {
+        const { live: liveMappings, total: totalMappings } = mappingCounts.get(system.id) ?? { live: 0, total: 0 };
+        return (
         <article className="card" key={system.id}>
           <div className="cardHeader">
             <div>
@@ -1967,13 +2054,20 @@ function Systems({ t, systems }: { t: Copy; systems: SystemSummary[] }) {
             <dd>{system.ownerGroup}</dd>
             <dt>{t.systems.allowed}</dt>
             <dd>{system.allowedRequestTypes.join(", ")}</dd>
+            <dt>{localize(t, "Vault live state", "Vault Live 상태")}</dt>
+            <dd>
+              <span className={`inlineLiveStatus ${liveMappings === totalMappings && totalMappings > 0 ? "live" : "missing"}`}>
+                {liveMappings}/{totalMappings} {localize(t, "mounts available", "Mount 확인")}
+              </span>
+            </dd>
           </dl>
           <details>
             <summary>{t.systems.advanced}</summary>
             <pre>{JSON.stringify({ namespace: system.vaultNamespace, mappings: system.vaultMountMappings }, null, 2)}</pre>
           </details>
         </article>
-      ))}
+        );
+      })}
       </div>
     </div>
   );
@@ -7140,18 +7234,71 @@ function UserManagement({
   );
 }
 
+function VaultLiveSync({
+  t,
+  syncedAt,
+  syncing,
+  error,
+  onRefresh
+}: {
+  t: Copy;
+  syncedAt: string | null;
+  syncing: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <section aria-live="polite" className={`vaultLiveSync${error ? " delayed" : ""}`}>
+      <div className="vaultLiveSyncStatus">
+        <Activity aria-hidden="true" size={18} />
+        <div>
+          <strong>{localize(t, "Live Vault synchronization", "Vault 실시간 동기화")}</strong>
+          <span>
+            {error
+              ? localize(t, `Last data retained · ${error}`, `마지막 데이터를 유지 중 · ${error}`)
+              : syncedAt
+                ? localize(t, `Updated ${formatDate(syncedAt)} · every 15 seconds`, `${formatDate(syncedAt)} 업데이트 · 15초 간격`)
+                : localize(t, "Waiting for the first Vault snapshot", "첫 Vault 스냅샷을 기다리는 중")}
+          </span>
+        </div>
+      </div>
+      <button className="vaultSyncButton" disabled={syncing} onClick={onRefresh} type="button">
+        <RefreshCw aria-hidden="true" className={syncing ? "spinning" : ""} size={16} />
+        <span>{syncing ? localize(t, "Synchronizing", "동기화 중") : localize(t, "Sync now", "지금 동기화")}</span>
+      </button>
+    </section>
+  );
+}
+
 function PlatformHealth({
   t,
   vaultHealth,
-  mappingHealth
+  mappingHealth,
+  inventory,
+  syncedAt,
+  syncing,
+  syncError,
+  onRefresh
 }: {
   t: Copy;
   vaultHealth: VaultHealthResponse | null;
   mappingHealth: VaultMappingHealth[];
+  inventory: VaultInventory | null;
+  syncedAt: string | null;
+  syncing: boolean;
+  syncError: string | null;
+  onRefresh: () => void;
 }) {
   const healthyMappings = mappingHealth.filter((mapping) => mapping.reachable).length;
   return (
     <div className="stack">
+      <VaultLiveSync
+        t={t}
+        syncedAt={syncedAt}
+        syncing={syncing}
+        error={syncError ?? inventory?.warnings[0] ?? null}
+        onRefresh={onRefresh}
+      />
       <section className="overviewPanel healthHero">
         <div>
           <span className="eyebrow">{localize(t, "Vault Health / Cluster Status", "Vault Health / Cluster Status")}</span>
@@ -7170,7 +7317,7 @@ function PlatformHealth({
             value={vaultHealth?.healthy ? 1 : 0}
             tone={vaultHealth?.healthy ? "good" : "risk"}
           />
-          <MiniStat label={localize(t, "Reachable mounts", "접근 가능 Mount")} value={healthyMappings} tone="good" />
+          <MiniStat label={localize(t, "Vault mounts", "Vault Mount")} value={inventory?.summary.totalMounts ?? healthyMappings} tone="good" />
           <MiniStat label={localize(t, "Total mappings", "전체 매핑")} value={mappingHealth.length} />
           <MiniStat
             label={localize(t, "Blocked", "차단/오류")}
@@ -7194,6 +7341,8 @@ function PlatformHealth({
             <dd>{String(vaultHealth?.detail.version ?? "-")}</dd>
             <dt>{t.table.cluster}</dt>
             <dd>{String(vaultHealth?.detail.cluster_name ?? vaultHealth?.detail.clusterName ?? "-")}</dd>
+            <dt>{localize(t, "Last synchronized", "마지막 동기화")}</dt>
+            <dd>{syncedAt ? formatDate(syncedAt) : t.admin.unknown}</dd>
           </dl>
         </section>
         <section className="insightPanel">
@@ -7224,6 +7373,24 @@ function PlatformHealth({
         ])}
         emptyLabel={t.table.noData}
       />
+      <Table
+        title={localize(t, "Actual Vault mounts", "실제 Vault Mount")}
+        columns={[
+          localize(t, "Path", "경로"),
+          localize(t, "Category", "구분"),
+          localize(t, "Type", "Type"),
+          localize(t, "Source", "소스"),
+          t.table.version
+        ]}
+        rows={(inventory?.mounts ?? []).map((mount) => [
+          `${mount.path}/`,
+          mount.kind,
+          mount.type,
+          mount.source,
+          mount.pluginVersion ?? "-"
+        ])}
+        emptyLabel={localize(t, "No live Vault mount data.", "실제 Vault Mount 데이터가 없습니다.")}
+      />
     </div>
   );
 }
@@ -7232,15 +7399,33 @@ function Admin({
   t,
   systems,
   vaultHealth,
-  mappingHealth
+  mappingHealth,
+  inventory,
+  syncedAt,
+  syncing,
+  syncError,
+  onRefresh
 }: {
   t: Copy;
   systems: SystemSummary[];
   vaultHealth: VaultHealthResponse | null;
   mappingHealth: VaultMappingHealth[];
+  inventory: VaultInventory | null;
+  syncedAt: string | null;
+  syncing: boolean;
+  syncError: string | null;
+  onRefresh: () => void;
 }) {
+  const customPlugins = inventory?.plugins.filter((plugin) => !plugin.builtin) ?? [];
   return (
     <div className="stack">
+      <VaultLiveSync
+        t={t}
+        syncedAt={syncedAt}
+        syncing={syncing}
+        error={syncError ?? inventory?.warnings[0] ?? null}
+        onRefresh={onRefresh}
+      />
       <Table
         title={t.admin.health}
         columns={[t.table.mode, t.table.healthy, t.table.version, t.table.cluster]}
@@ -7254,17 +7439,55 @@ function Admin({
         ]}
         emptyLabel={t.table.noData}
       />
+      <section className="summaryRail vaultInventorySummary" aria-label={localize(t, "Vault inventory summary", "Vault 인벤토리 요약")}>
+        <MiniStat label={localize(t, "Actual mounts", "실제 Mount")} value={inventory?.summary.totalMounts ?? 0} tone="good" />
+        <MiniStat label={localize(t, "Custom plugins", "Custom Plugin")} value={inventory?.summary.customPlugins ?? 0} />
+        <MiniStat label={localize(t, "Mounted plugins", "Mount된 Plugin")} value={inventory?.summary.mountedCustomPlugins ?? 0} tone="good" />
+        <MiniStat
+          label={localize(t, "Registered only", "Catalog 등록만")}
+          value={inventory?.summary.registeredOnlyCustomPlugins ?? 0}
+          tone={(inventory?.summary.registeredOnlyCustomPlugins ?? 0) > 0 ? "risk" : "default"}
+        />
+      </section>
       <Table
-        title={t.admin.catalog}
-        columns={[t.table.plugin, t.table.mount, t.table.requestType, t.table.status, t.table.mode]}
-        rows={[
-          ["GitLab token", "gitlab-token/", "CUSTOM_GITLAB_TOKEN", "ready", "mock"],
-          ["Jenkins token", "jenkins-token/", "CUSTOM_JENKINS_TOKEN", "ready", "mock"],
-          ["Legacy API token", "legacy-api-token/", "CUSTOM_LEGACY_API_TOKEN", "ready", "mock"],
-          ["Kafka access", "kafka-access/", "CUSTOM_KAFKA_ACCESS", "planned", "mock"],
-          ["Network device rotation", "network-rotation/", "NETWORK_DEVICE_ROTATION", "planned", "mock"]
+        title={localize(t, "Actual Vault plugin catalog", "실제 Vault Plugin 카탈로그")}
+        columns={[
+          t.table.plugin,
+          t.table.type,
+          t.table.status,
+          t.table.mount,
+          t.table.version,
+          localize(t, "Command", "Command")
         ]}
-        emptyLabel={t.table.noData}
+        rows={customPlugins.map((plugin) => [
+          plugin.name,
+          plugin.pluginType,
+          plugin.status === "mounted"
+            ? localize(t, "Mounted", "Mount됨")
+            : localize(t, "Catalog only", "Catalog 등록만"),
+          plugin.mountedPaths.length > 0 ? plugin.mountedPaths.map((path) => `${path}/`).join(", ") : "-",
+          plugin.version ?? "-",
+          plugin.command ?? "-"
+        ])}
+        emptyLabel={localize(t, "No custom plugins are registered in the live Vault catalog.", "실제 Vault Catalog에 등록된 Custom Plugin이 없습니다.")}
+      />
+      <Table
+        title={localize(t, "Actual Vault mounts", "실제 Vault Mount")}
+        columns={[
+          localize(t, "Path", "경로"),
+          localize(t, "Category", "구분"),
+          localize(t, "Type", "Type"),
+          localize(t, "Source", "소스"),
+          t.table.version
+        ]}
+        rows={(inventory?.mounts ?? []).map((mount) => [
+          `${mount.path}/`,
+          mount.kind,
+          mount.type,
+          mount.source,
+          mount.pluginVersion ?? "-"
+        ])}
+        emptyLabel={localize(t, "No live Vault mount data.", "실제 Vault Mount 데이터가 없습니다.")}
       />
       <section className="tablePanel">
         <h2>{localize(t, "Notification integrations", "Notification 연동")}</h2>
@@ -8630,6 +8853,10 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleString();
+}
+
+function normalizePortalMount(value: string): string {
+  return value.replace(/^\/+|\/+$/g, "");
 }
 
 function taskKindLabel(kind: PortalTask["kind"], t: Copy): string {

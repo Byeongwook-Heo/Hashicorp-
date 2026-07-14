@@ -370,6 +370,13 @@ async function main(): Promise<void> {
   const factoryRequirementsInterviews = new Map<string, FactoryRequirementsRecord>();
   await restoreCompletedFactoryBuildSnapshots(store);
   await recoverStalledFactoryBuildJobs(store, config.factoryBuildTimeoutMs ?? 600000);
+  const vaultSystemActor: PortalUser = {
+    id: "system",
+    email: "system",
+    displayName: "System",
+    groups: [],
+    roles: ["vault-admin"]
+  };
 
   const app = express();
   app.use(helmet({ contentSecurityPolicy: false }));
@@ -413,14 +420,27 @@ async function main(): Promise<void> {
 
   app.get("/health/vault/mappings", requireUser(store, config.sessionCookieName), async (_req, res, next) => {
     try {
-      const systems = await store.listSystems({
-        id: "system",
-        email: "system",
-        displayName: "System",
-        groups: [],
-        roles: ["vault-admin"]
-      });
+      const systems = await store.listSystems(vaultSystemActor);
       res.json({ mappings: await vault.inspectMappings(systems) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.get("/vault/status", requireUser(store, config.sessionCookieName), async (req, res, next) => {
+    try {
+      const canViewInventory = req.user.roles.some((role) => role === "vault-admin" || role === "auditor");
+      const forceRefresh = canViewInventory && req.query.refresh === "true";
+      const systems = await store.listSystems(vaultSystemActor);
+      const inventory = canViewInventory ? await vault.inventory(forceRefresh) : undefined;
+      const [health, mappings] = await Promise.all([vault.health(), vault.inspectMappings(systems)]);
+      res.set("Cache-Control", "no-store");
+      res.json({
+        health,
+        mappings,
+        ...(inventory ? { inventory } : {}),
+        syncedAt: inventory?.syncedAt ?? new Date().toISOString()
+      });
     } catch (error) {
       next(error);
     }
@@ -612,15 +632,23 @@ async function main(): Promise<void> {
     }
   });
 
-  app.get("/admin/plugin-catalog", requireUser(store, config.sessionCookieName), (_req, res) => {
-    res.json({
-      plugins: [
-        { name: "gitlab-token", mount: "gitlab-token/", status: "mocked", owner: "security-platform" },
-        { name: "jenkins-token", mount: "jenkins-token/", status: "mocked", owner: "security-platform" },
-        { name: "legacy-api-token", mount: "legacy-api-token/", status: "mocked", owner: "security-platform" }
-      ]
-    });
-  });
+  app.get(
+    "/admin/plugin-catalog",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["vault-admin", "auditor"]),
+    async (req, res, next) => {
+      try {
+        const inventory = await vault.inventory(req.query.refresh === "true");
+        res.set("Cache-Control", "no-store");
+        res.json({
+          inventory,
+          plugins: inventory.plugins.filter((plugin) => !plugin.builtin)
+        });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
 
   app.get("/plugin-factory/templates", requireUser(store, config.sessionCookieName), (_req, res) => {
     res.json({

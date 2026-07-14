@@ -257,6 +257,118 @@ button:hover:not(:disabled),
   background: var(--panel-soft);
 }
 
+.vaultLiveSync {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 5px;
+  background: var(--panel-soft);
+}
+
+.vaultLiveSync.delayed {
+  border-left-color: var(--red);
+}
+
+.vaultLiveSyncStatus {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.vaultLiveSyncStatus > svg {
+  flex: 0 0 auto;
+  color: var(--green);
+}
+
+.vaultLiveSync.delayed .vaultLiveSyncStatus > svg {
+  color: var(--red);
+}
+
+.vaultLiveSyncStatus > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.vaultLiveSyncStatus strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.vaultLiveSyncStatus span {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.vaultSyncButton {
+  display: inline-flex;
+  min-height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.vaultSyncButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.vaultSyncButton .spinning {
+  animation: vaultSyncSpin 0.9s linear infinite;
+}
+
+.vaultInventorySummary {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.dependencyChipCloud span.live,
+.inlineLiveStatus.live {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--line));
+  background: color-mix(in srgb, var(--green) 9%, var(--panel));
+  color: var(--green);
+}
+
+.dependencyChipCloud span.missing,
+.inlineLiveStatus.missing {
+  border-color: color-mix(in srgb, var(--red) 42%, var(--line));
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+  color: var(--red);
+}
+
+.inlineLiveStatus {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+@keyframes vaultSyncSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .globalSearchTrigger {
   width: min(280px, 23vw);
   min-width: 184px;
@@ -3195,11 +3307,26 @@ textarea:focus {
   .factoryViewLauncher .factoryLauncherGrid > button {
     width: 100%;
   }
+
+  .vaultLiveSync {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .vaultSyncButton {
+    width: 100%;
+  }
+
+  .vaultInventorySummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .factoryAdvancedToggle > svg:last-child,
-  .factoryMobileProgress > svg:last-child {
+  .factoryMobileProgress > svg:last-child,
+  .vaultSyncButton .spinning {
     transition: none;
+    animation: none;
   }
 }

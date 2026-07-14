@@ -174,6 +174,63 @@ export interface VaultMappingHealth {
   detail: Record<string, unknown>;
 }
 
+export interface VaultHealthStatus {
+  mode: "mock" | "real";
+  healthy: boolean;
+  detail: Record<string, unknown>;
+}
+
+export type VaultInventoryMountKind = "auth" | "secret";
+
+export interface VaultInventoryMount {
+  path: string;
+  kind: VaultInventoryMountKind;
+  type: string;
+  description?: string;
+  accessor?: string;
+  pluginVersion?: string;
+  source: "builtin" | "external" | "unknown";
+  catalogType?: VaultPluginType;
+}
+
+export interface VaultPluginCatalogEntry {
+  name: string;
+  pluginType: VaultPluginType;
+  builtin: boolean;
+  status: "builtin" | "mounted" | "registered";
+  mountedPaths: string[];
+  command?: string;
+  version?: string;
+  sha256?: string;
+  deprecationStatus?: string;
+}
+
+export interface VaultInventory {
+  mode: "mock" | "real";
+  namespace?: string;
+  syncedAt: string;
+  mounts: VaultInventoryMount[];
+  plugins: VaultPluginCatalogEntry[];
+  summary: {
+    totalMounts: number;
+    authMounts: number;
+    secretMounts: number;
+    catalogEntries: number;
+    builtinPlugins: number;
+    customPlugins: number;
+    mountedCustomPlugins: number;
+    registeredOnlyCustomPlugins: number;
+  };
+  warnings: string[];
+}
+
+export interface VaultLiveStatus {
+  health: VaultHealthStatus;
+  mappings: VaultMappingHealth[];
+  inventory?: VaultInventory;
+  syncedAt: string;
+}
+
 export type VaultPluginType = "auth" | "secret" | "database";
 
 export type VaultPluginSource = "official" | "partner" | "learning" | "community";

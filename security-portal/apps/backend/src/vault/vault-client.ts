@@ -11,19 +11,18 @@ import type {
   VaultPluginRollbackRequest,
   VaultPluginRollbackResult,
   VaultIssueResult,
+  VaultHealthStatus,
+  VaultInventory,
+  VaultInventoryMount,
   VaultMapping,
-  VaultMappingHealth
+  VaultMappingHealth,
+  VaultPluginCatalogEntry,
+  VaultPluginType
 } from "@security-portal/shared";
 import type { AppConfig } from "../config";
 import { maskValue, redact } from "../utils/redact";
 
-type VaultHealth = {
-  mode: "mock" | "real";
-  healthy: boolean;
-  detail: Record<string, unknown>;
-};
-
-type VaultMethod = "GET" | "POST" | "PUT" | "DELETE";
+type VaultMethod = "GET" | "POST" | "PUT" | "DELETE" | "LIST";
 
 type VaultResponse = {
   status: number;
@@ -31,7 +30,8 @@ type VaultResponse = {
 };
 
 export interface VaultClient {
-  health(): Promise<VaultHealth>;
+  health(): Promise<VaultHealthStatus>;
+  inventory(forceRefresh?: boolean): Promise<VaultInventory>;
   inspectMappings(systems: SystemSummary[]): Promise<VaultMappingHealth[]>;
   issueCredential(request: AccessRequest, system: SystemSummary): Promise<VaultIssueResult>;
   revokeLease(leaseId: string): Promise<{ revoked: boolean; detail: Record<string, unknown> }>;
@@ -49,11 +49,31 @@ export function createVaultClient(config: AppConfig): VaultClient {
 }
 
 class MockVaultClient implements VaultClient {
-  async health(): Promise<VaultHealth> {
+  async health(): Promise<VaultHealthStatus> {
     return {
       mode: "mock",
       healthy: true,
       detail: { message: "Mock Vault adapter is active" }
+    };
+  }
+
+  async inventory(): Promise<VaultInventory> {
+    return {
+      mode: "mock",
+      syncedAt: new Date().toISOString(),
+      mounts: [],
+      plugins: [],
+      summary: {
+        totalMounts: 0,
+        authMounts: 0,
+        secretMounts: 0,
+        catalogEntries: 0,
+        builtinPlugins: 0,
+        customPlugins: 0,
+        mountedCustomPlugins: 0,
+        registeredOnlyCustomPlugins: 0
+      },
+      warnings: ["Mock Vault mode has no live mount or plugin catalog inventory"]
     };
   }
 
@@ -173,10 +193,12 @@ class MockVaultClient implements VaultClient {
 
 class RealVaultClient implements VaultClient {
   private readonly cachedTokens = new Map<"runtime" | "plugin", { token: string; expiresAt: number }>();
+  private inventoryCache?: { value: VaultInventory; expiresAt: number };
+  private inventoryInFlight?: Promise<VaultInventory>;
 
   constructor(private readonly config: AppConfig) {}
 
-  async health(): Promise<VaultHealth> {
+  async health(): Promise<VaultHealthStatus> {
     if (!this.config.vaultAddr) {
       return { mode: "real", healthy: false, detail: { error: "VAULT_ADDR is required" } };
     }
@@ -203,48 +225,63 @@ class RealVaultClient implements VaultClient {
     };
   }
 
-  async inspectMappings(systems: SystemSummary[]): Promise<VaultMappingHealth[]> {
-    const results: VaultMappingHealth[] = [];
-    for (const system of systems) {
-      for (const mapping of system.vaultMountMappings) {
-        const namespace = this.namespaceFor(system);
-        const mount = normalizeMount(mapping.mountPath);
-        try {
-          const response = await this.vaultRequest("GET", `sys/internal/ui/mounts/${mount}`, {
-            namespace,
-            tolerateStatus: [200, 403, 404]
-          });
-          results.push({
-            systemId: system.id,
-            systemName: system.name,
-            requestType: mapping.requestType,
-            mountPath: mapping.mountPath,
-            roleName: mapping.roleName,
-            namespace,
-            reachable: response.status === 200,
-            status: response.status,
-            detail: redact({
-              mount_type: response.body.data?.type,
-              path: response.body.data?.path,
-              error: response.body.errors?.[0]
-            })
-          });
-        } catch (error) {
-          results.push({
-            systemId: system.id,
-            systemName: system.name,
-            requestType: mapping.requestType,
-            mountPath: mapping.mountPath,
-            roleName: mapping.roleName,
-            namespace,
-            reachable: false,
-            status: 0,
-            detail: { error: error instanceof Error ? error.message : String(error) }
-          });
-        }
+  async inventory(forceRefresh = false): Promise<VaultInventory> {
+    if (!this.config.vaultAddr) {
+      return emptyVaultInventory("real", ["VAULT_ADDR is required"]);
+    }
+    if (!forceRefresh && this.inventoryCache && this.inventoryCache.expiresAt > Date.now()) {
+      return this.inventoryCache.value;
+    }
+    if (this.inventoryInFlight) {
+      return this.inventoryInFlight;
+    }
+
+    const request = this.loadInventory();
+    this.inventoryInFlight = request;
+    try {
+      const inventory = await request;
+      this.inventoryCache = {
+        value: inventory,
+        expiresAt: Date.now() + 10_000
+      };
+      return inventory;
+    } finally {
+      if (this.inventoryInFlight === request) {
+        this.inventoryInFlight = undefined;
       }
     }
-    return results;
+  }
+
+  async inspectMappings(systems: SystemSummary[]): Promise<VaultMappingHealth[]> {
+    const inventory = await this.inventory();
+    return systems.flatMap((system) =>
+      system.vaultMountMappings.map((mapping) => {
+        const expected = expectedInventoryMount(mapping.mountPath);
+        const inventoryUnavailable = inventory.warnings.some((warning) =>
+          warning.includes(expected.kind === "auth" ? "sys/auth" : "sys/mounts")
+        );
+        const mounted = inventory.mounts.find(
+          (item) => item.kind === expected.kind && normalizeMount(item.path) === expected.path
+        );
+        return {
+          systemId: system.id,
+          systemName: system.name,
+          requestType: mapping.requestType,
+          mountPath: mapping.mountPath,
+          roleName: mapping.roleName,
+          namespace: this.namespaceFor(system),
+          reachable: Boolean(mounted),
+          status: mounted ? 200 : inventoryUnavailable ? 0 : 404,
+          detail: redact({
+            check: "live mount inventory",
+            mount_type: mounted?.type,
+            plugin_version: mounted?.pluginVersion,
+            source: mounted?.source,
+            warning: inventory.warnings[0]
+          })
+        };
+      })
+    );
   }
 
   async issueCredential(request: AccessRequest, system: SystemSummary): Promise<VaultIssueResult> {
@@ -358,6 +395,7 @@ class RealVaultClient implements VaultClient {
     if (verified.exists) {
       throw new Error(`Vault mount ${inspected.mountPath} is still present after deletion`);
     }
+    this.invalidateInventoryCache();
     return {
       mode: "real",
       removed: true,
@@ -459,6 +497,7 @@ class RealVaultClient implements VaultClient {
         tolerateStatus: [200]
       });
 
+      this.invalidateInventoryCache();
       return {
         mode: "real",
         applied: true,
@@ -549,6 +588,7 @@ class RealVaultClient implements VaultClient {
       });
       catalogStatus = catalog.status;
     }
+    this.invalidateInventoryCache();
     return {
       mode: "real",
       rolledBack: [200, 204, 404].includes(disable.status),
@@ -563,6 +603,148 @@ class RealVaultClient implements VaultClient {
         }
       ]
     };
+  }
+
+  private async loadInventory(): Promise<VaultInventory> {
+    const namespace = this.config.vaultNamespace;
+    const [secretMountResult, authMountResult] = await Promise.allSettled([
+      this.vaultRequest("GET", "sys/mounts", {
+        namespace,
+        credentialScope: "plugin",
+        tolerateStatus: [200]
+      }),
+      this.vaultRequest("GET", "sys/auth", {
+        namespace,
+        credentialScope: "plugin",
+        tolerateStatus: [200]
+      })
+    ]);
+
+    const warnings: string[] = [];
+    const mounts: VaultInventoryMount[] = [];
+    if (secretMountResult.status === "fulfilled") {
+      mounts.push(...inventoryMounts(secretMountResult.value.body.data, "secret"));
+    } else {
+      warnings.push(`Unable to read sys/mounts: ${errorMessage(secretMountResult.reason)}`);
+    }
+    if (authMountResult.status === "fulfilled") {
+      mounts.push(...inventoryMounts(authMountResult.value.body.data, "auth"));
+    } else {
+      warnings.push(`Unable to read sys/auth: ${errorMessage(authMountResult.reason)}`);
+    }
+
+    const pluginTypes: VaultPluginType[] = ["auth", "secret", "database"];
+    const catalogLists = await Promise.all(
+      pluginTypes.map(async (pluginType) => {
+        try {
+          const response = await this.vaultRequest("LIST", `sys/plugins/catalog/${pluginType}`, {
+            namespace,
+            credentialScope: "plugin",
+            tolerateStatus: [200, 404]
+          });
+          return { pluginType, body: response.body };
+        } catch (error) {
+          return {
+            pluginType,
+            body: {},
+            warning: `Unable to list ${pluginType} plugin catalog: ${errorMessage(error)}`
+          };
+        }
+      })
+    );
+    warnings.push(...catalogLists.flatMap((item) => item.warning ? [item.warning] : []));
+
+    const candidates = catalogLists.flatMap((item) => catalogCandidates(item.pluginType, item.body));
+    const catalogDetails = await Promise.all(
+      candidates.map(async (candidate) => {
+        if (candidate.info.builtin === true) {
+          return { candidate, detail: candidate.info };
+        }
+        try {
+          const response = await this.vaultRequest(
+            "GET",
+            `sys/plugins/catalog/${candidate.pluginType}/${encodeURIComponent(candidate.name)}`,
+            {
+              namespace,
+              credentialScope: "plugin",
+              tolerateStatus: [200, 404]
+            }
+          );
+          return { candidate, detail: { ...candidate.info, ...(response.body.data ?? {}) } };
+        } catch (error) {
+          return {
+            candidate,
+            detail: candidate.info,
+            warning: `Unable to inspect ${candidate.pluginType} plugin ${candidate.name}: ${errorMessage(error)}`
+          };
+        }
+      })
+    );
+    warnings.push(...catalogDetails.flatMap((item) => item.warning ? [item.warning] : []));
+
+    const plugins = catalogDetails.map<VaultPluginCatalogEntry>(({ candidate, detail }) => {
+      const builtin = detail.builtin === true;
+      const mountedPaths = mounts
+        .filter((mount) => {
+          if (mount.type !== candidate.name) return false;
+          return candidate.pluginType === "auth" ? mount.kind === "auth" : mount.kind === "secret";
+        })
+        .map((mount) => mount.path)
+        .sort();
+      return {
+        name: candidate.name,
+        pluginType: candidate.pluginType,
+        builtin,
+        status: builtin ? "builtin" : mountedPaths.length > 0 ? "mounted" : "registered",
+        mountedPaths,
+        command: optionalString(detail.command),
+        version: optionalString(detail.version ?? detail.builtin_version),
+        sha256: optionalString(detail.sha256),
+        deprecationStatus: optionalString(detail.deprecation_status)
+      };
+    });
+
+    const pluginsByName = new Map(plugins.map((plugin) => [plugin.name, plugin]));
+    const classifiedMounts = mounts
+      .map<VaultInventoryMount>((mount) => {
+        const catalogPlugin = pluginsByName.get(mount.type);
+        return {
+          ...mount,
+          source: catalogPlugin
+            ? catalogPlugin.builtin
+              ? "builtin"
+              : "external"
+            : builtinMountTypes.has(mount.type)
+              ? "builtin"
+              : "unknown",
+          catalogType: catalogPlugin?.pluginType
+        };
+      })
+      .sort((left, right) => left.kind.localeCompare(right.kind) || left.path.localeCompare(right.path));
+    const customPlugins = plugins.filter((plugin) => !plugin.builtin);
+
+    return {
+      mode: "real",
+      namespace,
+      syncedAt: new Date().toISOString(),
+      mounts: classifiedMounts,
+      plugins: plugins.sort((left, right) => left.pluginType.localeCompare(right.pluginType) || left.name.localeCompare(right.name)),
+      summary: {
+        totalMounts: classifiedMounts.length,
+        authMounts: classifiedMounts.filter((mount) => mount.kind === "auth").length,
+        secretMounts: classifiedMounts.filter((mount) => mount.kind === "secret").length,
+        catalogEntries: plugins.length,
+        builtinPlugins: plugins.filter((plugin) => plugin.builtin).length,
+        customPlugins: customPlugins.length,
+        mountedCustomPlugins: customPlugins.filter((plugin) => plugin.status === "mounted").length,
+        registeredOnlyCustomPlugins: customPlugins.filter((plugin) => plugin.status === "registered").length
+      },
+      warnings
+    };
+  }
+
+  private invalidateInventoryCache(): void {
+    this.inventoryCache = undefined;
   }
 
   private namespaceFor(system: SystemSummary): string | undefined {
@@ -680,6 +862,112 @@ class RealVaultClient implements VaultClient {
       throw new Error(`Real plugin operations are restricted to ${prefix}/`);
     }
   }
+}
+
+type VaultCatalogCandidate = {
+  name: string;
+  pluginType: VaultPluginType;
+  info: Record<string, any>;
+};
+
+const builtinMountTypes = new Set([
+  "ad",
+  "approle",
+  "aws",
+  "azure",
+  "consul",
+  "cubbyhole",
+  "database",
+  "gcp",
+  "identity",
+  "jwt",
+  "keymgmt",
+  "kmip",
+  "kubernetes",
+  "kv",
+  "ldap",
+  "nomad",
+  "oidc",
+  "openldap",
+  "pki",
+  "rabbitmq",
+  "ssh",
+  "system",
+  "token",
+  "totp",
+  "transform",
+  "transit",
+  "userpass"
+]);
+
+function emptyVaultInventory(mode: "mock" | "real", warnings: string[]): VaultInventory {
+  return {
+    mode,
+    syncedAt: new Date().toISOString(),
+    mounts: [],
+    plugins: [],
+    summary: {
+      totalMounts: 0,
+      authMounts: 0,
+      secretMounts: 0,
+      catalogEntries: 0,
+      builtinPlugins: 0,
+      customPlugins: 0,
+      mountedCustomPlugins: 0,
+      registeredOnlyCustomPlugins: 0
+    },
+    warnings
+  };
+}
+
+function inventoryMounts(data: unknown, kind: VaultInventoryMount["kind"]): VaultInventoryMount[] {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return [];
+  return Object.entries(data as Record<string, any>).flatMap(([path, value]) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const type = optionalString(value.type);
+    if (!type) return [];
+    return [{
+      path: normalizeMount(path),
+      kind,
+      type,
+      description: optionalString(value.description),
+      accessor: optionalString(value.accessor),
+      pluginVersion: optionalString(value.running_plugin_version ?? value.config?.plugin_version),
+      source: "unknown" as const
+    }];
+  });
+}
+
+function catalogCandidates(pluginType: VaultPluginType, body: Record<string, any>): VaultCatalogCandidate[] {
+  const data = body.data && typeof body.data === "object" ? body.data : {};
+  const keyInfo = data.key_info && typeof data.key_info === "object" && !Array.isArray(data.key_info)
+    ? data.key_info as Record<string, Record<string, any>>
+    : {};
+  const keys = Array.isArray(data.keys) ? data.keys : [];
+  const names = new Set(
+    [...keys, ...Object.keys(keyInfo)]
+      .map((key) => normalizeMount(String(key)))
+      .filter(Boolean)
+  );
+  return [...names].map((name) => ({
+    name,
+    pluginType,
+    info: keyInfo[name] ?? keyInfo[`${name}/`] ?? {}
+  }));
+}
+
+function expectedInventoryMount(mountPath: string): { kind: VaultInventoryMount["kind"]; path: string } {
+  const normalized = normalizeMount(mountPath);
+  if (normalized.startsWith("auth/")) {
+    return { kind: "auth", path: normalizeMount(normalized.slice("auth/".length)) };
+  }
+  return { kind: "secret", path: normalized };
+}
+
+function optionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized || undefined;
 }
 
 function selectMapping(request: AccessRequest, system: SystemSummary): VaultMapping {
