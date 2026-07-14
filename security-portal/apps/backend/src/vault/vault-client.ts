@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
 import type {
   AccessRequest,
   SystemSummary,
   VaultPluginApplyRequest,
   VaultPluginApplyResult,
+  VaultPluginMountInspectionResult,
+  VaultPluginMountRemovalRequest,
+  VaultPluginMountRemovalResult,
+  VaultPluginMountTarget,
   VaultPluginRollbackRequest,
   VaultPluginRollbackResult,
   VaultIssueResult,
@@ -30,6 +35,8 @@ export interface VaultClient {
   inspectMappings(systems: SystemSummary[]): Promise<VaultMappingHealth[]>;
   issueCredential(request: AccessRequest, system: SystemSummary): Promise<VaultIssueResult>;
   revokeLease(leaseId: string): Promise<{ revoked: boolean; detail: Record<string, unknown> }>;
+  inspectPluginMount(request: VaultPluginMountTarget): Promise<VaultPluginMountInspectionResult>;
+  removePluginMount(request: VaultPluginMountRemovalRequest): Promise<VaultPluginMountRemovalResult>;
   applyPlugin(request: VaultPluginApplyRequest): Promise<VaultPluginApplyResult>;
   rollbackPlugin(request: VaultPluginRollbackRequest): Promise<VaultPluginRollbackResult>;
 }
@@ -92,6 +99,21 @@ class MockVaultClient implements VaultClient {
       revoked: true,
       detail: { mode: "mock", lease_id: leaseId }
     };
+  }
+
+  async inspectPluginMount(request: VaultPluginMountTarget): Promise<VaultPluginMountInspectionResult> {
+    const mountPath = normalizeMount(request.mountPath);
+    return {
+      mode: "mock",
+      exists: false,
+      pluginType: request.pluginType,
+      mountPath,
+      detail: { note: "Mock Vault mode does not mutate a Vault server" }
+    };
+  }
+
+  async removePluginMount(request: VaultPluginMountRemovalRequest): Promise<VaultPluginMountRemovalResult> {
+    throw new Error(`Vault mount ${normalizeMount(request.mountPath)} was not found`);
   }
 
   async applyPlugin(request: VaultPluginApplyRequest): Promise<VaultPluginApplyResult> {
@@ -275,6 +297,77 @@ class RealVaultClient implements VaultClient {
     return {
       revoked: response.status === 200 || response.status === 204,
       detail: redact({ status: response.status, errors: response.body.errors })
+    };
+  }
+
+  async inspectPluginMount(request: VaultPluginMountTarget): Promise<VaultPluginMountInspectionResult> {
+    const mountPath = normalizeMount(request.mountPath);
+    this.assertPluginMountAllowed(mountPath);
+    const listPath = request.pluginType === "auth" ? "sys/auth" : "sys/mounts";
+    const response = await this.vaultRequest("GET", listPath, {
+      namespace: this.config.vaultNamespace,
+      credentialScope: "plugin",
+      tolerateStatus: [200]
+    });
+    const mounted = response.body.data?.[`${mountPath}/`] ?? response.body.data?.[mountPath];
+    if (!mounted || typeof mounted !== "object") {
+      return {
+        mode: "real",
+        exists: false,
+        pluginType: request.pluginType,
+        mountPath,
+        detail: { list_path: listPath }
+      };
+    }
+    const identity = pluginMountIdentity(request.pluginType, mountPath, mounted);
+    return {
+      mode: "real",
+      exists: true,
+      pluginType: request.pluginType,
+      mountPath,
+      fingerprint: pluginMountFingerprint(request.pluginType, mountPath, mounted),
+      mountType: identity.type || undefined,
+      description: identity.description || undefined,
+      pluginVersion: identity.pluginVersion || undefined,
+      detail: redact({
+        list_path: listPath,
+        mount_type: identity.type,
+        description: identity.description,
+        plugin_version: identity.pluginVersion
+      })
+    };
+  }
+
+  async removePluginMount(request: VaultPluginMountRemovalRequest): Promise<VaultPluginMountRemovalResult> {
+    const inspected = await this.inspectPluginMount(request);
+    if (!inspected.exists || !inspected.fingerprint) {
+      throw new Error(`Vault mount ${inspected.mountPath} was not found`);
+    }
+    if (inspected.fingerprint !== request.expectedFingerprint) {
+      throw new Error(`Vault mount ${inspected.mountPath} changed after inspection; inspect it again`);
+    }
+    const mountApiPath = request.pluginType === "auth"
+      ? `sys/auth/${inspected.mountPath}`
+      : `sys/mounts/${inspected.mountPath}`;
+    const disable = await this.vaultRequest("DELETE", mountApiPath, {
+      namespace: this.config.vaultNamespace,
+      credentialScope: "plugin",
+      tolerateStatus: [200, 204, 404]
+    });
+    const verified = await this.inspectPluginMount(request);
+    if (verified.exists) {
+      throw new Error(`Vault mount ${inspected.mountPath} is still present after deletion`);
+    }
+    return {
+      mode: "real",
+      removed: true,
+      pluginType: request.pluginType,
+      mountPath: inspected.mountPath,
+      steps: [
+        { label: "Disable existing mount", status: "success", detail: `${mountApiPath} returned ${disable.status}` },
+        { label: "Verify mount removal", status: "success", detail: `Verified via ${request.pluginType === "auth" ? "sys/auth" : "sys/mounts"}` }
+      ],
+      detail: redact({ disable_status: disable.status, previous_mount_type: inspected.mountType })
     };
   }
 
@@ -673,6 +766,38 @@ function displayForVaultResponse(request: AccessRequest, body: Record<string, an
 
 function normalizeMount(mountPath: string): string {
   return mountPath.replace(/^\/+|\/+$/g, "");
+}
+
+function pluginMountIdentity(
+  pluginType: VaultPluginMountTarget["pluginType"],
+  mountPath: string,
+  mounted: Record<string, any>
+): {
+  pluginType: VaultPluginMountTarget["pluginType"];
+  mountPath: string;
+  type: string;
+  accessor: string;
+  uuid: string;
+  description: string;
+  pluginVersion: string;
+} {
+  return {
+    pluginType,
+    mountPath: normalizeMount(mountPath),
+    type: String(mounted.type ?? ""),
+    accessor: String(mounted.accessor ?? ""),
+    uuid: String(mounted.uuid ?? ""),
+    description: String(mounted.description ?? ""),
+    pluginVersion: String(mounted.running_plugin_version ?? mounted.pluginVersion ?? mounted.config?.plugin_version ?? "")
+  };
+}
+
+function pluginMountFingerprint(
+  pluginType: VaultPluginMountTarget["pluginType"],
+  mountPath: string,
+  mounted: Record<string, any>
+): string {
+  return createHash("sha256").update(JSON.stringify(pluginMountIdentity(pluginType, mountPath, mounted))).digest("hex");
 }
 
 function inferExternalSystem(requestType: AccessRequest["requestType"]): string {

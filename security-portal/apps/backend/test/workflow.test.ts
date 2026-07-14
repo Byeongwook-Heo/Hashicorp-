@@ -501,6 +501,95 @@ describe("Vault plugin factory", () => {
     );
   });
 
+  it("inspects, removes, and verifies an existing plugin mount", async () => {
+    const mounted = {
+      data: {
+        "factory-lab/github/": {
+          type: "vault-plugin-secrets-github",
+          accessor: "github_1234",
+          uuid: "mount-uuid",
+          description: "Existing GitHub plugin",
+          running_plugin_version: "v0.1.0"
+        }
+      }
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify(mounted), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(mounted), { status: 200 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: {} }), { status: 200 }));
+
+    const client = createVaultClient({
+      ...mockConfig,
+      vaultMode: "real",
+      vaultAuthMode: "token",
+      vaultAddr: "http://vault.service:8200",
+      vaultToken: "root",
+      vaultPluginAllowedMountPrefix: "factory-lab"
+    });
+
+    const inspection = await client.inspectPluginMount({
+      pluginType: "secret",
+      mountPath: "factory-lab/github"
+    });
+    expect(inspection).toEqual(
+      expect.objectContaining({
+        exists: true,
+        mountPath: "factory-lab/github",
+        mountType: "vault-plugin-secrets-github",
+        pluginVersion: "v0.1.0"
+      })
+    );
+    expect(inspection.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+
+    const removed = await client.removePluginMount({
+      pluginType: "secret",
+      mountPath: "factory-lab/github",
+      expectedFingerprint: inspection.fingerprint ?? ""
+    });
+    expect(removed.removed).toBe(true);
+    expect(removed.steps.map((step) => step.label)).toEqual([
+      "Disable existing mount",
+      "Verify mount removal"
+    ]);
+    expect(fetchMock.mock.calls.map((call) => [call[0], call[1]?.method])).toEqual([
+      ["http://vault.service:8200/v1/sys/mounts", "GET"],
+      ["http://vault.service:8200/v1/sys/mounts", "GET"],
+      ["http://vault.service:8200/v1/sys/mounts/factory-lab/github", "DELETE"],
+      ["http://vault.service:8200/v1/sys/mounts", "GET"]
+    ]);
+  });
+
+  it("refuses to remove a mount that changed after inspection", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { "factory-lab/github/": { type: "plugin-a", accessor: "a" } } }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { "factory-lab/github/": { type: "plugin-b", accessor: "b" } } }), { status: 200 })
+      );
+    const client = createVaultClient({
+      ...mockConfig,
+      vaultMode: "real",
+      vaultAuthMode: "token",
+      vaultAddr: "http://vault.service:8200",
+      vaultToken: "root",
+      vaultPluginAllowedMountPrefix: "factory-lab"
+    });
+    const inspection = await client.inspectPluginMount({ pluginType: "secret", mountPath: "factory-lab/github" });
+
+    await expect(
+      client.removePluginMount({
+        pluginType: "secret",
+        mountPath: "factory-lab/github",
+        expectedFingerprint: inspection.fingerprint ?? ""
+      })
+    ).rejects.toThrow("changed after inspection");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("automatically removes a new mount and catalog entry when the smoke test fails", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock

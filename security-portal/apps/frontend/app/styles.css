@@ -5191,6 +5191,10 @@ tbody tr:hover {
   color: #9a6700;
 }
 
+.preflightStatus.conflict {
+  color: var(--red);
+}
+
 .preflightList {
   display: grid;
   gap: 6px;
@@ -5214,6 +5218,15 @@ tbody tr:hover {
 
 .preflightList > div.pending svg {
   color: #9a6700;
+}
+
+.preflightList > div.conflict {
+  border-color: color-mix(in srgb, var(--red) 38%, var(--line));
+  background: color-mix(in srgb, var(--panel-soft) 92%, var(--red));
+}
+
+.preflightList > div.conflict svg {
+  color: var(--red);
 }
 
 .preflightList strong,
@@ -5297,6 +5310,152 @@ tbody tr:hover {
 .deployNowButton {
   width: 100%;
   margin-top: 2px;
+}
+
+.mountConflictPanel {
+  display: grid;
+  gap: 14px;
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--red) 42%, var(--line));
+  border-left: 3px solid var(--red);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--panel) 96%, var(--red));
+}
+
+.mountConflictPanel.resolved {
+  border-color: color-mix(in srgb, var(--green) 42%, var(--line));
+  border-left-color: var(--green);
+  background: color-mix(in srgb, var(--panel) 96%, var(--green));
+}
+
+.mountConflictPanel > .panelHeader svg {
+  flex: 0 0 auto;
+  color: var(--red);
+}
+
+.mountConflictPanel.resolved > .panelHeader svg {
+  color: var(--green);
+}
+
+.mountConflictPanel .sectionEyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.mountConflictPanel .panelHeader h3,
+.mountConflictPanel .panelHeader p {
+  margin: 0;
+}
+
+.mountConflictPanel .panelHeader p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.mountInspectionBody {
+  display: grid;
+  gap: 12px;
+}
+
+.mountIdentityGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--line);
+  gap: 1px;
+}
+
+.mountIdentityGrid > div {
+  min-width: 0;
+  padding: 10px;
+  background: var(--panel);
+}
+
+.mountIdentityGrid span,
+.mountIdentityGrid strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mountIdentityGrid span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.mountIdentityGrid strong {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.mountDescription {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mountRemovalConfirm {
+  display: grid;
+  gap: 6px;
+  max-width: 520px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mountRemovalConfirm small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.mountConflictActions {
+  justify-content: space-between;
+}
+
+.mountRemovalSteps {
+  display: grid;
+  gap: 6px;
+}
+
+.mountRemovalSteps > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+}
+
+.mountRemovalSteps svg {
+  color: var(--green);
+}
+
+.mountRemovalSteps strong,
+.mountRemovalSteps small {
+  display: block;
+}
+
+.mountRemovalSteps strong {
+  font-size: 12px;
+}
+
+.mountRemovalSteps small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .applyResultSection {
@@ -5583,10 +5742,17 @@ tbody tr:hover {
 :root[data-theme="dark"] .comparisonGrid > div,
 :root[data-theme="dark"] .preflightList > div,
 :root[data-theme="dark"] .impactSummary > div,
+:root[data-theme="dark"] .mountIdentityGrid > div,
+:root[data-theme="dark"] .mountRemovalSteps > div,
 :root[data-theme="dark"] .factoryJobItem {
   border-color: var(--line);
   background: var(--panel);
   color: var(--ink);
+}
+
+:root[data-theme="dark"] .preflightList > div.conflict {
+  border-color: color-mix(in srgb, var(--red) 46%, var(--line));
+  background: color-mix(in srgb, var(--panel) 90%, var(--red));
 }
 
 .impactDialog.factoryHistoryDialog {
@@ -5783,6 +5949,10 @@ tbody tr:hover {
   .templateTrustGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .mountIdentityGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -5866,8 +6036,22 @@ tbody tr:hover {
   .templateTrustGrid,
   .comparisonGrid,
   .impactSummary,
+  .mountIdentityGrid,
   .codePreview > .codeDiffView {
     grid-template-columns: 1fr;
+  }
+
+  .mountConflictPanel {
+    padding: 14px;
+  }
+
+  .mountConflictActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mountConflictActions button {
+    width: 100%;
   }
 
   .pluginRowActions {

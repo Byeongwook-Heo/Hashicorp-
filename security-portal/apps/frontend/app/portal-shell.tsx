@@ -20,6 +20,8 @@ import {
   type VaultPluginFactoryJob,
   type VaultPluginGenerateResult,
   type VaultPluginGeneratedFile,
+  type VaultPluginMountInspectionResult,
+  type VaultPluginMountRemovalResult,
   type VaultPluginRollbackResult,
   type VaultPluginRequirementField,
   type VaultPluginRequirements,
@@ -3189,6 +3191,13 @@ function PluginFactory({
   const [rollbackConfirmed, setRollbackConfirmed] = useState(false);
   const [removeCatalogOnRollback, setRemoveCatalogOnRollback] = useState(false);
   const [rollbackResult, setRollbackResult] = useState<VaultPluginRollbackResult | null>(null);
+  const [mountConflictPath, setMountConflictPath] = useState<string | null>(null);
+  const [mountInspection, setMountInspection] = useState<VaultPluginMountInspectionResult | null>(null);
+  const [mountInspectionJobId, setMountInspectionJobId] = useState("");
+  const [mountInspectionError, setMountInspectionError] = useState<string | null>(null);
+  const [mountRemovalConfirmation, setMountRemovalConfirmation] = useState("");
+  const [mountRemovalResult, setMountRemovalResult] = useState<VaultPluginMountRemovalResult | null>(null);
+  const [mountActionBusy, setMountActionBusy] = useState<"inspect" | "remove" | null>(null);
   const [requirementsInterview, setRequirementsInterview] = useState<VaultPluginRequirementsInterview | null>(null);
   const [activeRequirementStep, setActiveRequirementStep] = useState<FactoryRequirementStep>("targetSystem");
   const [autoRepair, setAutoRepair] = useState<VaultPluginAutoRepairResult | null>(null);
@@ -3418,7 +3427,13 @@ function PluginFactory({
     localize(t, "Compare Sectigo and DigiCert", "Sectigo와 DigiCert를 비교해줘")
   ];
   const currentJob = factoryJobs.find((job) => job.id === activeJobId);
-  const factoryWorkspaceSwitchBlocked = busy === "load" || busy === "apply";
+  const recordedMountConflictPath = currentJob ? factoryMountConflictPath(currentJob) : null;
+  const activeMountConflictPath = mountConflictPath ?? recordedMountConflictPath ?? (mountInspection?.exists ? mountInspection.mountPath : null);
+  const mountRecoveryPath = activeMountConflictPath ?? normalizeFactoryMountPath(generated?.mountPath ?? mountPath);
+  const mountConfirmationMatches = Boolean(
+    activeMountConflictPath && normalizeFactoryMountPath(mountRemovalConfirmation) === activeMountConflictPath
+  );
+  const factoryWorkspaceSwitchBlocked = busy === "load" || busy === "apply" || mountActionBusy !== null;
   const factoryBuildPhase = autoRepair?.phase ?? (autoRepair?.status === "pass" ? "complete" : autoRepair?.status === "cancelled" ? "cancelled" : "queued");
   const factoryBuildAttempt = autoRepair
     ? Math.min(autoRepair.activeAttempt ?? autoRepair.attempts.length + 1, autoRepair.maxAttempts)
@@ -3478,6 +3493,38 @@ function PluginFactory({
         : !artifactStoredForRuntime
           ? localize(t, "Waiting for stored artifact", "저장된 Artifact 동기화 대기")
           : shortId(artifactSha256);
+  const pluginRolledBack = Boolean(rollbackResult?.rolledBack || currentJob?.status === "rolled-back");
+  const appliedPluginReady = Boolean(
+    !pluginRolledBack &&
+      (applyResult?.applied ||
+        (currentJob?.status === "complete" && currentJob.deployment.rollbackReady))
+  );
+  const inspectedCurrentMount =
+    mountInspectionJobId === currentJob?.id &&
+    mountInspection?.mountPath === normalizeFactoryMountPath(generated?.mountPath ?? "")
+      ? mountInspection
+      : null;
+  const mountRemovalVerified = Boolean(
+    mountRemovalResult?.removed &&
+      mountRemovalResult.mountPath === normalizeFactoryMountPath(generated?.mountPath ?? "")
+  );
+  const mountAvailabilityPassed = Boolean(
+    appliedPluginReady || mountRemovalVerified || (inspectedCurrentMount && !inspectedCurrentMount.exists)
+  );
+  const mountConflictDetected = Boolean(!appliedPluginReady && inspectedCurrentMount?.exists);
+  const mountAvailabilityDetail = appliedPluginReady
+    ? localize(t, "Applied", "적용 완료")
+    : mountRemovalVerified
+      ? localize(t, "Removal verified", "삭제 확인 완료")
+      : mountInspectionError
+        ? localize(t, "Inspection failed", "확인 실패")
+        : mountActionBusy === "inspect"
+          ? localize(t, "Inspecting Vault", "Vault 확인 중")
+          : inspectedCurrentMount?.exists
+            ? localize(t, `Conflict: ${inspectedCurrentMount.mountType ?? inspectedCurrentMount.mountPath}`, `충돌: ${inspectedCurrentMount.mountType ?? inspectedCurrentMount.mountPath}`)
+            : inspectedCurrentMount
+              ? localize(t, "Path available", "사용 가능한 경로")
+              : localize(t, "Waiting for inspection", "Mount 확인 대기");
   const preflightChecks = [
     {
       label: factoryLocalize(t, "Build and tests", "빌드 및 테스트"),
@@ -3497,6 +3544,12 @@ function PluginFactory({
       pass: verifiedBuildArtifactReady
     },
     {
+      label: localize(t, "Mount availability", "Mount 사용 가능 여부"),
+      detail: mountAvailabilityDetail,
+      pass: mountAvailabilityPassed,
+      conflict: mountConflictDetected
+    },
+    {
       label: localize(t, "Approval", "승인"),
       detail: factoryStatusLabel(currentJob?.approval.status ?? "not-requested", t),
       pass: currentJob?.approval.status === "approved"
@@ -3504,12 +3557,6 @@ function PluginFactory({
   ];
   const approvalPreflightPassed = preflightChecks.slice(0, 3).every((check) => check.pass);
   const preflightPassed = preflightChecks.every((check) => check.pass);
-  const pluginRolledBack = Boolean(rollbackResult?.rolledBack || currentJob?.status === "rolled-back");
-  const appliedPluginReady = Boolean(
-    !pluginRolledBack &&
-      (applyResult?.applied ||
-        (currentJob?.status === "complete" && currentJob.deployment.rollbackReady))
-  );
   const rollbackAvailable = Boolean(
     !pluginRolledBack &&
       (applyResult?.applied ||
@@ -3618,6 +3665,19 @@ function PluginFactory({
   );
 
   useEffect(() => {
+    if (
+      activeFactoryTab !== "deploy" ||
+      !currentJob ||
+      !generated ||
+      appliedPluginReady ||
+      pluginRolledBack ||
+      busy === "load" ||
+      mountInspectionJobId === currentJob.id
+    ) return;
+    void inspectExistingFactoryMount();
+  }, [activeFactoryTab, appliedPluginReady, busy, currentJob?.id, generated?.id, mountInspectionJobId, pluginRolledBack]);
+
+  useEffect(() => {
     if (!workspaceReady || !currentUser || busy === "load" || !selectedId || !hasPersistableWorkspace) return;
     const workspaceId = workspaceIdRef.current;
     const timer = window.setTimeout(() => {
@@ -3678,6 +3738,7 @@ function PluginFactory({
   }
 
   function hydrateFactoryWorkspace(snapshot: FactoryWorkspaceSnapshot, availableTemplates: VaultPluginTemplate[]) {
+    resetExistingMountRecovery();
     const template = availableTemplates.find((item) => item.id === snapshot.selectedId) ?? availableTemplates[0];
     if (template) {
       setSelectedId(template.id);
@@ -3799,6 +3860,16 @@ function PluginFactory({
     }
   }
 
+  function resetExistingMountRecovery() {
+    setMountConflictPath(null);
+    setMountInspection(null);
+    setMountInspectionJobId("");
+    setMountInspectionError(null);
+    setMountRemovalConfirmation("");
+    setMountRemovalResult(null);
+    setMountActionBusy(null);
+  }
+
   function hydratePluginForm(template: VaultPluginTemplate) {
     setPluginName(template.name);
     setMountPath(template.defaultMountPath);
@@ -3811,6 +3882,7 @@ function PluginFactory({
     setActiveFilePath("");
     setApplyResult(null);
     setRollbackResult(null);
+    resetExistingMountRecovery();
   }
 
   function chooseTemplate(template: VaultPluginTemplate) {
@@ -4017,6 +4089,97 @@ function PluginFactory({
     });
   }
 
+  async function inspectExistingFactoryMount() {
+    if (!currentJob || !generated) return;
+    const targetJobId = currentJob.id;
+    setMountInspectionJobId(targetJobId);
+    setMountInspectionError(null);
+    setMountActionBusy("inspect");
+    setMountRemovalResult(null);
+    setMountRemovalConfirmation("");
+    setStatus(null);
+    try {
+      const response = await api<{ result: VaultPluginMountInspectionResult }>(
+        `/plugin-factory/jobs/${targetJobId}/existing-mount`
+      );
+      if (activeJobIdRef.current !== targetJobId) return;
+      setMountInspection(response.result);
+      setStatus(
+        response.result.exists
+          ? localize(t, `Existing Vault mount ${response.result.mountPath}/ was found.`, `기존 Vault Mount ${response.result.mountPath}/를 확인했습니다.`)
+          : localize(t, `Vault mount ${response.result.mountPath}/ is no longer present.`, `Vault Mount ${response.result.mountPath}/가 이미 제거되어 있습니다.`)
+      );
+    } catch (err) {
+      if (activeJobIdRef.current !== targetJobId) return;
+      const detail = err instanceof Error ? err.message : localize(t, "Unable to inspect the existing Vault mount.", "기존 Vault Mount를 확인하지 못했습니다.");
+      setMountInspection(null);
+      setMountInspectionError(detail);
+      setStatus(detail);
+    } finally {
+      if (activeJobIdRef.current === targetJobId) setMountActionBusy(null);
+    }
+  }
+
+  async function removeExistingFactoryMount() {
+    if (
+      !currentJob ||
+      !generated ||
+      !canApply ||
+      !activeMountConflictPath ||
+      !mountInspection?.exists ||
+      !mountInspection.fingerprint ||
+      !mountConfirmationMatches
+    ) return;
+    const targetJobId = currentJob.id;
+    const targetMountPath = activeMountConflictPath;
+    setMountActionBusy("remove");
+    setBusy("apply");
+    setStatus(null);
+    startFactoryJob("apply", localize(t, `Removing existing mount ${targetMountPath}/`, `기존 Mount ${targetMountPath}/ 삭제 중`));
+    try {
+      await playFactoryJobLines([
+        generated.template.pluginType === "auth"
+          ? `$ vault auth disable ${targetMountPath}`
+          : `$ vault secrets disable ${targetMountPath}`,
+        `$ vault ${generated.template.pluginType === "auth" ? "auth" : "secrets"} list | verify ${targetMountPath}/ absent`
+      ]);
+      const response = await api<{ result: VaultPluginMountRemovalResult; job: VaultPluginFactoryJob }>(
+        `/plugin-factory/jobs/${targetJobId}/existing-mount/remove`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            confirmation: mountRemovalConfirmation,
+            expectedFingerprint: mountInspection.fingerprint
+          })
+        }
+      );
+      if (activeJobIdRef.current !== targetJobId) return;
+      upsertFactoryJob(response.job);
+      setMountRemovalResult(response.result);
+      setMountInspection(null);
+      setMountInspectionError(null);
+      setMountConflictPath(null);
+      setMountRemovalConfirmation("");
+      finishFactoryJob("complete", localize(t, `✓ removed ${targetMountPath}/ and verified`, `✓ ${targetMountPath}/ 삭제 및 검증 완료`));
+      setStatus(localize(t, "The existing Vault mount was removed. You can apply the plugin again.", "기존 Vault Mount를 삭제했습니다. 이제 플러그인을 다시 적용할 수 있습니다."));
+      await onChanged();
+    } catch (err) {
+      if (activeJobIdRef.current !== targetJobId) return;
+      const detail = err instanceof Error ? err.message : localize(t, "Unable to remove the existing Vault mount.", "기존 Vault Mount를 삭제하지 못했습니다.");
+      if (/changed after inspection|not found/i.test(detail)) {
+        setMountInspection(null);
+        setMountInspectionError(detail);
+      }
+      finishFactoryJob("failed", `✕ ${detail}`);
+      setStatus(detail);
+    } finally {
+      if (activeJobIdRef.current === targetJobId) {
+        setBusy(null);
+        setMountActionBusy(null);
+      }
+    }
+  }
+
   async function executePluginRollback() {
     if (!generated || !currentJob || !rollbackConfirmed || !canApply) return;
     setBusy("apply");
@@ -4074,6 +4237,7 @@ function PluginFactory({
     workspaceIdRef.current = createFactoryWorkspaceId();
     setBusy(null);
     setWorkspaceSaving(false);
+    resetExistingMountRecovery();
     const initialTemplate = templates[0];
     if (initialTemplate) chooseTemplate(initialTemplate);
     setActiveJobId("");
@@ -4536,6 +4700,7 @@ function PluginFactory({
     setStatus(null);
     setApplyResult(null);
     setRollbackResult(null);
+    resetExistingMountRecovery();
     let job: VaultPluginFactoryJob | null = null;
     try {
       const activeJob = await ensureFactoryJob(workspaceId);
@@ -4729,6 +4894,7 @@ function PluginFactory({
         })
       });
       setApplyResult(response.result);
+      resetExistingMountRecovery();
       setActiveFactoryTab("deploy");
       setStatus(localize(t, "Vault apply completed.", "Vault 적용이 완료되었습니다."));
       await onChanged();
@@ -4751,6 +4917,15 @@ function PluginFactory({
       return { status: "applied", result: response.result };
     } catch (err) {
       const detail = err instanceof Error ? err.message : "Unable to apply plugin";
+      const mountConflict = /Vault mount ([^\s]+) already exists/i.exec(detail);
+      if (mountConflict?.[1]) {
+        setMountConflictPath(normalizeFactoryMountPath(mountConflict[1]));
+        setMountInspection(null);
+        setMountInspectionError(null);
+        setMountRemovalConfirmation("");
+        setMountRemovalResult(null);
+        setActiveFactoryTab("deploy");
+      }
       setStatus(detail);
       finishFactoryJob("failed", `✕ ${detail}`);
       void patchFactoryJobById(job.id, { status: "failed", stage: "deploy" }).catch(() => undefined);
@@ -5947,14 +6122,24 @@ function PluginFactory({
                   <h3>{localize(t, "Preflight review", "배포 사전 검토")}</h3>
                   <p>{localize(t, "All checks and approval must pass before apply.", "모든 검증과 승인이 완료되어야 적용할 수 있습니다.")}</p>
                 </div>
-                <span className={`preflightStatus ${preflightPassed ? "ready" : "blocked"}`}>
-                  {preflightPassed ? localize(t, "Ready", "준비 완료") : localize(t, "Blocked", "대기")}
+                <span className={`preflightStatus ${preflightPassed ? "ready" : mountConflictDetected || mountInspectionError ? "conflict" : "blocked"}`}>
+                  {preflightPassed
+                    ? localize(t, "Ready", "준비 완료")
+                    : mountConflictDetected
+                      ? localize(t, "Mount conflict", "Mount 충돌")
+                      : mountInspectionError
+                        ? localize(t, "Inspection failed", "확인 실패")
+                        : localize(t, "Pending checks", "검증 대기")}
                 </span>
               </div>
               <div className="preflightList">
                 {preflightChecks.map((check) => (
-                  <div key={check.label} className={check.pass ? "pass" : "pending"}>
-                    {check.pass ? <CheckCircle2 aria-hidden="true" size={17} /> : <CircleGauge aria-hidden="true" size={17} />}
+                  <div key={check.label} className={check.pass ? "pass" : "conflict" in check && check.conflict ? "conflict" : "pending"}>
+                    {check.pass
+                      ? <CheckCircle2 aria-hidden="true" size={17} />
+                      : "conflict" in check && check.conflict
+                        ? <AlertTriangle aria-hidden="true" size={17} />
+                        : <CircleGauge aria-hidden="true" size={17} />}
                     <span><strong>{check.label}</strong><small>{check.detail}</small></span>
                   </div>
                 ))}
@@ -6023,7 +6208,20 @@ function PluginFactory({
                 </button>
               </div>
               {canApply ? (
-                <button className="primary deployNowButton" disabled={!generated || !preflightPassed || rollbackAvailable || applyInProgress || busy !== null} onClick={() => void applyPlugin()} type="button">
+                <button
+                  className="primary deployNowButton"
+                  disabled={
+                    !generated ||
+                    !preflightPassed ||
+                    rollbackAvailable ||
+                    applyInProgress ||
+                    busy !== null ||
+                    mountActionBusy !== null ||
+                    Boolean(activeMountConflictPath && mountInspection?.exists !== false)
+                  }
+                  onClick={() => void applyPlugin()}
+                  type="button"
+                >
                   {appliedPluginReady ? <CheckCircle2 aria-hidden="true" size={17} /> : <Rocket aria-hidden="true" size={17} />}
                   {appliedPluginReady ? localize(t, "Applied", "적용 완료") : localize(t, "Apply now", "지금 적용")}
                 </button>
@@ -6035,6 +6233,118 @@ function PluginFactory({
               )}
             </section>
           </div>
+          {activeMountConflictPath || mountInspectionError || mountRemovalResult ? (
+            <section className={`mountConflictPanel ${mountRemovalResult?.removed || mountInspection?.exists === false ? "resolved" : ""}`}>
+              <div className="panelHeader">
+                <div>
+                  <span className="sectionEyebrow">{localize(t, "Conflict recovery", "충돌 복구")}</span>
+                  <h3>
+                    {mountRemovalResult?.removed || mountInspection?.exists === false
+                      ? localize(t, "Vault Mount is ready", "Vault Mount 정리 완료")
+                      : mountInspectionError
+                        ? localize(t, "Vault Mount inspection failed", "Vault Mount 확인 실패")
+                        : localize(t, "Existing Vault Mount collision", "기존 Vault Mount 충돌")}
+                  </h3>
+                  <p>
+                    {mountRemovalResult?.removed
+                      ? localize(t, `${mountRemovalResult.mountPath}/ was removed and verified.`, `${mountRemovalResult.mountPath}/ 삭제 후 재조회까지 완료했습니다.`)
+                      : mountInspection?.exists === false
+                        ? localize(t, `${mountInspection.mountPath}/ is no longer present.`, `${mountInspection.mountPath}/가 현재 Vault에 없습니다.`)
+                        : mountInspectionError
+                          ? localize(t, `Unable to inspect ${mountRecoveryPath}/. Try the Vault check again.`, `${mountRecoveryPath}/ 상태를 확인하지 못했습니다. Vault 확인을 다시 실행하세요.`)
+                          : localize(
+                              t,
+                              `${mountRecoveryPath}/ already exists. Inspect the current mount before choosing whether to remove it.`,
+                              `${mountRecoveryPath}/ 경로가 이미 존재합니다. 삭제 여부를 결정하기 전에 현재 Mount를 확인하세요.`
+                            )}
+                  </p>
+                </div>
+                {mountRemovalResult?.removed || mountInspection?.exists === false
+                  ? <CheckCircle2 aria-hidden="true" size={22} />
+                  : <AlertTriangle aria-hidden="true" size={22} />}
+              </div>
+
+              {mountRemovalResult?.removed ? (
+                <>
+                  <div className="mountRemovalSteps">
+                    {mountRemovalResult.steps.map((step) => (
+                      <div key={`${step.label}-${step.detail}`}>
+                        <CheckCircle2 aria-hidden="true" size={17} />
+                        <span><strong>{factoryResultStepLabel(step.label, t)}</strong><small>{factoryResultStepDetail(step.detail, t)}</small></span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="actions">
+                    <button className="primary" disabled={!preflightPassed || busy !== null} onClick={() => void applyPlugin()} type="button">
+                      <Rocket aria-hidden="true" size={16} /> {localize(t, "Apply again", "다시 적용")}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {!mountInspection ? (
+                    <div className="actions">
+                      <button disabled={mountActionBusy !== null || busy !== null} onClick={() => void inspectExistingFactoryMount()} type="button">
+                        {mountActionBusy === "inspect" ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Search aria-hidden="true" size={16} />}
+                        {localize(t, "Inspect existing Mount", "기존 Mount 확인")}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {mountInspection?.exists ? (
+                    <div className="mountInspectionBody">
+                      <div className="mountIdentityGrid">
+                        <div><span>{localize(t, "Path", "경로")}</span><strong>{mountInspection.mountPath}/</strong></div>
+                        <div><span>{localize(t, "Current type", "현재 타입")}</span><strong>{mountInspection.mountType ?? "-"}</strong></div>
+                        <div><span>{localize(t, "Plugin version", "Plugin 버전")}</span><strong>{mountInspection.pluginVersion ?? "-"}</strong></div>
+                        <div><span>Fingerprint</span><strong>{shortId(mountInspection.fingerprint ?? "")}</strong></div>
+                      </div>
+                      {mountInspection.description ? <p className="mountDescription">{mountInspection.description}</p> : null}
+                      <label className="mountRemovalConfirm">
+                        <span>
+                          {localize(
+                            t,
+                            `Type ${mountInspection.mountPath} to confirm removal`,
+                            `삭제하려면 ${mountInspection.mountPath} 입력`
+                          )}
+                        </span>
+                        <input
+                          autoComplete="off"
+                          onChange={(event) => setMountRemovalConfirmation(event.target.value)}
+                          placeholder={mountInspection.mountPath}
+                          spellCheck={false}
+                          value={mountRemovalConfirmation}
+                        />
+                        <small>{localize(t, "This disables only the Mount. The Plugin Catalog entry is retained.", "이 작업은 Mount만 비활성화하며 Plugin Catalog 항목은 유지합니다.")}</small>
+                      </label>
+                      <div className="actions mountConflictActions">
+                        <button disabled={mountActionBusy !== null || busy !== null} onClick={() => void inspectExistingFactoryMount()} type="button">
+                          <RefreshCw aria-hidden="true" size={16} /> {localize(t, "Inspect again", "다시 확인")}
+                        </button>
+                        <button
+                          className="dangerButton"
+                          disabled={!canApply || !mountConfirmationMatches || mountActionBusy !== null || busy !== null}
+                          onClick={() => void removeExistingFactoryMount()}
+                          type="button"
+                        >
+                          {mountActionBusy === "remove" ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Trash2 aria-hidden="true" size={16} />}
+                          {localize(t, "Remove existing Mount", "기존 Mount 삭제")}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {mountInspection && !mountInspection.exists ? (
+                    <div className="actions">
+                      <button className="primary" disabled={!preflightPassed || busy !== null} onClick={() => void applyPlugin()} type="button">
+                        <Rocket aria-hidden="true" size={16} /> {localize(t, "Apply again", "다시 적용")}
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
+          ) : null}
           {generated ? (
             <div className="dryRunPanel">
               <div className="resultBanner compactBanner">
@@ -7435,10 +7745,12 @@ function factoryResultStepLabel(label: string, t: Copy): string {
   const labels: Record<string, string> = {
     "Catalog registration": "Catalog 등록",
     "Disable mount": "Mount 비활성화",
+    "Disable existing mount": "기존 Mount 비활성화",
     "Enable mount": "Mount 활성화",
     "Remove catalog entry": "Catalog 항목 제거",
     "Smoke test": "Smoke Test",
-    "Verify mount list": "Mount 목록 확인"
+    "Verify mount list": "Mount 목록 확인",
+    "Verify mount removal": "Mount 삭제 확인"
   };
   return t === copy.ko ? labels[label] ?? label : label;
 }
@@ -7457,11 +7769,27 @@ function factoryResultStepDetail(detail: string, t: Copy): string {
   if (returned) return `${returned[1]} 응답 코드 ${returned[2]}`;
   const verified = detail.match(/^Verified via (.+)$/);
   if (verified) return `${verified[1]}에서 확인했습니다.`;
+  const mockVerifiedAbsent = detail.match(/^Mock verified (.+) is absent$/);
+  if (mockVerifiedAbsent) return `Mock 확인: ${mockVerifiedAbsent[1]}가 없습니다.`;
   if (detail === "Run against a real Vault dev server before production promotion") {
     return "운영 승격 전 실제 Vault Dev Server에서 실행합니다.";
   }
   if (detail === "Catalog entry retained") return "Catalog 항목을 유지했습니다.";
   return detail;
+}
+
+function normalizeFactoryMountPath(value: string): string {
+  return value.replace(/^\/+|\/+$/g, "");
+}
+
+function factoryMountConflictPath(job: VaultPluginFactoryJob): string | null {
+  for (const event of [...job.events].reverse()) {
+    if (event.label === "mount-removed" || event.label === "apply-complete" || event.label === "rollback") return null;
+    if (event.label !== "apply-failed") continue;
+    const match = /Vault mount ([^\s]+) already exists/i.exec(event.detail);
+    if (match?.[1]) return normalizeFactoryMountPath(match[1]);
+  }
+  return null;
 }
 
 function factoryRollbackSummary(generated: VaultPluginGenerateResult, t: Copy): string {

@@ -423,6 +423,36 @@ export interface VaultPluginApplyResult {
   detail: Record<string, unknown>;
 }
 
+export interface VaultPluginMountTarget {
+  pluginType: VaultPluginType;
+  mountPath: string;
+}
+
+export interface VaultPluginMountInspectionResult extends VaultPluginMountTarget {
+  mode: "mock" | "real";
+  exists: boolean;
+  fingerprint?: string;
+  mountType?: string;
+  description?: string;
+  pluginVersion?: string;
+  detail: Record<string, unknown>;
+}
+
+export interface VaultPluginMountRemovalRequest extends VaultPluginMountTarget {
+  expectedFingerprint: string;
+}
+
+export interface VaultPluginMountRemovalResult extends VaultPluginMountTarget {
+  mode: "mock" | "real";
+  removed: boolean;
+  steps: Array<{
+    label: string;
+    status: "success";
+    detail: string;
+  }>;
+  detail: Record<string, unknown>;
+}
+
 export interface VaultPluginRollbackRequest {
   jobId: string;
   pluginType: VaultPluginType;

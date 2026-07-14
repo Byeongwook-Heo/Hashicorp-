@@ -12,6 +12,7 @@ import {
   type VaultPluginAutoRepairResult,
   type VaultPluginFactoryJob,
   type VaultPluginFactoryJobEvent,
+  type VaultPluginMountTarget,
   type VaultPluginRequirementsInterview
 } from "@security-portal/shared";
 import { loadConfig } from "./config";
@@ -143,6 +144,11 @@ const pluginRollbackSchema = z.object({
   pluginName: z.string().min(1).max(80),
   mountPath: z.string().min(1).max(120),
   removeCatalog: z.boolean().default(false)
+});
+
+const pluginMountRemovalSchema = z.object({
+  confirmation: z.string().min(1).max(120),
+  expectedFingerprint: z.string().regex(/^[a-f0-9]{64}$/i)
 });
 
 const pluginChatSchema = z.object({
@@ -1283,6 +1289,101 @@ async function main(): Promise<void> {
     }
   });
 
+  app.get(
+    "/plugin-factory/jobs/:id/existing-mount",
+    requireUser(store, config.sessionCookieName),
+    async (req, res, next) => {
+      try {
+        const job = await requireFactoryJobAccess(store, requiredParam(req, "id"), req.user);
+        const target = factoryPluginMountTarget(job);
+        const result = await vault.inspectPluginMount(target);
+        res.json({ result });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  app.post(
+    "/plugin-factory/jobs/:id/existing-mount/remove",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["vault-admin"]),
+    async (req, res, next) => {
+      let removalJob: VaultPluginFactoryJob | undefined;
+      try {
+        const body = pluginMountRemovalSchema.parse(req.body);
+        const job = await requireFactoryJobAccess(store, requiredParam(req, "id"), req.user);
+        removalJob = job;
+        const target = factoryPluginMountTarget(job);
+        if (job.approval.status !== "approved") {
+          throw new Error("Factory job approval required before removing an existing Vault mount");
+        }
+        const fingerprint = await factoryArtifactFingerprint(job);
+        if (!job.approval.artifactFingerprint || fingerprint !== job.approval.artifactFingerprint) {
+          throw new Error("Factory artifact changed after approval; request approval again");
+        }
+        if (normalizeFactoryMount(body.confirmation) !== target.mountPath) {
+          throw new Error(`Type ${target.mountPath} exactly to confirm Vault mount removal`);
+        }
+
+        const result = await vault.removePluginMount({
+          ...target,
+          expectedFingerprint: body.expectedFingerprint
+        });
+        const latest = (await store.getFactoryJob(job.id)) ?? job;
+        const updated = await store.updateFactoryJob(job.id, {
+          status: "approved",
+          stage: "deploy",
+          progress: Math.max(80, latest.progress),
+          deployment: { ...latest.deployment, rollbackReady: false },
+          events: [
+            ...latest.events,
+            {
+              id: crypto.randomUUID(),
+              label: "mount-removed",
+              detail: `${result.mountPath} (${result.mode})`,
+              status: "success" as const,
+              createdAt: new Date().toISOString()
+            }
+          ].slice(-100)
+        });
+        await store.createAuditEvent({
+          actorId: req.user.id,
+          actorEmail: req.user.email,
+          action: "vault_plugin.mount_removed",
+          targetType: "vault_plugin_job",
+          targetId: job.id,
+          result: result.removed ? "success" : "failure",
+          metadata: redact({
+            mode: result.mode,
+            plugin_type: result.pluginType,
+            mount_path: result.mountPath,
+            steps: result.steps,
+            detail: result.detail
+          })
+        });
+        res.json({ result, job: updated });
+      } catch (error) {
+        if (removalJob) {
+          try {
+            await store.createAuditEvent({
+              actorId: req.user.id,
+              actorEmail: req.user.email,
+              action: "vault_plugin.mount_remove_failed",
+              targetType: "vault_plugin_job",
+              targetId: removalJob.id,
+              result: "failure",
+              metadata: redact({ error: error instanceof Error ? error.message : String(error) })
+            });
+          } catch (auditError) {
+            console.error("failed to audit Vault mount removal", redact({ message: auditError instanceof Error ? auditError.message : String(auditError) }));
+          }
+        }
+        next(error);
+      }
+    }
+  );
+
   app.post(
     "/plugin-factory/apply",
     requireUser(store, config.sessionCookieName),
@@ -1649,6 +1750,17 @@ function assertFactoryMountPrefix(mountPath: string, config: ReturnType<typeof l
   if (prefix && normalized !== prefix && !normalized.startsWith(`${prefix}/`)) {
     throw new Error(`Real Vault plugin mounts must stay under ${prefix}/`);
   }
+}
+
+function normalizeFactoryMount(mountPath: string): string {
+  return mountPath.replace(/^\/+|\/+$/g, "");
+}
+
+function factoryPluginMountTarget(job: VaultPluginFactoryJob): VaultPluginMountTarget {
+  const evidence = factoryArtifactEvidence(job);
+  const pluginType = z.enum(["auth", "secret", "database"]).parse(evidence.pluginType);
+  const mountPath = normalizeFactoryMount(z.string().min(1).max(120).parse(evidence.mountPath));
+  return { pluginType, mountPath };
 }
 
 function requireUser(store: PortalStore, cookieName: string) {
