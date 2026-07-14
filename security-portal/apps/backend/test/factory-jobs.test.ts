@@ -49,6 +49,38 @@ describe("Factory job persistence", () => {
     expect(updated.progress).toBe(80);
   });
 
+  it("keeps separate workspaces isolated when they generate the same plugin", async () => {
+    const store = new MemoryStore();
+    const owner = await store.getUserByEmail("developer@example.com");
+    const firstArtifact = "a".repeat(64);
+    const secondArtifact = "b".repeat(64);
+    const first = await store.createFactoryJob({
+      owner: owner!,
+      templateId: "github-secrets",
+      pluginName: "vault-plugin-secrets-github",
+      snapshot: { workspaceId: "workspace-first", artifactSha256: firstArtifact }
+    });
+    const second = await store.createFactoryJob({
+      owner: owner!,
+      templateId: "github-secrets",
+      pluginName: "vault-plugin-secrets-github",
+      snapshot: { workspaceId: "workspace-second", artifactSha256: "" }
+    });
+
+    await store.updateFactoryJob(second.id, {
+      snapshot: { workspaceId: "workspace-second", artifactSha256: secondArtifact }
+    });
+
+    expect((await store.getFactoryJob(first.id))?.snapshot).toEqual({
+      workspaceId: "workspace-first",
+      artifactSha256: firstArtifact
+    });
+    expect((await store.getFactoryJob(second.id))?.snapshot).toEqual({
+      workspaceId: "workspace-second",
+      artifactSha256: secondArtifact
+    });
+  });
+
   it("scopes job history by owner while allowing an all-jobs view", async () => {
     const store = new MemoryStore();
     const developer = await store.getUserByEmail("developer@example.com");

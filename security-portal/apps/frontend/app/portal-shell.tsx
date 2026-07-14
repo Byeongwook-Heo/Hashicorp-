@@ -3090,6 +3090,7 @@ type FactoryHistoryAction = {
   note: string;
 };
 type FactoryWorkspaceSnapshot = {
+  workspaceId?: string;
   activeTab?: FactoryTab;
   selectedId?: string;
   pluginName?: string;
@@ -3196,7 +3197,9 @@ function PluginFactory({
     buildMode: "static",
     requiredMountPrefix: ""
   });
-  const jobCreationRef = useRef<Promise<VaultPluginFactoryJob> | null>(null);
+  const factoryJobsRef = useRef<VaultPluginFactoryJob[]>([]);
+  const workspaceIdRef = useRef(createFactoryWorkspaceId());
+  const jobCreationRef = useRef<{ workspaceId: string; promise: Promise<VaultPluginFactoryJob> } | null>(null);
   const activeJobIdRef = useRef("");
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null);
   const factoryChatPanelRef = useRef<HTMLElement | null>(null);
@@ -3244,6 +3247,7 @@ function PluginFactory({
             ? { provider: assistantHealth.provider, model: assistantHealth.model, checked: true }
             : { provider: "rules", fallbackReason: "unavailable", checked: true }
         );
+        factoryJobsRef.current = jobsResponse.jobs;
         setFactoryJobs(jobsResponse.jobs);
         const first = response.templates[0];
         if (first) {
@@ -3614,12 +3618,14 @@ function PluginFactory({
 
   useEffect(() => {
     if (!workspaceReady || !currentUser || busy === "load" || !selectedId || !hasPersistableWorkspace) return;
+    const workspaceId = workspaceIdRef.current;
     const timer = window.setTimeout(() => {
-      void persistFactoryWorkspace();
+      void persistFactoryWorkspace(workspaceId);
     }, 700);
     return () => window.clearTimeout(timer);
   }, [
     workspaceReady,
+    activeJobId,
     activeFactoryTab,
     selectedId,
     pluginName,
@@ -3645,6 +3651,7 @@ function PluginFactory({
 
   function factoryWorkspaceSnapshot(): FactoryWorkspaceSnapshot {
     return {
+      workspaceId: workspaceIdRef.current,
       activeTab: activeFactoryTab,
       selectedId,
       pluginName,
@@ -3703,30 +3710,46 @@ function PluginFactory({
   }
 
   function upsertFactoryJob(job: VaultPluginFactoryJob) {
-    setFactoryJobs((jobs) => [job, ...jobs.filter((item) => item.id !== job.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+    const nextJobs = [job, ...factoryJobsRef.current.filter((item) => item.id !== job.id)].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    factoryJobsRef.current = nextJobs;
+    setFactoryJobs(nextJobs);
   }
 
-  async function ensureFactoryJob(): Promise<VaultPluginFactoryJob> {
-    if (currentJob && currentUser && currentJob.ownerId === currentUser.id) return currentJob;
-    if (jobCreationRef.current) return jobCreationRef.current;
+  function activeFactoryJob(): VaultPluginFactoryJob | undefined {
+    return factoryJobsRef.current.find((job) => job.id === activeJobIdRef.current);
+  }
+
+  function isCurrentFactoryWorkspace(workspaceId: string, jobId?: string): boolean {
+    return workspaceIdRef.current === workspaceId && (!jobId || activeJobIdRef.current === jobId);
+  }
+
+  async function ensureFactoryJob(workspaceId = workspaceIdRef.current): Promise<VaultPluginFactoryJob> {
+    if (workspaceIdRef.current !== workspaceId) throw new Error("Factory workspace changed before the job was ready");
+    const activeJob = activeFactoryJob();
+    if (activeJob && currentUser && activeJob.ownerId === currentUser.id) return activeJob;
+    if (jobCreationRef.current?.workspaceId === workspaceId) return jobCreationRef.current.promise;
+    const snapshot = { ...factoryWorkspaceSnapshot(), workspaceId };
     const creation = api<{ job: VaultPluginFactoryJob }>("/plugin-factory/jobs", {
       method: "POST",
       body: JSON.stringify({
         templateId: selectedTemplate?.id,
         pluginName: pluginName || selectedTemplate?.name || "vault-plugin-draft",
-        snapshot: factoryWorkspaceSnapshot()
+        snapshot
       })
     }).then((response) => {
-      setActiveJobId(response.job.id);
-      activeJobIdRef.current = response.job.id;
       upsertFactoryJob(response.job);
+      if (workspaceIdRef.current === workspaceId) {
+        setActiveJobId(response.job.id);
+        activeJobIdRef.current = response.job.id;
+      }
       return response.job;
     });
-    jobCreationRef.current = creation;
+    const pendingCreation = { workspaceId, promise: creation };
+    jobCreationRef.current = pendingCreation;
     try {
       return await creation;
     } finally {
-      jobCreationRef.current = null;
+      if (jobCreationRef.current === pendingCreation) jobCreationRef.current = null;
     }
   }
 
@@ -3749,25 +3772,29 @@ function PluginFactory({
     return response.job;
   }
 
-  async function persistFactoryWorkspace() {
+  async function persistFactoryWorkspace(workspaceId = workspaceIdRef.current) {
     if (!workspaceReady || !selectedTemplate || !canAuthorJobs) return;
-    if (currentJob && currentJob.ownerId !== currentUser?.id) return;
+    if (workspaceIdRef.current !== workspaceId) return;
+    const activeJob = activeFactoryJob();
+    if (activeJob && activeJob.ownerId !== currentUser?.id) return;
     setWorkspaceSaving(true);
     try {
-      const snapshot = factoryWorkspaceSnapshot() as unknown as Record<string, unknown>;
-      if (currentJob) {
-        const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${currentJob.id}`, {
+      const snapshot = { ...factoryWorkspaceSnapshot(), workspaceId } as unknown as Record<string, unknown>;
+      if (activeJob) {
+        const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${activeJob.id}`, {
           method: "PATCH",
           body: JSON.stringify({ templateId: selectedTemplate.id, pluginName: pluginName || selectedTemplate.name, snapshot })
         });
         upsertFactoryJob(response.job);
       } else {
-        await ensureFactoryJob();
+        await ensureFactoryJob(workspaceId);
       }
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : localize(t, "Unable to save Factory workspace.", "Factory 작업을 저장하지 못했습니다."));
+      if (workspaceIdRef.current === workspaceId) {
+        setStatus(err instanceof Error ? err.message : localize(t, "Unable to save Factory workspace.", "Factory 작업을 저장하지 못했습니다."));
+      }
     } finally {
-      setWorkspaceSaving(false);
+      if (workspaceIdRef.current === workspaceId) setWorkspaceSaving(false);
     }
   }
 
@@ -3812,8 +3839,9 @@ function PluginFactory({
 
   async function refreshFactoryJobs() {
     const response = await api<{ jobs: VaultPluginFactoryJob[] }>("/plugin-factory/jobs");
+    factoryJobsRef.current = response.jobs;
     setFactoryJobs(response.jobs);
-    const updated = response.jobs.find((job) => job.id === activeJobId);
+    const updated = response.jobs.find((job) => job.id === activeJobIdRef.current);
     if (updated) upsertFactoryJob(updated);
     return response.jobs;
   }
@@ -3900,9 +3928,12 @@ function PluginFactory({
     try {
       await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${historyActionJob.id}`, { method: "DELETE" });
       const remainingJobs = factoryJobs.filter((job) => job.id !== historyActionJob.id);
+      factoryJobsRef.current = remainingJobs;
       setFactoryJobs(remainingJobs);
       if (activeJobId === historyActionJob.id) {
         const nextJob = remainingJobs[0];
+        workspaceIdRef.current = (nextJob?.snapshot as FactoryWorkspaceSnapshot | undefined)?.workspaceId ?? nextJob?.id ?? createFactoryWorkspaceId();
+        setWorkspaceSaving(false);
         setActiveJobId(nextJob?.id ?? "");
         activeJobIdRef.current = nextJob?.id ?? "";
         if (nextJob) hydrateFactoryWorkspace(nextJob.snapshot as FactoryWorkspaceSnapshot, templates);
@@ -3920,10 +3951,11 @@ function PluginFactory({
   async function runFactoryJobAction(
     action: "request-approval" | "approve" | "reject" | "schedule" | "canary" | "full" | "retry" | "rollback"
   ) {
+    const selectedJob = activeFactoryJob();
     const canUseCurrentJob = Boolean(
-      currentJob && currentUser && (currentJob.ownerId === currentUser.id || canReviewJobs)
+      selectedJob && currentUser && (selectedJob.ownerId === currentUser.id || canReviewJobs)
     );
-    const job = canUseCurrentJob ? currentJob : await ensureFactoryJob();
+    const job = canUseCurrentJob && selectedJob ? selectedJob : await ensureFactoryJob();
     if (!job) return;
     setStatus(null);
     try {
@@ -3974,10 +4006,11 @@ function PluginFactory({
   }
 
   async function updateDeploymentEnvironment(environment: "dev" | "staging" | "prod") {
+    const selectedJob = activeFactoryJob();
     const canUseCurrentJob = Boolean(
-      currentJob && currentUser && (currentJob.ownerId === currentUser.id || canReviewJobs)
+      selectedJob && currentUser && (selectedJob.ownerId === currentUser.id || canReviewJobs)
     );
-    const job = canUseCurrentJob && currentJob ? currentJob : await ensureFactoryJob();
+    const job = canUseCurrentJob && selectedJob ? selectedJob : await ensureFactoryJob();
     await patchFactoryJobById(job.id, {
       deployment: { ...job.deployment, environment }
     });
@@ -4015,6 +4048,8 @@ function PluginFactory({
   }
 
   function loadFactoryJob(job: VaultPluginFactoryJob) {
+    workspaceIdRef.current = (job.snapshot as FactoryWorkspaceSnapshot).workspaceId ?? job.id;
+    setWorkspaceSaving(false);
     setActiveJobId(job.id);
     activeJobIdRef.current = job.id;
     hydrateFactoryWorkspace(job.snapshot as FactoryWorkspaceSnapshot, templates);
@@ -4034,6 +4069,8 @@ function PluginFactory({
   }
 
   function startNewFactoryConversation() {
+    workspaceIdRef.current = createFactoryWorkspaceId();
+    setWorkspaceSaving(false);
     const initialTemplate = templates[0];
     if (initialTemplate) chooseTemplate(initialTemplate);
     setActiveJobId("");
@@ -4042,6 +4079,8 @@ function PluginFactory({
     setActiveRequirementStep("targetSystem");
     setAutoRepair(null);
     setFactoryJob(null);
+    setPluginHistory([]);
+    setRollbackPreview(null);
     setChatInput("");
     setChatMessages([{ id: `welcome-${Date.now()}`, role: "assistant", content: welcomeMessage }]);
     setActiveChatPrompt(null);
@@ -4120,11 +4159,13 @@ function PluginFactory({
     requirements: VaultPluginRequirements,
     files = target.files
   ): Promise<VaultPluginGenerateResult | null> {
+    const workspaceId = workspaceIdRef.current;
     setBusy("repair");
     setStatus(null);
     startFactoryJob("generate", localize(t, "Building and repairing in isolation", "격리 환경에서 빌드 및 자동 수정 중"));
     try {
-      const job = await ensureFactoryJob();
+      const job = await ensureFactoryJob(workspaceId);
+      if (!isCurrentFactoryWorkspace(workspaceId, job.id)) return null;
       appendFactoryJobLine(`$ factory build --isolated --max-attempts=3`);
       const response = await api<{
         run: VaultPluginAutoRepairResult;
@@ -4138,12 +4179,15 @@ function PluginFactory({
           files
         })
       });
+      if (!isCurrentFactoryWorkspace(workspaceId, job.id)) return null;
       let run = response.run;
       let seenAttempts = 0;
       setAutoRepair(run);
       for (let poll = 0; run.status === "running" && poll < 300; poll += 1) {
         await waitForFactoryMotion(2000);
+        if (!isCurrentFactoryWorkspace(workspaceId, job.id)) return null;
         const polled = await api<{ run: VaultPluginAutoRepairResult }>(`/plugin-factory/rebuild/${run.id}`);
+        if (!isCurrentFactoryWorkspace(workspaceId, job.id)) return null;
         run = polled.run;
         setAutoRepair(run);
         if (run.attempts.length > seenAttempts) {
@@ -4198,11 +4242,12 @@ function PluginFactory({
       );
       return nextGenerated;
     } catch (err) {
+      if (workspaceIdRef.current !== workspaceId) return null;
       finishFactoryJob("failed", `✕ ${err instanceof Error ? err.message : "rebuild failed"}`);
       setStatus(err instanceof Error ? err.message : localize(t, "Unable to rebuild edited files.", "수정 파일을 재생성하지 못했습니다."));
       return null;
     } finally {
-      setBusy(null);
+      if (workspaceIdRef.current === workspaceId) setBusy(null);
     }
   }
 
@@ -4294,6 +4339,7 @@ function PluginFactory({
       );
       return;
     }
+    const workspaceId = workspaceIdRef.current;
     setBusy("chat");
     setStatus(null);
     try {
@@ -4305,6 +4351,7 @@ function PluginFactory({
           requestedApply
         })
       });
+      if (workspaceIdRef.current !== workspaceId) return;
       chooseTemplate(template);
       setRequirementsInterview(response.interview);
       setActiveRequirementStep(response.interview.missingFields[0] ?? "review");
@@ -4314,11 +4361,12 @@ function PluginFactory({
       addChatMessage("assistant", response.interview.reply);
       setStatus(localize(t, "Requirements interview started.", "요구사항 인터뷰를 시작했습니다."));
     } catch (error) {
+      if (workspaceIdRef.current !== workspaceId) return;
       const detail = error instanceof Error ? error.message : localize(t, "Unable to start the requirements interview.", "요구사항 인터뷰를 시작하지 못했습니다.");
       setStatus(detail);
       addChatMessage("assistant", detail, "warning");
     } finally {
-      setBusy(null);
+      if (workspaceIdRef.current === workspaceId) setBusy(null);
     }
   }
 
@@ -4372,6 +4420,7 @@ function PluginFactory({
       await confirmRequirementsAndGenerate();
       return;
     }
+    const workspaceId = workspaceIdRef.current;
     setBusy("chat");
     try {
       const response = await api<{ interview: VaultPluginRequirementsInterview }>("/plugin-factory/requirements/answer", {
@@ -4382,6 +4431,7 @@ function PluginFactory({
           message: prompt
         })
       });
+      if (workspaceIdRef.current !== workspaceId) return;
       setRequirementsInterview(response.interview);
       setActiveRequirementStep(response.interview.missingFields[0] ?? "review");
       setMountPath(response.interview.spec.mountPath);
@@ -4392,13 +4442,14 @@ function PluginFactory({
       });
       addChatMessage("assistant", response.interview.reply);
     } catch (error) {
+      if (workspaceIdRef.current !== workspaceId) return;
       addChatMessage(
         "assistant",
         error instanceof Error ? error.message : localize(t, "I could not update the specification.", "명세를 업데이트하지 못했습니다."),
         "warning"
       );
     } finally {
-      setBusy(null);
+      if (workspaceIdRef.current === workspaceId) setBusy(null);
     }
   }
 
@@ -4406,18 +4457,19 @@ function PluginFactory({
     if (!requirementsInterview || !requirementsInterview.readyToConfirm) return;
     const template = templates.find((item) => item.id === requirementsInterview.templateId);
     if (!template) return;
+    const workspaceId = workspaceIdRef.current;
     setBusy("chat");
     try {
       const response = await api<{ interview: VaultPluginRequirementsInterview }>("/plugin-factory/requirements/confirm", {
         method: "POST",
         body: JSON.stringify({ locale: t === copy.ko ? "ko" : "en", interview: requirementsInterview })
       });
+      if (workspaceIdRef.current !== workspaceId) return;
       const confirmed = response.interview;
       setRequirementsInterview(confirmed);
       setActiveRequirementStep("review");
       setMountPath(confirmed.spec.mountPath);
       addChatMessage("assistant", confirmed.reply, "success");
-      setBusy(null);
       const generatedResult = await generateTemplateScaffold(
         template,
         {
@@ -4431,6 +4483,7 @@ function PluginFactory({
         },
         localize(t, "Confirmed specification generated the plugin source.", "확정된 명세로 플러그인 소스를 생성했습니다.")
       );
+      if (workspaceIdRef.current !== workspaceId) return;
       if (!generatedResult) return;
       addChatMessage("assistant", factoryGeneratedMessage(generatedResult, confirmed.requestedApply, t), "success");
       addChatMessage(
@@ -4438,6 +4491,7 @@ function PluginFactory({
         localize(t, "I will now compile, test, and safely repair the source in the isolated runner.", "이제 격리된 환경에서 컴파일과 테스트를 실행하고 필요한 경우 안전하게 코드를 수정하겠습니다.")
       );
       const builtResult = await runAutoRepairLoop(generatedResult, confirmed.spec);
+      if (workspaceIdRef.current !== workspaceId) return;
       if (!builtResult || builtResult.buildTest.status !== "pass") return;
       if (!confirmed.requestedApply) return;
       if (!canApply) {
@@ -4451,11 +4505,12 @@ function PluginFactory({
         applyAttempt.status === "applied" ? "success" : "warning"
       );
     } catch (error) {
+      if (workspaceIdRef.current !== workspaceId) return;
       const detail = error instanceof Error ? error.message : localize(t, "Unable to confirm the specification.", "명세를 확정하지 못했습니다.");
       setStatus(detail);
       addChatMessage("assistant", detail, "warning");
     } finally {
-      setBusy(null);
+      if (workspaceIdRef.current === workspaceId) setBusy(null);
     }
   }
 
@@ -4472,6 +4527,7 @@ function PluginFactory({
     },
     successMessage = localize(t, "Plugin scaffold generated.", "플러그인 스캐폴드가 생성되었습니다.")
   ): Promise<VaultPluginGenerateResult | null> {
+    const workspaceId = workspaceIdRef.current;
     startFactoryJob("generate", localize(t, `Generating ${input.pluginName}`, `${input.pluginName} 생성 중`));
     setBusy("generate");
     setStatus(null);
@@ -4479,7 +4535,8 @@ function PluginFactory({
     setRollbackResult(null);
     let job: VaultPluginFactoryJob | null = null;
     try {
-      const activeJob = await ensureFactoryJob();
+      const activeJob = await ensureFactoryJob(workspaceId);
+      if (!isCurrentFactoryWorkspace(workspaceId, activeJob.id)) return null;
       job = activeJob;
       activeJobIdRef.current = activeJob.id;
       const generatingJob = await patchFactoryJobById(activeJob.id, {
@@ -4519,6 +4576,7 @@ function PluginFactory({
           requirements: input.requirements
         })
       });
+      if (!isCurrentFactoryWorkspace(workspaceId, activeJob.id)) return null;
       setGenerated(response.generated);
       setDraftFiles(response.generated.files);
       setSelectedId(template.id);
@@ -4584,6 +4642,7 @@ function PluginFactory({
       });
       return response.generated;
     } catch (err) {
+      if (workspaceIdRef.current !== workspaceId) return null;
       setStatus(err instanceof Error ? err.message : "Unable to generate plugin scaffold");
       finishFactoryJob("failed", `✕ ${err instanceof Error ? err.message : "generation failed"}`);
       if (job) {
@@ -4591,7 +4650,7 @@ function PluginFactory({
       }
       return null;
     } finally {
-      setBusy(null);
+      if (workspaceIdRef.current === workspaceId) setBusy(null);
     }
   }
 
@@ -4604,11 +4663,12 @@ function PluginFactory({
     const effectiveSha256 =
       target.buildArtifact?.sha256 ??
       (generated?.id === target.id ? artifactSha256 : "");
+    const selectedJob = activeFactoryJob();
     const canUseCurrentJob = Boolean(
-      currentJob && currentUser && (currentJob.ownerId === currentUser.id || canReviewJobs)
+      selectedJob && currentUser && (selectedJob.ownerId === currentUser.id || canReviewJobs)
     );
-    const candidateJob = canUseCurrentJob && currentJob ? currentJob : await ensureFactoryJob();
-    const targetJobId = activeJobIdRef.current || candidateJob.id;
+    const candidateJob = canUseCurrentJob && selectedJob ? selectedJob : await ensureFactoryJob();
+    const targetJobId = candidateJob.id;
     let job: VaultPluginFactoryJob;
     try {
       const latestJobs = await refreshFactoryJobs();
@@ -4736,6 +4796,7 @@ function PluginFactory({
       addChatMessage("assistant", localize(t, "A factory job is already running.", "이미 Factory 작업이 실행 중입니다."), "warning");
       return;
     }
+    const workspaceId = workspaceIdRef.current;
     setBusy("chat");
     try {
       const response = await api<{ result: FactoryAssistantResult }>("/plugin-factory/chat", {
@@ -4750,6 +4811,7 @@ function PluginFactory({
           generatedPluginName: generated?.pluginName
         })
       });
+      if (workspaceIdRef.current !== workspaceId) return;
       setAssistantRuntime({
         provider: response.result.provider,
         model: response.result.model,
@@ -4759,6 +4821,7 @@ function PluginFactory({
       setBusy(null);
       await executeFactoryAssistantResult(response.result);
     } catch {
+      if (workspaceIdRef.current !== workspaceId) return;
       setBusy(null);
       setAssistantRuntime({ provider: "rules", fallbackReason: "unavailable", checked: true });
       await runFactoryChatFallback(prompt);
@@ -6072,6 +6135,7 @@ function PluginFactory({
                     <button
                       aria-label={localize(t, `Open history ${historyTitle}`, `${historyTitle} 이력 열기`)}
                       className="factoryJobSelect"
+                      disabled={busy !== null}
                       onClick={() => loadFactoryJob(job)}
                       type="button"
                     >
@@ -8139,6 +8203,11 @@ function formatTaskSla(value: string, t: Copy): string {
   return remainingMs < 0
     ? localize(t, `${amount} overdue`, `${amount} 지연`)
     : localize(t, `${amount} left`, `${amount} 남음`);
+}
+
+function createFactoryWorkspaceId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  return `factory-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 function shortId(value: string): string {
