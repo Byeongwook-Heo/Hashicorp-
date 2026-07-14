@@ -7664,6 +7664,12 @@ function reconciliationAnchor(id: string): string {
   return `vault-reconciliation-${id.replace(/[^a-z0-9_-]/gi, "-")}`;
 }
 
+type ManagedVaultMountTarget = {
+  pluginName: string;
+  pluginType: VaultPluginType;
+  mountPath: string;
+};
+
 function Admin({
   t,
   systems,
@@ -7691,6 +7697,84 @@ function Admin({
   const catalogMismatchCount =
     (inventory?.summary.registeredOnlyCustomPlugins ?? 0) +
     (inventory?.summary.unregisteredMountedPlugins ?? 0);
+  const [unmountTarget, setUnmountTarget] = useState<ManagedVaultMountTarget | null>(null);
+  const [unmountInspection, setUnmountInspection] = useState<VaultPluginMountInspectionResult | null>(null);
+  const [unmountResult, setUnmountResult] = useState<VaultPluginMountRemovalResult | null>(null);
+  const [unmountConfirmation, setUnmountConfirmation] = useState("");
+  const [unmountOperation, setUnmountOperation] = useState<"inspect" | "remove" | null>(null);
+  const [unmountError, setUnmountError] = useState<string | null>(null);
+  const unmountConfirmationMatches = Boolean(
+    unmountTarget && normalizeFactoryMountPath(unmountConfirmation) === unmountTarget.mountPath
+  );
+
+  function closeUnmountDialog() {
+    if (unmountOperation) return;
+    setUnmountTarget(null);
+    setUnmountInspection(null);
+    setUnmountResult(null);
+    setUnmountConfirmation("");
+    setUnmountError(null);
+  }
+
+  async function inspectManagedMount(target: ManagedVaultMountTarget) {
+    setUnmountOperation("inspect");
+    setUnmountInspection(null);
+    setUnmountResult(null);
+    setUnmountError(null);
+    try {
+      const response = await api<{ result: VaultPluginMountInspectionResult }>("/vault/plugin-mounts/inspect", {
+        method: "POST",
+        body: JSON.stringify(target)
+      });
+      setUnmountInspection(response.result);
+      if (!response.result.exists) onRefresh();
+    } catch (error) {
+      setUnmountError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUnmountOperation(null);
+    }
+  }
+
+  function openUnmountDialog(target: ManagedVaultMountTarget) {
+    const normalizedTarget = { ...target, mountPath: normalizeFactoryMountPath(target.mountPath) };
+    setUnmountTarget(normalizedTarget);
+    setUnmountConfirmation("");
+    void inspectManagedMount(normalizedTarget);
+  }
+
+  async function removeManagedMount() {
+    if (!unmountTarget || !unmountInspection?.fingerprint || !unmountConfirmationMatches) return;
+    setUnmountOperation("remove");
+    setUnmountError(null);
+    try {
+      const response = await api<{ result: VaultPluginMountRemovalResult }>("/vault/plugin-mounts/remove", {
+        method: "POST",
+        body: JSON.stringify({
+          ...unmountTarget,
+          confirmation: unmountConfirmation,
+          expectedFingerprint: unmountInspection.fingerprint
+        })
+      });
+      setUnmountResult(response.result);
+      setUnmountInspection(null);
+      setUnmountConfirmation("");
+      notifyPortal(
+        localize(
+          t,
+          `${response.result.mountPath}/ was unmounted and verified.`,
+          `${response.result.mountPath}/ Mount 해제와 재확인을 완료했습니다.`
+        ),
+        "success"
+      );
+      onRefresh();
+    } catch (error) {
+      setUnmountInspection(null);
+      setUnmountError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUnmountOperation(null);
+    }
+  }
+
   return (
     <div className="stack">
       <VaultLiveSync
@@ -7756,15 +7840,34 @@ function Admin({
           localize(t, "Category", "구분"),
           localize(t, "Type", "Type"),
           localize(t, "Source", "소스"),
-          t.table.version
+          t.table.version,
+          localize(t, "Action", "작업")
         ]}
-        rows={(inventory?.mounts ?? []).map((mount) => [
-          `${mount.path}/`,
-          mount.kind,
-          mount.type,
-          mount.source,
-          mount.pluginVersion ?? "-"
-        ])}
+        rows={(inventory?.mounts ?? []).map((mount) => {
+          const target: ManagedVaultMountTarget = {
+            pluginName: mount.type,
+            pluginType: mount.catalogType ?? (mount.kind === "auth" ? "auth" : "secret"),
+            mountPath: normalizeFactoryMountPath(mount.path)
+          };
+          return [
+            `${mount.path}/`,
+            mount.kind,
+            mount.type,
+            mount.source,
+            mount.pluginVersion ?? "-",
+            mount.source === "external" ? (
+              <button
+                className="tableMountAction"
+                onClick={() => openUnmountDialog(target)}
+                title={localize(t, `Unmount ${mount.path}/`, `${mount.path}/ Mount 해제`)}
+                type="button"
+              >
+                <CircleStop aria-hidden="true" size={15} />
+                {localize(t, "Unmount", "Mount 해제")}
+              </button>
+            ) : <span className="tableActionUnavailable">-</span>
+          ];
+        })}
         emptyLabel={localize(t, "No live Vault mount data.", "실제 Vault Mount 데이터가 없습니다.")}
       />
       <section className="tablePanel">
@@ -7818,6 +7921,146 @@ function Admin({
         ])}
         emptyLabel={t.table.noData}
       />
+      {unmountTarget ? (
+        <PortalOverlay onDismiss={closeUnmountDialog}>
+          <section
+            aria-busy={unmountOperation !== null}
+            aria-label={localize(t, "Unmount Vault plugin", "Vault Plugin Mount 해제")}
+            aria-modal="true"
+            className="impactDialog vaultUnmountDialog"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <span>{localize(t, "Destructive Vault operation", "Vault 변경 작업")}</span>
+                <h2>{localize(t, "Unmount custom plugin", "Custom Plugin Mount 해제")}</h2>
+              </div>
+              <button
+                aria-label={localize(t, "Close unmount dialog", "Mount 해제 창 닫기")}
+                className="iconButton"
+                disabled={unmountOperation !== null}
+                onClick={closeUnmountDialog}
+                title={localize(t, "Close", "닫기")}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </header>
+
+            <div className="vaultUnmountDialogBody">
+              <div className="vaultUnmountWarning">
+                <AlertTriangle aria-hidden="true" size={19} />
+                <div>
+                  <strong>{localize(t, "Review the live Mount before continuing", "실제 Mount 정보를 확인한 뒤 진행하세요")}</strong>
+                  <p>
+                    {localize(
+                      t,
+                      "Unmounting stops access through this path and can affect leases or data managed by the engine. The Plugin Catalog entry is retained.",
+                      "Mount를 해제하면 이 경로의 접근이 중단되고 엔진이 관리하는 Lease 또는 데이터에 영향을 줄 수 있습니다. Plugin Catalog 등록은 유지됩니다."
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              {unmountOperation === "inspect" && !unmountInspection ? (
+                <div className="vaultUnmountLoading" role="status">
+                  <LoaderCircle aria-hidden="true" className="spinning" size={19} />
+                  {localize(t, "Inspecting the live Vault Mount", "실제 Vault Mount를 확인하는 중")}
+                </div>
+              ) : null}
+
+              {unmountResult ? (
+                <div className="vaultUnmountSuccess" role="status">
+                  <div>
+                    <CheckCircle2 aria-hidden="true" size={20} />
+                    <span>
+                      <strong>{localize(t, "Mount unmounted", "Mount 해제 완료")}</strong>
+                      <small>{unmountResult.mountPath}/</small>
+                    </span>
+                  </div>
+                  <div className="mountRemovalSteps">
+                    {unmountResult.steps.map((step) => (
+                      <div key={`${step.label}-${step.detail}`}>
+                        <CheckCircle2 aria-hidden="true" size={17} />
+                        <span>
+                          <strong>{factoryResultStepLabel(step.label, t)}</strong>
+                          <small>{factoryResultStepDetail(step.detail, t)}</small>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {unmountInspection?.exists ? (
+                <div className="mountInspectionBody">
+                  <div className="mountIdentityGrid vaultUnmountIdentity">
+                    <div><span>Plugin</span><strong title={unmountTarget.pluginName}>{unmountTarget.pluginName}</strong></div>
+                    <div><span>{localize(t, "Mount path", "Mount 경로")}</span><strong title={`${unmountTarget.mountPath}/`}>{unmountTarget.mountPath}/</strong></div>
+                    <div><span>{localize(t, "Plugin type", "Plugin 타입")}</span><strong>{unmountTarget.pluginType}</strong></div>
+                    <div><span>{localize(t, "Version", "버전")}</span><strong>{unmountInspection.pluginVersion ?? "-"}</strong></div>
+                    <div><span>Fingerprint</span><strong title={unmountInspection.fingerprint}>{shortId(unmountInspection.fingerprint ?? "")}</strong></div>
+                  </div>
+                  {unmountInspection.description ? <p className="mountDescription">{unmountInspection.description}</p> : null}
+                  <label className="mountRemovalConfirm vaultUnmountConfirmation">
+                    <span>
+                      {localize(
+                        t,
+                        `Type ${unmountTarget.mountPath} to confirm`,
+                        `확인하려면 ${unmountTarget.mountPath} 입력`
+                      )}
+                    </span>
+                    <input
+                      autoComplete="off"
+                      disabled={unmountOperation !== null}
+                      onChange={(event) => setUnmountConfirmation(event.target.value)}
+                      placeholder={unmountTarget.mountPath}
+                      spellCheck={false}
+                      value={unmountConfirmation}
+                    />
+                    <small>{localize(t, "The current Fingerprint is checked again immediately before removal.", "실행 직전에 현재 Fingerprint를 다시 비교합니다.")}</small>
+                  </label>
+                </div>
+              ) : null}
+
+              {unmountInspection && !unmountInspection.exists ? (
+                <div className="noticePanel compact">
+                  {localize(t, "This Mount no longer exists. Refreshing the live inventory.", "이 Mount는 더 이상 존재하지 않습니다. 실제 인벤토리를 새로고침합니다.")}
+                </div>
+              ) : null}
+
+              {unmountError ? <div className="error" role="alert">{unmountError}</div> : null}
+            </div>
+
+            <footer className="actions vaultUnmountActions">
+              <button disabled={unmountOperation !== null} onClick={closeUnmountDialog} type="button">
+                {unmountResult ? localize(t, "Close", "닫기") : localize(t, "Cancel", "취소")}
+              </button>
+              {!unmountResult ? (
+                <button
+                  disabled={unmountOperation !== null}
+                  onClick={() => void inspectManagedMount(unmountTarget)}
+                  type="button"
+                >
+                  {unmountOperation === "inspect" ? <LoaderCircle aria-hidden="true" className="spinning" size={16} /> : <RefreshCw aria-hidden="true" size={16} />}
+                  {localize(t, "Inspect again", "다시 확인")}
+                </button>
+              ) : null}
+              {unmountInspection?.exists && !unmountResult ? (
+                <button
+                  className="dangerButton"
+                  disabled={!unmountConfirmationMatches || unmountOperation !== null}
+                  onClick={() => void removeManagedMount()}
+                  type="button"
+                >
+                  {unmountOperation === "remove" ? <LoaderCircle aria-hidden="true" className="spinning" size={16} /> : <CircleStop aria-hidden="true" size={16} />}
+                  {localize(t, "Unmount", "Mount 해제")}
+                </button>
+              ) : null}
+            </footer>
+          </section>
+        </PortalOverlay>
+      ) : null}
     </div>
   );
 }
@@ -7887,7 +8130,7 @@ function Table({
 }: {
   title: string;
   columns: string[];
-  rows: string[][];
+  rows: ReactNode[][];
   emptyLabel?: string;
   emptyAction?: { href: string; label: string };
 }) {

@@ -35,6 +35,7 @@ import {
 import { FactoryRequirementsInterviewer } from "./plugin-factory/factory-requirements";
 import { VaultPluginDistributor } from "./plugin-factory/plugin-distributor";
 import { redact } from "./utils/redact";
+import { normalizeManagedMountPath, resolveManagedPluginMount } from "./vault/plugin-mount-guard";
 import { createVaultClient } from "./vault/vault-client";
 import { createVaultUiProxy } from "./vault/vault-ui-proxy";
 import { WorkflowService } from "./workflow/workflow-service";
@@ -152,6 +153,17 @@ const pluginRollbackSchema = z.object({
 });
 
 const pluginMountRemovalSchema = z.object({
+  confirmation: z.string().min(1).max(120),
+  expectedFingerprint: z.string().regex(/^[a-f0-9]{64}$/i)
+});
+
+const managedPluginMountTargetSchema = z.object({
+  pluginName: z.string().trim().min(1).max(120),
+  pluginType: z.enum(["auth", "secret", "database"]),
+  mountPath: z.string().trim().min(1).max(120)
+});
+
+const managedPluginMountRemovalSchema = managedPluginMountTargetSchema.extend({
   confirmation: z.string().min(1).max(120),
   expectedFingerprint: z.string().regex(/^[a-f0-9]{64}$/i)
 });
@@ -447,6 +459,91 @@ async function main(): Promise<void> {
       next(error);
     }
   });
+
+  app.post(
+    "/vault/plugin-mounts/inspect",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["vault-admin"]),
+    async (req, res, next) => {
+      try {
+        const body = managedPluginMountTargetSchema.parse(req.body);
+        const target = resolveManagedPluginMount(await vault.inventory(true), body);
+        const result = await vault.inspectPluginMount(target);
+        if (!result.exists || !result.fingerprint) {
+          throw new Error(`Vault mount ${target.mountPath} was not found after inventory refresh`);
+        }
+        res.set("Cache-Control", "no-store");
+        res.json({ result });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  app.post(
+    "/vault/plugin-mounts/remove",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["vault-admin"]),
+    async (req, res, next) => {
+      let attemptedTarget: z.infer<typeof managedPluginMountTargetSchema> | undefined;
+      try {
+        const body = managedPluginMountRemovalSchema.parse(req.body);
+        attemptedTarget = body;
+        const target = resolveManagedPluginMount(await vault.inventory(true), body);
+        if (normalizeManagedMountPath(body.confirmation) !== target.mountPath) {
+          throw new Error(`Type ${target.mountPath} exactly to confirm Vault mount removal`);
+        }
+
+        const result = await vault.removePluginMount({
+          pluginType: target.pluginType,
+          mountPath: target.mountPath,
+          expectedFingerprint: body.expectedFingerprint
+        });
+        await store.createAuditEvent({
+          actorId: req.user.id,
+          actorEmail: req.user.email,
+          action: "vault_plugin.mount_removed",
+          targetType: "vault_plugin_mount",
+          targetId: target.mountPath,
+          result: result.removed ? "success" : "failure",
+          metadata: redact({
+            plugin_name: target.pluginName,
+            plugin_type: target.pluginType,
+            mount_path: target.mountPath,
+            catalog_retained: true,
+            steps: result.steps,
+            detail: result.detail
+          })
+        });
+        res.set("Cache-Control", "no-store");
+        res.json({ result });
+      } catch (error) {
+        if (attemptedTarget) {
+          try {
+            await store.createAuditEvent({
+              actorId: req.user.id,
+              actorEmail: req.user.email,
+              action: "vault_plugin.mount_remove_failed",
+              targetType: "vault_plugin_mount",
+              targetId: normalizeManagedMountPath(attemptedTarget.mountPath),
+              result: "failure",
+              metadata: redact({
+                plugin_name: attemptedTarget.pluginName,
+                plugin_type: attemptedTarget.pluginType,
+                error: error instanceof Error ? error.message : String(error)
+              })
+            });
+          } catch (auditError) {
+            console.error(
+              "failed to audit managed Vault mount removal",
+              redact({ message: auditError instanceof Error ? auditError.message : String(auditError) })
+            );
+          }
+        }
+        next(error);
+      }
+    }
+  );
 
   app.post("/auth/mock-login", async (req, res, next) => {
     try {

@@ -1147,6 +1147,116 @@ tbody tr:hover {
   background: var(--panel-soft);
 }
 
+.tableMountAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border-color: color-mix(in srgb, var(--red) 45%, var(--line));
+  background: transparent;
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tableMountAction:hover:not(:disabled) {
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+}
+
+.tableActionUnavailable {
+  color: var(--muted);
+}
+
+.vaultUnmountDialog {
+  width: min(760px, 100%);
+}
+
+.vaultUnmountDialogBody {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.vaultUnmountWarning {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border-left: 3px solid var(--red);
+  background: color-mix(in srgb, var(--red) 6%, var(--panel-soft));
+}
+
+.vaultUnmountWarning > svg {
+  margin-top: 1px;
+  color: var(--red);
+}
+
+.vaultUnmountWarning strong,
+.vaultUnmountWarning p {
+  margin: 0;
+}
+
+.vaultUnmountWarning strong {
+  font-size: 12px;
+}
+
+.vaultUnmountWarning p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.vaultUnmountLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 88px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.vaultUnmountIdentity {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.vaultUnmountConfirmation {
+  max-width: none;
+}
+
+.vaultUnmountSuccess {
+  display: grid;
+  gap: 12px;
+}
+
+.vaultUnmountSuccess > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--green);
+}
+
+.vaultUnmountSuccess > div:first-child span,
+.vaultUnmountSuccess > div:first-child strong,
+.vaultUnmountSuccess > div:first-child small {
+  display: block;
+}
+
+.vaultUnmountSuccess > div:first-child small {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.vaultUnmountActions {
+  justify-content: flex-end;
+}
+
 .statusBadge,
 .riskBadge,
 .pill {
@@ -3027,6 +3137,24 @@ td,
     font-size: 11px;
     font-weight: 650;
     line-height: 1.45;
+  }
+
+  .tableMountAction {
+    justify-self: start;
+  }
+
+  .vaultUnmountIdentity {
+    grid-template-columns: 1fr;
+  }
+
+  .vaultUnmountActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .vaultUnmountActions button {
+    justify-content: center;
+    width: 100%;
   }
 
   .dashboardPage > .tablePanel:nth-last-child(5) .responsiveTable td::before,

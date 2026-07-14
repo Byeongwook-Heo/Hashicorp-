@@ -284,4 +284,56 @@ describe("Vault live inventory", () => {
     const missing = report.items.find((item) => item.id === "mapping:payments:missing");
     expect(missing?.checks.find((check) => check.kind === "mount")?.status).toBe("fail");
   });
+
+  it("requires the inspected fingerprint before disabling a plugin mount", async () => {
+    let mounted = true;
+    let deleteCalls = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/v1/sys/mounts") && init?.method === "GET") {
+        return new Response(JSON.stringify({
+          data: mounted
+            ? {
+                "factory-lab/github/": {
+                  type: "vault-plugin-secrets-github",
+                  description: "GitHub plugin",
+                  running_plugin_version: "v0.1.0"
+                }
+              }
+            : {}
+        }), { status: 200 });
+      }
+      if (url.endsWith("/v1/sys/mounts/factory-lab/github") && init?.method === "DELETE") {
+        deleteCalls += 1;
+        mounted = false;
+        return new Response(null, { status: 204 });
+      }
+      return new Response(JSON.stringify({ errors: ["not found"] }), { status: 404 });
+    });
+    const client = createVaultClient({ ...config, vaultPluginAllowedMountPrefix: "factory-lab" });
+    const inspected = await client.inspectPluginMount({
+      pluginType: "secret",
+      mountPath: "factory-lab/github"
+    });
+
+    expect(inspected.exists).toBe(true);
+    expect(inspected.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    await expect(client.removePluginMount({
+      pluginType: "secret",
+      mountPath: "factory-lab/github",
+      expectedFingerprint: "0".repeat(64)
+    })).rejects.toThrow("changed after inspection");
+    expect(deleteCalls).toBe(0);
+
+    const removed = await client.removePluginMount({
+      pluginType: "secret",
+      mountPath: "factory-lab/github",
+      expectedFingerprint: inspected.fingerprint ?? ""
+    });
+
+    expect(removed).toMatchObject({ removed: true, mountPath: "factory-lab/github" });
+    expect(deleteCalls).toBe(1);
+    const deleteRequest = fetchMock.mock.calls.find((call) => call[1]?.method === "DELETE");
+    expect(deleteRequest?.[1]?.body).toBeUndefined();
+  });
 });
