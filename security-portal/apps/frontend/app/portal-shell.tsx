@@ -7460,7 +7460,7 @@ function VaultReconciliationHealthStrip({
       <div className="reconciliationHealthMetrics">
         <span><strong>{report.summary.inSync}</strong>{localize(t, "Aligned", "정상")}</span>
         <span><strong>{report.summary.drifted}</strong>{localize(t, "Drift", "불일치")}</span>
-        <span><strong>{report.summary.unknown}</strong>{localize(t, "Review", "확인 필요")}</span>
+        <span><strong>{report.summary.unknownChecks}</strong>{localize(t, "Unverified", "미검증")}</span>
       </div>
     </section>
   );
@@ -7499,6 +7499,16 @@ function VaultReconciliationCenter({
         </div>
         <span className="reconciliationRouting"><span>{localize(t, "Namespace routing", "Namespace 라우팅")}</span><strong>{routingLabel}</strong></span>
       </header>
+
+      {report?.warnings.length ? (
+        <div className="reconciliationWarnings" role="status">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <div>
+            <strong>{localize(t, "Inspection warnings", "검증 경고")}</strong>
+            {report.warnings.map((warning) => <span key={warning}>{reconciliationWarningCopy(warning, t)}</span>)}
+          </div>
+        </div>
+      ) : null}
 
       <div className="reconciliationSummary" aria-label={localize(t, "Reconciliation summary", "상태 조정 요약")}>
         <MiniStat label={localize(t, "Inspected", "검증 대상")} value={report?.summary.total ?? 0} />
@@ -7637,6 +7647,17 @@ function checkDetailCopy(detail: string, t: Copy): string {
     "This custom Plugin does not declare a standard Role inspection endpoint": "이 Custom Plugin에는 표준 Role 검증 경로가 정의되어 있지 않습니다."
   };
   return t === copy.ko ? localized[detail] ?? detail : detail;
+}
+
+function reconciliationWarningCopy(warning: string, t: Copy): string {
+  if (t !== copy.ko) return warning;
+  if (warning.startsWith("Detected ") && warning.includes("mounted external plugin")) {
+    return warning.replace("Detected ", "감지: ").replace(" mounted external plugin", "개의 Mount된 외부 Plugin").replace(" without a catalog entry", "에 Catalog 등록 정보가 없습니다");
+  }
+  if (warning.startsWith("Unable to inspect runtime capabilities")) {
+    return warning.replace("Unable to inspect runtime capabilities in ", "Runtime 권한 검증 실패 · Namespace ");
+  }
+  return warning;
 }
 
 function reconciliationAnchor(id: string): string {

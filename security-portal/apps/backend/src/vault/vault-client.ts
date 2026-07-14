@@ -1322,6 +1322,7 @@ function reconciliationReport(
       inSync: items.filter((item) => item.status === "in-sync").length,
       drifted: items.filter((item) => item.status === "drift").length,
       unknown: items.filter((item) => item.status === "unknown").length,
+      unknownChecks: items.flatMap((item) => item.checks).filter((check) => check.status === "unknown").length,
       critical: items.filter((item) => item.status === "drift" && item.severity === "critical").length,
       mappingDrift: items.filter((item) => item.targetType === "mapping" && item.status === "drift").length,
       pluginDrift: items.filter((item) => item.targetType === "plugin" && item.status === "drift").length

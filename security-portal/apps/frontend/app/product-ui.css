@@ -520,6 +520,41 @@ button:hover:not(:disabled),
   font-size: 11px;
 }
 
+.reconciliationWarnings {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--vault) 7%, var(--panel));
+}
+
+.reconciliationWarnings > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vault-strong);
+}
+
+.reconciliationWarnings > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.reconciliationWarnings strong,
+.reconciliationWarnings span {
+  overflow-wrap: anywhere;
+  font-size: 9px;
+}
+
+.reconciliationWarnings strong {
+  color: var(--ink);
+}
+
+.reconciliationWarnings span {
+  color: var(--muted);
+}
+
 .reconciliationSummary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

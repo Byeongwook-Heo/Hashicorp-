@@ -278,6 +278,7 @@ export interface VaultReconciliationReport {
     inSync: number;
     drifted: number;
     unknown: number;
+    unknownChecks: number;
     critical: number;
     mappingDrift: number;
     pluginDrift: number;
