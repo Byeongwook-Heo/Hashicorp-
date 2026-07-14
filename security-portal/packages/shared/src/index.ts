@@ -197,7 +197,7 @@ export interface VaultPluginCatalogEntry {
   name: string;
   pluginType: VaultPluginType;
   builtin: boolean;
-  status: "builtin" | "mounted" | "registered";
+  status: "builtin" | "mounted" | "registered" | "orphaned";
   mountedPaths: string[];
   command?: string;
   version?: string;
@@ -220,6 +220,7 @@ export interface VaultInventory {
     customPlugins: number;
     mountedCustomPlugins: number;
     registeredOnlyCustomPlugins: number;
+    unregisteredMountedPlugins: number;
   };
   warnings: string[];
 }

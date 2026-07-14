@@ -71,7 +71,8 @@ class MockVaultClient implements VaultClient {
         builtinPlugins: 0,
         customPlugins: 0,
         mountedCustomPlugins: 0,
-        registeredOnlyCustomPlugins: 0
+        registeredOnlyCustomPlugins: 0,
+        unregisteredMountedPlugins: 0
       },
       warnings: ["Mock Vault mode has no live mount or plugin catalog inventory"]
     };
@@ -682,7 +683,7 @@ class RealVaultClient implements VaultClient {
     );
     warnings.push(...catalogDetails.flatMap((item) => item.warning ? [item.warning] : []));
 
-    const plugins = catalogDetails.map<VaultPluginCatalogEntry>(({ candidate, detail }) => {
+    const catalogPlugins = catalogDetails.map<VaultPluginCatalogEntry>(({ candidate, detail }) => {
       const builtin = detail.builtin === true;
       const mountedPaths = mounts
         .filter((mount) => {
@@ -704,6 +705,35 @@ class RealVaultClient implements VaultClient {
       };
     });
 
+    const catalogPluginNames = new Set(catalogPlugins.map((plugin) => plugin.name));
+    const orphanedByName = new Map<string, VaultPluginCatalogEntry>();
+    for (const mount of mounts) {
+      if (catalogPluginNames.has(mount.type) || !isLikelyExternalMount(mount)) continue;
+      const existing = orphanedByName.get(mount.type);
+      if (existing) {
+        existing.mountedPaths.push(mount.path);
+        continue;
+      }
+      orphanedByName.set(mount.type, {
+        name: mount.type,
+        pluginType: inferredCatalogType(mount),
+        builtin: false,
+        status: "orphaned",
+        mountedPaths: [mount.path],
+        version: mount.pluginVersion
+      });
+    }
+    const orphanedPlugins = [...orphanedByName.values()].map((plugin) => ({
+      ...plugin,
+      mountedPaths: plugin.mountedPaths.sort()
+    }));
+    if (orphanedPlugins.length > 0) {
+      warnings.push(
+        `Detected ${orphanedPlugins.length} mounted external plugin${orphanedPlugins.length === 1 ? "" : "s"} without a catalog entry`
+      );
+    }
+    const plugins = [...catalogPlugins, ...orphanedPlugins];
+
     const pluginsByName = new Map(plugins.map((plugin) => [plugin.name, plugin]));
     const classifiedMounts = mounts
       .map<VaultInventoryMount>((mount) => {
@@ -714,7 +744,7 @@ class RealVaultClient implements VaultClient {
             ? catalogPlugin.builtin
               ? "builtin"
               : "external"
-            : builtinMountTypes.has(mount.type)
+            : isBuiltinMount(mount)
               ? "builtin"
               : "unknown",
           catalogType: catalogPlugin?.pluginType
@@ -733,11 +763,12 @@ class RealVaultClient implements VaultClient {
         totalMounts: classifiedMounts.length,
         authMounts: classifiedMounts.filter((mount) => mount.kind === "auth").length,
         secretMounts: classifiedMounts.filter((mount) => mount.kind === "secret").length,
-        catalogEntries: plugins.length,
-        builtinPlugins: plugins.filter((plugin) => plugin.builtin).length,
+        catalogEntries: catalogPlugins.length,
+        builtinPlugins: catalogPlugins.filter((plugin) => plugin.builtin).length,
         customPlugins: customPlugins.length,
-        mountedCustomPlugins: customPlugins.filter((plugin) => plugin.status === "mounted").length,
-        registeredOnlyCustomPlugins: customPlugins.filter((plugin) => plugin.status === "registered").length
+        mountedCustomPlugins: customPlugins.filter((plugin) => plugin.status === "mounted" || plugin.status === "orphaned").length,
+        registeredOnlyCustomPlugins: customPlugins.filter((plugin) => plugin.status === "registered").length,
+        unregisteredMountedPlugins: customPlugins.filter((plugin) => plugin.status === "orphaned").length
       },
       warnings
     };
@@ -900,6 +931,20 @@ const builtinMountTypes = new Set([
   "userpass"
 ]);
 
+function isBuiltinMount(mount: VaultInventoryMount): boolean {
+  return builtinMountTypes.has(mount.type) || Boolean(mount.pluginVersion?.includes("+builtin"));
+}
+
+function isLikelyExternalMount(mount: VaultInventoryMount): boolean {
+  if (isBuiltinMount(mount)) return false;
+  return mount.type.startsWith("vault-plugin-") || Boolean(mount.pluginVersion);
+}
+
+function inferredCatalogType(mount: VaultInventoryMount): VaultPluginType {
+  if (mount.kind === "auth") return "auth";
+  return mount.type.includes("database") ? "database" : "secret";
+}
+
 function emptyVaultInventory(mode: "mock" | "real", warnings: string[]): VaultInventory {
   return {
     mode,
@@ -914,7 +959,8 @@ function emptyVaultInventory(mode: "mock" | "real", warnings: string[]): VaultIn
       builtinPlugins: 0,
       customPlugins: 0,
       mountedCustomPlugins: 0,
-      registeredOnlyCustomPlugins: 0
+      registeredOnlyCustomPlugins: 0,
+      unregisteredMountedPlugins: 0
     },
     warnings
   };

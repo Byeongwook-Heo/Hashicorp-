@@ -290,6 +290,37 @@ button:hover:not(:disabled),
   color: var(--red);
 }
 
+.vaultInventoryWarnings {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--vault);
+  background: color-mix(in srgb, var(--vault) 8%, var(--panel));
+  color: var(--ink);
+}
+
+.vaultInventoryWarnings > svg {
+  flex: 0 0 auto;
+  color: var(--vault-strong);
+}
+
+.vaultInventoryWarnings > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.vaultInventoryWarnings strong,
+.vaultInventoryWarnings span {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+
+.vaultInventoryWarnings span {
+  color: var(--muted);
+}
+
 .vaultLiveSyncStatus > div {
   display: grid;
   min-width: 0;

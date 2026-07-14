@@ -476,7 +476,7 @@ resource "aws_lb_listener_rule" "backend_admin" {
 
   condition {
     path_pattern {
-      values = ["/api/admin*", "/api/audit-events*", "/api/health*"]
+      values = ["/api/admin*", "/api/audit-events*", "/api/health*", "/api/vault*"]
     }
   }
 }

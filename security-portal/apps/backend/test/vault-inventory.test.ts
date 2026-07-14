@@ -32,6 +32,11 @@ describe("Vault live inventory", () => {
               description: "GitHub plugin",
               running_plugin_version: "v0.1.0"
             },
+            "factory-lab/orphan/": {
+              type: "vault-plugin-secrets-orphan",
+              description: "Orphaned plugin mount",
+              running_plugin_version: "v0.3.0"
+            },
             "kv/": { type: "kv", description: "Built-in KV" }
           }
         }), { status: 200 });
@@ -92,14 +97,15 @@ describe("Vault live inventory", () => {
     const inventory = await client.inventory(true);
 
     expect(inventory.summary).toEqual({
-      totalMounts: 3,
+      totalMounts: 4,
       authMounts: 1,
-      secretMounts: 2,
+      secretMounts: 3,
       catalogEntries: 4,
       builtinPlugins: 2,
-      customPlugins: 2,
-      mountedCustomPlugins: 1,
-      registeredOnlyCustomPlugins: 1
+      customPlugins: 3,
+      mountedCustomPlugins: 2,
+      registeredOnlyCustomPlugins: 1,
+      unregisteredMountedPlugins: 1
     });
     expect(inventory.mounts).toContainEqual(expect.objectContaining({
       path: "factory-lab/github",
@@ -116,6 +122,12 @@ describe("Vault live inventory", () => {
       status: "registered",
       mountedPaths: []
     }));
+    expect(inventory.plugins).toContainEqual(expect.objectContaining({
+      name: "vault-plugin-secrets-orphan",
+      status: "orphaned",
+      mountedPaths: ["factory-lab/orphan"]
+    }));
+    expect(inventory.warnings).toContain("Detected 1 mounted external plugin without a catalog entry");
     expect(fetchMock.mock.calls.filter((call) => call[1]?.method === "LIST")).toHaveLength(3);
 
     const mappings = await client.inspectMappings([{

@@ -7270,6 +7270,19 @@ function VaultLiveSync({
   );
 }
 
+function VaultInventoryWarnings({ t, warnings }: { t: Copy; warnings: string[] }) {
+  if (warnings.length === 0) return null;
+  return (
+    <div className="vaultInventoryWarnings" role="status">
+      <AlertTriangle aria-hidden="true" size={17} />
+      <div>
+        <strong>{localize(t, "Vault inventory needs review", "Vault 인벤토리 확인 필요")}</strong>
+        {warnings.map((warning) => <span key={warning}>{warning}</span>)}
+      </div>
+    </div>
+  );
+}
+
 function PlatformHealth({
   t,
   vaultHealth,
@@ -7296,9 +7309,10 @@ function PlatformHealth({
         t={t}
         syncedAt={syncedAt}
         syncing={syncing}
-        error={syncError ?? inventory?.warnings[0] ?? null}
+        error={syncError}
         onRefresh={onRefresh}
       />
+      <VaultInventoryWarnings t={t} warnings={inventory?.warnings ?? []} />
       <section className="overviewPanel healthHero">
         <div>
           <span className="eyebrow">{localize(t, "Vault Health / Cluster Status", "Vault Health / Cluster Status")}</span>
@@ -7417,15 +7431,19 @@ function Admin({
   onRefresh: () => void;
 }) {
   const customPlugins = inventory?.plugins.filter((plugin) => !plugin.builtin) ?? [];
+  const catalogMismatchCount =
+    (inventory?.summary.registeredOnlyCustomPlugins ?? 0) +
+    (inventory?.summary.unregisteredMountedPlugins ?? 0);
   return (
     <div className="stack">
       <VaultLiveSync
         t={t}
         syncedAt={syncedAt}
         syncing={syncing}
-        error={syncError ?? inventory?.warnings[0] ?? null}
+        error={syncError}
         onRefresh={onRefresh}
       />
+      <VaultInventoryWarnings t={t} warnings={inventory?.warnings ?? []} />
       <Table
         title={t.admin.health}
         columns={[t.table.mode, t.table.healthy, t.table.version, t.table.cluster]}
@@ -7444,9 +7462,9 @@ function Admin({
         <MiniStat label={localize(t, "Custom plugins", "Custom Plugin")} value={inventory?.summary.customPlugins ?? 0} />
         <MiniStat label={localize(t, "Mounted plugins", "Mount된 Plugin")} value={inventory?.summary.mountedCustomPlugins ?? 0} tone="good" />
         <MiniStat
-          label={localize(t, "Registered only", "Catalog 등록만")}
-          value={inventory?.summary.registeredOnlyCustomPlugins ?? 0}
-          tone={(inventory?.summary.registeredOnlyCustomPlugins ?? 0) > 0 ? "risk" : "default"}
+          label={localize(t, "Catalog mismatch", "Catalog 불일치")}
+          value={catalogMismatchCount}
+          tone={catalogMismatchCount > 0 ? "risk" : "default"}
         />
       </section>
       <Table
@@ -7463,8 +7481,10 @@ function Admin({
           plugin.name,
           plugin.pluginType,
           plugin.status === "mounted"
-            ? localize(t, "Mounted", "Mount됨")
-            : localize(t, "Catalog only", "Catalog 등록만"),
+            ? localize(t, "Mounted · Catalog OK", "Mount됨 · Catalog 정상")
+            : plugin.status === "orphaned"
+              ? localize(t, "Mounted · Catalog missing", "Mount됨 · Catalog 없음")
+              : localize(t, "Catalog only", "Catalog 등록만"),
           plugin.mountedPaths.length > 0 ? plugin.mountedPaths.map((path) => `${path}/`).join(", ") : "-",
           plugin.version ?? "-",
           plugin.command ?? "-"
