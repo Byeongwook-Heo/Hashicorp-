@@ -1,5 +1,9 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { recoverStalledFactoryBuildJobs } from "../src/plugin-factory/factory-job-recovery";
+import {
+  recoverStalledFactoryBuildJobs,
+  restoreCompletedFactoryBuildSnapshots
+} from "../src/plugin-factory/factory-job-recovery";
 import { MemoryStore } from "../src/store/memory-store";
 
 describe("Factory job persistence", () => {
@@ -159,6 +163,72 @@ describe("Factory job persistence", () => {
 
     expect(await recoverStalledFactoryBuildJobs(store, 600_000)).toBe(0);
     expect(await store.getFactoryJob(job.id)).toMatchObject({ status: "running", stage: "test", progress: 45 });
+  });
+
+  it("restores missing workspace fields from a verified completed build", async () => {
+    const store = new MemoryStore();
+    const owner = await store.getUserByEmail("admin@example.com");
+    const files = [{ path: "main.go", language: "go" as const, content: "package main\n" }];
+    const scaffoldSha256 = createHash("sha256").update("main.go\0package main\n\0").digest("hex");
+    const artifact = {
+      bucket: "factory-artifacts",
+      key: "factory-builds/restored/artifact/plugin",
+      sha256: "a".repeat(64),
+      architecture: "arm64" as const,
+      command: "vault-plugin-secrets-github",
+      builtAt: new Date().toISOString()
+    };
+    const requirements = {
+      targetSystem: "github",
+      authMethod: "GitHub App",
+      apiBasePath: "https://api.github.com",
+      ttl: "1h",
+      rotationStrategy: "Rotate on demand",
+      revokeStrategy: "Revoke installation token",
+      mountPath: "factory-lab/github",
+      environment: "dev" as const,
+      confirmed: true
+    };
+    const job = await store.createFactoryJob({
+      owner: owner!,
+      templateId: "expansion-github-secrets",
+      pluginName: "vault-plugin-secrets-github",
+      status: "running",
+      stage: "security-review",
+      progress: 90,
+      snapshot: {
+        command: "vault-plugin-secrets-github",
+        version: "v0.1.0",
+        description: "GitHub App credentials",
+        draftFiles: [],
+        artifactSha256: "",
+        requirementsInterview: { spec: requirements },
+        autoRepair: {
+          id: "completed-run",
+          status: "pass",
+          phase: "complete",
+          maxAttempts: 3,
+          attempts: [],
+          files,
+          scaffoldSha256,
+          buildTest: { status: "pass", steps: [] },
+          securityReview: { score: 100, posture: "ready", findings: [] },
+          artifact,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          summary: "Build passed"
+        }
+      }
+    });
+
+    expect(await restoreCompletedFactoryBuildSnapshots(store)).toBe(1);
+    const restored = await store.getFactoryJob(job.id);
+    expect(restored?.snapshot).toMatchObject({
+      artifactSha256: artifact.sha256,
+      draftFiles: files,
+      generated: { files, buildArtifact: artifact }
+    });
+    expect(restored?.events.at(-1)?.label).toBe("build-state-restored");
   });
 
   it("scopes job history by owner while allowing an all-jobs view", async () => {

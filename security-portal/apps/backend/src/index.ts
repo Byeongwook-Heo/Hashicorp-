@@ -28,7 +28,10 @@ import {
   hasVerifiedFactoryArtifact
 } from "./plugin-factory/factory-artifact";
 import { FactoryBuildService } from "./plugin-factory/factory-build-service";
-import { recoverStalledFactoryBuildJobs } from "./plugin-factory/factory-job-recovery";
+import {
+  recoverStalledFactoryBuildJobs,
+  restoreCompletedFactoryBuildSnapshots
+} from "./plugin-factory/factory-job-recovery";
 import { FactoryRequirementsInterviewer } from "./plugin-factory/factory-requirements";
 import { VaultPluginDistributor } from "./plugin-factory/plugin-distributor";
 import { redact } from "./utils/redact";
@@ -364,6 +367,7 @@ async function main(): Promise<void> {
   });
   const factoryBuildRuns = new Map<string, FactoryBuildRunRecord>();
   const factoryRequirementsInterviews = new Map<string, FactoryRequirementsRecord>();
+  await restoreCompletedFactoryBuildSnapshots(store);
   await recoverStalledFactoryBuildJobs(store, config.factoryBuildTimeoutMs ?? 600000);
 
   const app = express();
