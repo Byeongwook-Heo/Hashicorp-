@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SystemSummary } from "@security-portal/shared";
 import type { AppConfig } from "../src/config";
 import { createVaultClient } from "../src/vault/vault-client";
 
@@ -171,5 +172,116 @@ describe("Vault live inventory", () => {
       ["auth/approle/", true, 200],
       ["missing/", false, 404]
     ]);
+  });
+
+  it("reconciles namespace, mount, role, and runtime capability drift independently", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/v1/sys/mounts")) {
+        return new Response(JSON.stringify({
+          data: {
+            "database/": { type: "database", description: "Database secrets" },
+            "kv/": { type: "kv", description: "KV v2" }
+          }
+        }), { status: 200 });
+      }
+      if (url.endsWith("/v1/sys/auth")) {
+        return new Response(JSON.stringify({
+          data: { "approle/": { type: "approle", description: "AppRole" } }
+        }), { status: 200 });
+      }
+      if (url.includes("/v1/sys/plugins/catalog/") && init?.method === "LIST") {
+        return new Response(JSON.stringify({ data: { keys: [], key_info: {} } }), { status: 200 });
+      }
+      if (url.endsWith("/v1/database/roles/app")) {
+        return new Response(JSON.stringify({ data: { name: "app" } }), { status: 200 });
+      }
+      if (url.endsWith("/v1/auth/approle/role/portal")) {
+        return new Response(JSON.stringify({ errors: ["not found"] }), { status: 404 });
+      }
+      if (url.endsWith("/v1/sys/capabilities-self")) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { paths?: string[] };
+        const capabilities = Object.fromEntries((body.paths ?? []).map((path) => [
+          path,
+          path.startsWith("kv/") ? ["deny"] : path.includes("missing/") ? ["deny"] : path.includes("creds/") ? ["read"] : ["update"]
+        ]));
+        return new Response(JSON.stringify({ data: capabilities }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ errors: ["not found"] }), { status: 404 });
+    });
+    const client = createVaultClient(config);
+    const systems: SystemSummary[] = [{
+      id: "payments",
+      name: "Payments",
+      description: "Payment API",
+      environment: "prod" as const,
+      ownerGroup: "payments",
+      allowedRequestTypes: ["DB_CREDENTIAL", "APPROLE_SECRET_ID", "KV_READ", "CUSTOM_KAFKA_ACCESS"],
+      vaultNamespace: "platform/payments",
+      vaultMountMappings: [
+        {
+          id: "db",
+          mountPath: "database/",
+          roleName: "app",
+          requestType: "DB_CREDENTIAL" as const,
+          displayName: "Database",
+          enabled: true
+        },
+        {
+          id: "approle",
+          mountPath: "auth/approle/",
+          roleName: "portal",
+          requestType: "APPROLE_SECRET_ID" as const,
+          displayName: "AppRole",
+          enabled: true
+        },
+        {
+          id: "kv",
+          mountPath: "kv/",
+          roleName: "payments/config",
+          requestType: "KV_READ" as const,
+          displayName: "KV",
+          enabled: true
+        },
+        {
+          id: "missing",
+          mountPath: "missing/",
+          roleName: "kafka",
+          requestType: "CUSTOM_KAFKA_ACCESS" as const,
+          displayName: "Kafka",
+          enabled: true
+        }
+      ]
+    }];
+
+    const report = await client.reconcile(systems, true);
+
+    expect(report.routing).toEqual({
+      mode: "root",
+      desiredNamespaces: ["platform/payments"]
+    });
+    expect(report.summary).toMatchObject({
+      total: 4,
+      drifted: 4,
+      unknown: 0,
+      critical: 3,
+      mappingDrift: 4,
+      pluginDrift: 0
+    });
+    const database = report.items.find((item) => item.id === "mapping:payments:db");
+    expect(database?.severity).toBe("warning");
+    expect(database?.checks.map((check) => [check.kind, check.status])).toEqual([
+      ["mount", "pass"],
+      ["namespace", "fail"],
+      ["role", "pass"],
+      ["capability", "pass"]
+    ]);
+    const approle = report.items.find((item) => item.id === "mapping:payments:approle");
+    expect(approle?.checks.find((check) => check.kind === "role")?.status).toBe("fail");
+    const kv = report.items.find((item) => item.id === "mapping:payments:kv");
+    expect(kv?.checks.find((check) => check.kind === "role")?.status).toBe("not-applicable");
+    expect(kv?.checks.find((check) => check.kind === "capability")?.status).toBe("fail");
+    const missing = report.items.find((item) => item.id === "mapping:payments:missing");
+    expect(missing?.checks.find((check) => check.kind === "mount")?.status).toBe("fail");
   });
 });

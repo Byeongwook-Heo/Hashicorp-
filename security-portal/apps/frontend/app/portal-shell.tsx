@@ -31,7 +31,10 @@ import {
   type VaultHealthStatus,
   type VaultInventory,
   type VaultLiveStatus,
-  type VaultMappingHealth
+  type VaultMappingHealth,
+  type VaultReconciliationCheck,
+  type VaultReconciliationItem,
+  type VaultReconciliationReport
 } from "@security-portal/shared";
 import Link from "next/link";
 import { type FormEvent, type ReactNode, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -506,6 +509,7 @@ export default function PortalShell({ view }: { view: View }) {
   const [vaultHealth, setVaultHealth] = useState<VaultHealthResponse | null>(null);
   const [mappingHealth, setMappingHealth] = useState<VaultMappingHealth[]>([]);
   const [vaultInventory, setVaultInventory] = useState<VaultInventory | null>(null);
+  const [vaultReconciliation, setVaultReconciliation] = useState<VaultReconciliationReport | null>(null);
   const [vaultSyncedAt, setVaultSyncedAt] = useState<string | null>(null);
   const [vaultSyncing, setVaultSyncing] = useState(false);
   const [vaultSyncError, setVaultSyncError] = useState<string | null>(null);
@@ -546,6 +550,7 @@ export default function PortalShell({ view }: { view: View }) {
     setVaultHealth(status.health);
     setMappingHealth(status.mappings);
     setVaultInventory(status.inventory ?? null);
+    setVaultReconciliation(status.reconciliation ?? null);
     setVaultSyncedAt(status.syncedAt);
     setVaultSyncError(null);
   }, []);
@@ -714,6 +719,7 @@ export default function PortalShell({ view }: { view: View }) {
       setVaultHealth(null);
       setMappingHealth([]);
       setVaultInventory(null);
+      setVaultReconciliation(null);
       setVaultSyncedAt(null);
       setVaultSyncError(null);
     } catch (err) {
@@ -816,10 +822,22 @@ export default function PortalShell({ view }: { view: View }) {
       }
       return [];
     });
-    return [...credentialTasks, ...requestTasks]
+    const reconciliationTasks = user.roles.includes("vault-admin")
+      ? (vaultReconciliation?.items ?? [])
+          .filter((item) => item.status === "drift")
+          .slice(0, 8)
+          .map<PortalTask>((item) => ({
+            id: `vault-drift-${item.id}`,
+            kind: "failure",
+            title: item.systemName ?? item.pluginName ?? item.title,
+            detail: localize(t, `Vault drift · ${item.title}`, `Vault 불일치 · ${item.title}`),
+            href: `/admin#${reconciliationAnchor(item.id)}`
+          }))
+      : [];
+    return [...reconciliationTasks, ...credentialTasks, ...requestTasks]
       .sort((left, right) => (left.dueAt ?? "").localeCompare(right.dueAt ?? ""))
       .slice(0, 30);
-  }, [credentials, requests, t, user]);
+  }, [credentials, requests, t, user, vaultReconciliation]);
 
   if (!user) {
     return (
@@ -1074,6 +1092,7 @@ export default function PortalShell({ view }: { view: View }) {
             vaultHealth={vaultHealth}
             mappingHealth={mappingHealth}
             inventory={vaultInventory}
+            reconciliation={vaultReconciliation}
             syncedAt={vaultSyncedAt}
             syncing={vaultSyncing}
             syncError={vaultSyncError}
@@ -1091,6 +1110,7 @@ export default function PortalShell({ view }: { view: View }) {
             vaultHealth={vaultHealth}
             mappingHealth={mappingHealth}
             inventory={vaultInventory}
+            reconciliation={vaultReconciliation}
             syncedAt={vaultSyncedAt}
             syncing={vaultSyncing}
             syncError={vaultSyncError}
@@ -7288,6 +7308,7 @@ function PlatformHealth({
   vaultHealth,
   mappingHealth,
   inventory,
+  reconciliation,
   syncedAt,
   syncing,
   syncError,
@@ -7297,12 +7318,14 @@ function PlatformHealth({
   vaultHealth: VaultHealthResponse | null;
   mappingHealth: VaultMappingHealth[];
   inventory: VaultInventory | null;
+  reconciliation: VaultReconciliationReport | null;
   syncedAt: string | null;
   syncing: boolean;
   syncError: string | null;
   onRefresh: () => void;
 }) {
   const healthyMappings = mappingHealth.filter((mapping) => mapping.reachable).length;
+  const driftCount = reconciliation?.summary.drifted ?? Math.max(mappingHealth.length - healthyMappings, 0);
   return (
     <div className="stack">
       <VaultLiveSync
@@ -7332,14 +7355,16 @@ function PlatformHealth({
             tone={vaultHealth?.healthy ? "good" : "risk"}
           />
           <MiniStat label={localize(t, "Vault mounts", "Vault Mount")} value={inventory?.summary.totalMounts ?? healthyMappings} tone="good" />
-          <MiniStat label={localize(t, "Total mappings", "전체 매핑")} value={mappingHealth.length} />
+          <MiniStat label={localize(t, "Inspected targets", "검증 대상")} value={reconciliation?.summary.total ?? mappingHealth.length} />
           <MiniStat
-            label={localize(t, "Blocked", "차단/오류")}
-            value={Math.max(mappingHealth.length - healthyMappings, 0)}
-            tone={mappingHealth.length - healthyMappings > 0 ? "risk" : "default"}
+            label={localize(t, "Vault drift", "Vault 불일치")}
+            value={driftCount}
+            tone={driftCount > 0 ? "risk" : "good"}
           />
         </div>
       </section>
+
+      {reconciliation ? <VaultReconciliationHealthStrip report={reconciliation} t={t} /> : null}
 
       <div className="dashboardGrid">
         <section className="insightPanel">
@@ -7409,12 +7434,222 @@ function PlatformHealth({
   );
 }
 
+function VaultReconciliationHealthStrip({
+  report,
+  t
+}: {
+  report: VaultReconciliationReport;
+  t: Copy;
+}) {
+  const routingLabel = report.routing.mode === "fixed"
+    ? `${localize(t, "Fixed Namespace", "고정 Namespace")} · ${report.routing.configuredNamespace ?? "root"}`
+    : report.routing.mode === "system"
+      ? localize(t, "System Namespace routing", "시스템별 Namespace 라우팅")
+      : localize(t, "Root Namespace routing", "Root Namespace 라우팅");
+  return (
+    <section className={`reconciliationHealthStrip${report.summary.drifted > 0 ? " hasDrift" : ""}`}>
+      <div>
+        {report.summary.drifted > 0
+          ? <ShieldAlert aria-hidden="true" size={19} />
+          : <ShieldCheck aria-hidden="true" size={19} />}
+        <span>
+          <strong>{localize(t, "Vault state reconciliation", "Vault 상태 조정")}</strong>
+          <small>{routingLabel}</small>
+        </span>
+      </div>
+      <div className="reconciliationHealthMetrics">
+        <span><strong>{report.summary.inSync}</strong>{localize(t, "Aligned", "정상")}</span>
+        <span><strong>{report.summary.drifted}</strong>{localize(t, "Drift", "불일치")}</span>
+        <span><strong>{report.summary.unknown}</strong>{localize(t, "Review", "확인 필요")}</span>
+      </div>
+    </section>
+  );
+}
+
+function VaultReconciliationCenter({
+  report,
+  t
+}: {
+  report: VaultReconciliationReport | null;
+  t: Copy;
+}) {
+  const [filter, setFilter] = useState<"all" | VaultReconciliationItem["status"]>("all");
+  const items = report?.items.filter((item) => filter === "all" || item.status === filter) ?? [];
+  const routingLabel = report?.routing.mode === "fixed"
+    ? `${localize(t, "Fixed", "고정")} · ${report.routing.configuredNamespace ?? "root"}`
+    : report?.routing.mode === "system"
+      ? localize(t, "Per system", "시스템별")
+      : "root";
+  const filters: Array<{ id: "all" | VaultReconciliationItem["status"]; label: string; count: number }> = [
+    { id: "all", label: localize(t, "All", "전체"), count: report?.summary.total ?? 0 },
+    { id: "drift", label: localize(t, "Drift", "불일치"), count: report?.summary.drifted ?? 0 },
+    { id: "unknown", label: localize(t, "Review", "확인 필요"), count: report?.summary.unknown ?? 0 },
+    { id: "in-sync", label: localize(t, "Aligned", "정상"), count: report?.summary.inSync ?? 0 }
+  ];
+
+  return (
+    <section className="reconciliationPanel" id="vault-reconciliation">
+      <header className="reconciliationHeader">
+        <div className="reconciliationTitle">
+          <span className="reconciliationIcon"><GitCompare aria-hidden="true" size={18} /></span>
+          <div>
+            <h2>Vault Reconciliation Center</h2>
+            <p>{localize(t, "Desired Portal configuration compared with live Vault evidence", "Portal 기대 상태와 실제 Vault 검증 결과")}</p>
+          </div>
+        </div>
+        <span className="reconciliationRouting"><span>{localize(t, "Namespace routing", "Namespace 라우팅")}</span><strong>{routingLabel}</strong></span>
+      </header>
+
+      <div className="reconciliationSummary" aria-label={localize(t, "Reconciliation summary", "상태 조정 요약")}>
+        <MiniStat label={localize(t, "Inspected", "검증 대상")} value={report?.summary.total ?? 0} />
+        <MiniStat label={localize(t, "Aligned", "정상")} value={report?.summary.inSync ?? 0} tone="good" />
+        <MiniStat label={localize(t, "Drift", "불일치")} value={report?.summary.drifted ?? 0} tone={(report?.summary.drifted ?? 0) > 0 ? "risk" : "good"} />
+        <MiniStat label={localize(t, "Critical", "심각")} value={report?.summary.critical ?? 0} tone={(report?.summary.critical ?? 0) > 0 ? "risk" : "default"} />
+      </div>
+
+      <div className="reconciliationToolbar">
+        <div aria-label={localize(t, "Filter reconciliation status", "상태 조정 결과 필터")} className="reconciliationFilters" role="group">
+          {filters.map((item) => (
+            <button
+              aria-pressed={filter === item.id}
+              className={filter === item.id ? "active" : ""}
+              key={item.id}
+              onClick={() => setFilter(item.id)}
+              type="button"
+            >
+              <span>{item.label}</span><strong>{item.count}</strong>
+            </button>
+          ))}
+        </div>
+        <span className="reconciliationGate"><ShieldCheck aria-hidden="true" size={15} />{localize(t, "Approval required before change", "변경 전 승인 필요")}</span>
+      </div>
+
+      <div className="reconciliationList">
+        {!report ? (
+          <div className="reconciliationEmpty"><LoaderCircle aria-hidden="true" className="spinning" size={18} />{localize(t, "Loading live Vault evidence", "실제 Vault 검증 결과를 불러오는 중")}</div>
+        ) : items.length === 0 ? (
+          <div className="reconciliationEmpty"><CheckCircle2 aria-hidden="true" size={18} />{localize(t, "No targets match this filter.", "이 조건에 해당하는 대상이 없습니다.")}</div>
+        ) : items.map((item) => (
+          <VaultReconciliationRow item={item} key={item.id} t={t} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function VaultReconciliationRow({ item, t }: { item: VaultReconciliationItem; t: Copy }) {
+  const statusLabel = item.status === "drift"
+    ? localize(t, "Drift", "불일치")
+    : item.status === "unknown"
+      ? localize(t, "Review", "확인 필요")
+      : localize(t, "Aligned", "정상");
+  const actionLabel = item.remediation.action === "open-plugin-factory"
+    ? localize(t, "Open Plugin Factory", "Plugin Factory 열기")
+    : item.remediation.action === "review-system"
+      ? localize(t, "Review system mapping", "시스템 매핑 검토")
+      : localize(t, "No action required", "조치 필요 없음");
+  const actionHref = item.remediation.action === "open-plugin-factory"
+    ? `/plugins${item.pluginName ? `?plugin=${encodeURIComponent(item.pluginName)}` : ""}`
+    : item.remediation.action === "review-system"
+      ? `/systems${item.systemName ? `?q=${encodeURIComponent(item.systemName)}` : ""}`
+      : undefined;
+  const subtitle = [item.systemName, item.requestType, item.targetType === "plugin" ? "Custom Plugin" : undefined]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <details className={`reconciliationRow ${item.status} ${item.severity}`} id={reconciliationAnchor(item.id)}>
+      <summary>
+        <span className="reconciliationRowStatus" aria-hidden="true">
+          {item.status === "drift" ? <AlertTriangle size={17} /> : item.status === "unknown" ? <CircleGauge size={17} /> : <CheckCircle2 size={17} />}
+        </span>
+        <span className="reconciliationRowTitle"><strong>{item.title}</strong><small>{subtitle}</small></span>
+        <span className={`reconciliationStatus ${item.status}`}>{statusLabel}</span>
+        <ArrowRight aria-hidden="true" className="reconciliationChevron" size={16} />
+      </summary>
+      <div className="reconciliationDetails">
+        <div className="reconciliationChecks">
+          {item.checks.map((check) => <VaultReconciliationCheckView check={check} key={check.kind} t={t} />)}
+        </div>
+        <div className="reconciliationRemediation">
+          <span><ShieldCheck aria-hidden="true" size={17} /></span>
+          <div>
+            <strong>{actionLabel}</strong>
+            <p>{checkDetailCopy(item.remediation.detail, t)}</p>
+          </div>
+          {item.remediation.requiresApproval ? <span className="reconciliationApproval">{localize(t, "Approval required", "승인 필요")}</span> : null}
+          {actionHref ? <Link href={actionHref}>{actionLabel}<ArrowRight aria-hidden="true" size={14} /></Link> : null}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function VaultReconciliationCheckView({ check, t }: { check: VaultReconciliationCheck; t: Copy }) {
+  const label = reconciliationCheckLabel(check.kind, t);
+  const statusLabel = check.status === "pass"
+    ? localize(t, "Pass", "정상")
+    : check.status === "fail"
+      ? localize(t, "Drift", "불일치")
+      : check.status === "not-applicable"
+        ? localize(t, "N/A", "해당 없음")
+        : localize(t, "Review", "확인 필요");
+  return (
+    <article className={`reconciliationCheck ${check.status}`}>
+      <header>
+        <span>
+          {check.status === "pass" ? <CheckCircle2 aria-hidden="true" size={15} /> : check.status === "fail" ? <AlertTriangle aria-hidden="true" size={15} /> : <CircleGauge aria-hidden="true" size={15} />}
+          <strong>{label}</strong>
+        </span>
+        <em>{statusLabel}</em>
+      </header>
+      <dl>
+        <dt>{localize(t, "Desired", "기대값")}</dt><dd>{check.expected}</dd>
+        <dt>{localize(t, "Actual", "실제값")}</dt><dd>{check.actual}</dd>
+      </dl>
+      {check.detail ? <p>{checkDetailCopy(check.detail, t)}</p> : null}
+    </article>
+  );
+}
+
+function reconciliationCheckLabel(kind: VaultReconciliationCheck["kind"], t: Copy): string {
+  const labels: Record<VaultReconciliationCheck["kind"], [string, string]> = {
+    mount: ["Mount", "Mount"],
+    namespace: ["Namespace", "Namespace"],
+    role: ["Role", "Role"],
+    capability: ["Runtime capability", "Runtime 권한"],
+    catalog: ["Plugin Catalog", "Plugin Catalog"]
+  };
+  return localize(t, labels[kind][0], labels[kind][1]);
+}
+
+function checkDetailCopy(detail: string, t: Copy): string {
+  const localized: Record<string, string> = {
+    "Desired and actual Vault state are aligned for the inspected checks.": "검증한 항목의 Portal 기대 상태와 실제 Vault 상태가 일치합니다.",
+    "A mounted external Plugin has no matching Catalog registration": "Mount된 외부 Plugin과 일치하는 Catalog 등록 정보가 없습니다.",
+    "The external Plugin is present in the Vault Plugin Catalog": "외부 Plugin이 Vault Plugin Catalog에 등록되어 있습니다.",
+    "Live Mount paths were matched to this Catalog entry": "실제 Mount 경로가 이 Catalog 항목과 일치합니다.",
+    "A Catalog-only Plugin is valid, but its desired Mount state is not declared in the Portal": "Catalog 등록만 된 Plugin은 유효하지만 Portal에 기대 Mount 상태가 정의되어 있지 않습니다.",
+    "Portal system configuration and the active Vault API routing target differ": "Portal 시스템 설정과 현재 Vault API가 사용하는 Namespace가 다릅니다.",
+    "Portal configuration and Vault API routing use the same Namespace": "Portal 설정과 Vault API 라우팅이 같은 Namespace를 사용합니다.",
+    "The configured Mount is absent from the target Namespace": "설정된 Mount가 대상 Namespace에 없습니다.",
+    "The expected Mount is present in the live Vault inventory": "기대 Mount가 실제 Vault 인벤토리에 있습니다.",
+    "KV mappings use this field as a data path, not a Vault Role": "KV 매핑에서는 이 값이 Vault Role이 아니라 데이터 경로로 사용됩니다.",
+    "This custom Plugin does not declare a standard Role inspection endpoint": "이 Custom Plugin에는 표준 Role 검증 경로가 정의되어 있지 않습니다."
+  };
+  return t === copy.ko ? localized[detail] ?? detail : detail;
+}
+
+function reconciliationAnchor(id: string): string {
+  return `vault-reconciliation-${id.replace(/[^a-z0-9_-]/gi, "-")}`;
+}
+
 function Admin({
   t,
   systems,
   vaultHealth,
   mappingHealth,
   inventory,
+  reconciliation,
   syncedAt,
   syncing,
   syncError,
@@ -7425,6 +7660,7 @@ function Admin({
   vaultHealth: VaultHealthResponse | null;
   mappingHealth: VaultMappingHealth[];
   inventory: VaultInventory | null;
+  reconciliation: VaultReconciliationReport | null;
   syncedAt: string | null;
   syncing: boolean;
   syncError: string | null;
@@ -7467,6 +7703,7 @@ function Admin({
           tone={catalogMismatchCount > 0 ? "risk" : "default"}
         />
       </section>
+      <VaultReconciliationCenter report={reconciliation} t={t} />
       <Table
         title={localize(t, "Actual Vault plugin catalog", "실제 Vault Plugin 카탈로그")}
         columns={[

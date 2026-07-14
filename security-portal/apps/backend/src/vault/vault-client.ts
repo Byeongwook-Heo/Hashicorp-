@@ -17,7 +17,10 @@ import type {
   VaultMapping,
   VaultMappingHealth,
   VaultPluginCatalogEntry,
-  VaultPluginType
+  VaultPluginType,
+  VaultReconciliationCheck,
+  VaultReconciliationItem,
+  VaultReconciliationReport
 } from "@security-portal/shared";
 import type { AppConfig } from "../config";
 import { maskValue, redact } from "../utils/redact";
@@ -33,6 +36,7 @@ export interface VaultClient {
   health(): Promise<VaultHealthStatus>;
   inventory(forceRefresh?: boolean): Promise<VaultInventory>;
   inspectMappings(systems: SystemSummary[]): Promise<VaultMappingHealth[]>;
+  reconcile(systems: SystemSummary[], forceRefresh?: boolean): Promise<VaultReconciliationReport>;
   issueCredential(request: AccessRequest, system: SystemSummary): Promise<VaultIssueResult>;
   revokeLease(leaseId: string): Promise<{ revoked: boolean; detail: Record<string, unknown> }>;
   inspectPluginMount(request: VaultPluginMountTarget): Promise<VaultPluginMountInspectionResult>;
@@ -92,6 +96,39 @@ class MockVaultClient implements VaultClient {
         detail: { mode: "mock" }
       }))
     );
+  }
+
+  async reconcile(systems: SystemSummary[]): Promise<VaultReconciliationReport> {
+    const items = systems.flatMap((system) =>
+      system.vaultMountMappings
+        .filter((mapping) => mapping.enabled)
+        .map<VaultReconciliationItem>((mapping) => ({
+          id: `mapping:${system.id}:${mapping.id}`,
+          targetType: "mapping",
+          title: mapping.displayName,
+          status: "in-sync",
+          severity: "info",
+          systemId: system.id,
+          systemName: system.name,
+          requestType: mapping.requestType,
+          checks: [
+            reconciliationCheck("mount", "Mount", "configured", "mock available", "pass"),
+            reconciliationCheck("namespace", "Namespace", system.vaultNamespace || "root", system.vaultNamespace || "root", "pass"),
+            reconciliationCheck("role", "Role", mapping.roleName, "mock available", "pass"),
+            reconciliationCheck("capability", "Runtime capability", "allowed", "mock allowed", "pass")
+          ],
+          remediation: {
+            action: "none",
+            label: "No action required",
+            detail: "Mock Vault mode does not expose live drift.",
+            requiresApproval: false
+          }
+        }))
+    );
+    return reconciliationReport("mock", items, {
+      mode: "system",
+      desiredNamespaces: desiredNamespaces(systems)
+    }, ["Mock Vault mode does not perform live role or capability inspection"]);
   }
 
   async issueCredential(request: AccessRequest, system: SystemSummary): Promise<VaultIssueResult> {
@@ -196,6 +233,7 @@ class RealVaultClient implements VaultClient {
   private readonly cachedTokens = new Map<"runtime" | "plugin", { token: string; expiresAt: number }>();
   private inventoryCache?: { value: VaultInventory; expiresAt: number };
   private inventoryInFlight?: Promise<VaultInventory>;
+  private reconciliationCache?: { value: VaultReconciliationReport; expiresAt: number; signature: string };
 
   constructor(private readonly config: AppConfig) {}
 
@@ -283,6 +321,163 @@ class RealVaultClient implements VaultClient {
         };
       })
     );
+  }
+
+  async reconcile(systems: SystemSummary[], forceRefresh = false): Promise<VaultReconciliationReport> {
+    const signature = reconciliationSignature(systems, this.config);
+    if (
+      !forceRefresh &&
+      this.reconciliationCache &&
+      this.reconciliationCache.signature === signature &&
+      this.reconciliationCache.expiresAt > Date.now()
+    ) {
+      return this.reconciliationCache.value;
+    }
+
+    const inventory = await this.inventory(forceRefresh);
+    const warnings = [...inventory.warnings];
+    const routing = vaultNamespaceRouting(systems, this.config);
+    const targets = systems.flatMap((system) =>
+      system.vaultMountMappings
+        .filter((mapping) => mapping.enabled)
+        .map((mapping) => ({
+          system,
+          mapping,
+          namespace: this.namespaceFor(system),
+          expectedMount: expectedInventoryMount(mapping.mountPath),
+          capability: mappingCapabilityExpectation(mapping)
+        }))
+    );
+
+    const mountsByNamespace = new Map<string, VaultInventoryMount[]>();
+    mountsByNamespace.set(namespaceKey(inventory.namespace), inventory.mounts);
+    const targetNamespaces = new Map(targets.map((target) => [namespaceKey(target.namespace), target.namespace]));
+    await Promise.all(
+      [...targetNamespaces.entries()].map(async ([key, namespace]) => {
+        if (mountsByNamespace.has(key)) return;
+        const loaded = await this.loadNamespaceMounts(namespace);
+        mountsByNamespace.set(key, loaded.mounts);
+        warnings.push(...loaded.warnings);
+      })
+    );
+
+    const capabilityByTarget = new Map<string, CapabilityInspection>();
+    await Promise.all(
+      [...targetNamespaces.entries()].map(async ([key, namespace]) => {
+        const namespaceTargets = targets.filter((target) => namespaceKey(target.namespace) === key);
+        const inspections = await this.inspectRuntimeCapabilities(
+          namespace,
+          namespaceTargets.map((target) => target.capability)
+        );
+        for (const target of namespaceTargets) {
+          capabilityByTarget.set(reconciliationTargetKey(target.system, target.mapping), inspections.get(target.capability.path) ?? {
+            status: "unknown",
+            actual: "not returned",
+            detail: "Vault did not return a capability result for this path"
+          });
+        }
+        const capabilityWarning = [...inspections.values()].find((inspection) => inspection.detail?.startsWith("Unable to inspect"));
+        if (capabilityWarning?.detail) warnings.push(capabilityWarning.detail);
+      })
+    );
+
+    const roleByTarget = new Map<string, RoleInspection>();
+    await Promise.all(
+      targets.map(async (target) => {
+        const targetKey = reconciliationTargetKey(target.system, target.mapping);
+        const namespaceMounts = mountsByNamespace.get(namespaceKey(target.namespace)) ?? [];
+        const mounted = namespaceMounts.some(
+          (mount) => mount.kind === target.expectedMount.kind && normalizeMount(mount.path) === target.expectedMount.path
+        );
+        const rolePath = mappingRoleInspectionPath(target.mapping);
+        if (!mounted) {
+          roleByTarget.set(targetKey, {
+            status: "unknown",
+            actual: "blocked by missing Mount",
+            detail: "Role inspection starts after the expected Mount is available"
+          });
+          return;
+        }
+        if (!rolePath) {
+          roleByTarget.set(targetKey, {
+            status: "not-applicable",
+            actual: "plugin-specific",
+            detail: roleInspectionNotApplicableDetail(target.mapping)
+          });
+          return;
+        }
+        roleByTarget.set(targetKey, await this.inspectRole(target.namespace, rolePath));
+      })
+    );
+
+    const mappingItems = targets.map<VaultReconciliationItem>((target) => {
+      const targetKey = reconciliationTargetKey(target.system, target.mapping);
+      const actualNamespace = normalizeNamespaceLabel(target.namespace);
+      const desiredNamespace = normalizeNamespaceLabel(target.system.vaultNamespace);
+      const namespaceMounts = mountsByNamespace.get(namespaceKey(target.namespace)) ?? [];
+      const mounted = namespaceMounts.find(
+        (mount) => mount.kind === target.expectedMount.kind && normalizeMount(mount.path) === target.expectedMount.path
+      );
+      const role = roleByTarget.get(targetKey) ?? {
+        status: "unknown" as const,
+        actual: "not inspected",
+        detail: "Role inspection did not complete"
+      };
+      const capability = capabilityByTarget.get(targetKey) ?? {
+        status: "unknown" as const,
+        actual: "not inspected",
+        detail: "Runtime capability inspection did not complete"
+      };
+      const checks: VaultReconciliationCheck[] = [
+        reconciliationCheck(
+          "mount",
+          "Mount",
+          `${target.expectedMount.kind}:${target.expectedMount.path}/`,
+          mounted ? `${mounted.kind}:${normalizeMount(mounted.path)}/ (${mounted.type})` : "missing",
+          mounted ? "pass" : "fail",
+          mounted ? "The expected Mount is present in the live Vault inventory" : "The configured Mount is absent from the target Namespace"
+        ),
+        reconciliationCheck(
+          "namespace",
+          "Namespace",
+          desiredNamespace,
+          actualNamespace,
+          desiredNamespace === actualNamespace ? "pass" : "fail",
+          desiredNamespace === actualNamespace
+            ? "Portal configuration and Vault API routing use the same Namespace"
+            : "Portal system configuration and the active Vault API routing target differ"
+        ),
+        reconciliationCheck("role", "Role", target.mapping.roleName, role.actual, role.status, role.detail),
+        reconciliationCheck(
+          "capability",
+          "Runtime capability",
+          `${target.capability.required.join(" or ")} on ${target.capability.path}`,
+          capability.actual,
+          capability.status,
+          capability.detail
+        )
+      ];
+      return finalizeReconciliationItem({
+        id: targetKey,
+        targetType: "mapping",
+        title: target.mapping.displayName,
+        systemId: target.system.id,
+        systemName: target.system.name,
+        requestType: target.mapping.requestType,
+        checks
+      });
+    });
+
+    const pluginItems = inventory.plugins
+      .filter((plugin) => !plugin.builtin)
+      .map(pluginReconciliationItem);
+    const report = reconciliationReport("real", [...mappingItems, ...pluginItems], routing, uniqueStrings(warnings));
+    this.reconciliationCache = {
+      value: report,
+      expiresAt: Date.now() + 10_000,
+      signature
+    };
+    return report;
   }
 
   async issueCredential(request: AccessRequest, system: SystemSummary): Promise<VaultIssueResult> {
@@ -776,6 +971,122 @@ class RealVaultClient implements VaultClient {
 
   private invalidateInventoryCache(): void {
     this.inventoryCache = undefined;
+    this.reconciliationCache = undefined;
+  }
+
+  private async loadNamespaceMounts(
+    namespace: string | undefined
+  ): Promise<{ mounts: VaultInventoryMount[]; warnings: string[] }> {
+    const [secretResult, authResult] = await Promise.allSettled([
+      this.vaultRequest("GET", "sys/mounts", {
+        namespace,
+        credentialScope: "plugin",
+        tolerateStatus: [200]
+      }),
+      this.vaultRequest("GET", "sys/auth", {
+        namespace,
+        credentialScope: "plugin",
+        tolerateStatus: [200]
+      })
+    ]);
+    const mounts: VaultInventoryMount[] = [];
+    const warnings: string[] = [];
+    if (secretResult.status === "fulfilled") {
+      mounts.push(...inventoryMounts(secretResult.value.body.data, "secret"));
+    } else {
+      warnings.push(`Unable to read sys/mounts in ${normalizeNamespaceLabel(namespace)}: ${errorMessage(secretResult.reason)}`);
+    }
+    if (authResult.status === "fulfilled") {
+      mounts.push(...inventoryMounts(authResult.value.body.data, "auth"));
+    } else {
+      warnings.push(`Unable to read sys/auth in ${normalizeNamespaceLabel(namespace)}: ${errorMessage(authResult.reason)}`);
+    }
+    return { mounts, warnings };
+  }
+
+  private async inspectRole(namespace: string | undefined, rolePath: string): Promise<RoleInspection> {
+    try {
+      const response = await this.vaultRequest("GET", rolePath, {
+        namespace,
+        credentialScope: "plugin",
+        tolerateStatus: [200, 400, 403, 404]
+      });
+      if (response.status === 200) {
+        return {
+          status: "pass",
+          actual: "present",
+          detail: `Verified ${rolePath} without exposing Role configuration values`
+        };
+      }
+      if (response.status === 404) {
+        return {
+          status: "fail",
+          actual: "missing",
+          detail: `${rolePath} returned 404`
+        };
+      }
+      return {
+        status: "unknown",
+        actual: `HTTP ${response.status}`,
+        detail: `Role existence could not be confirmed at ${rolePath}`
+      };
+    } catch (error) {
+      return {
+        status: "unknown",
+        actual: "inspection failed",
+        detail: `Unable to inspect ${rolePath}: ${errorMessage(error)}`
+      };
+    }
+  }
+
+  private async inspectRuntimeCapabilities(
+    namespace: string | undefined,
+    expectations: MappingCapabilityExpectation[]
+  ): Promise<Map<string, CapabilityInspection>> {
+    const uniqueExpectations = [...new Map(expectations.map((expectation) => [expectation.path, expectation])).values()];
+    const results = new Map<string, CapabilityInspection>();
+    if (uniqueExpectations.length === 0) return results;
+    try {
+      const response = await this.vaultRequest("POST", "sys/capabilities-self", {
+        namespace,
+        credentialScope: "runtime",
+        body: { paths: uniqueExpectations.map((expectation) => expectation.path) },
+        tolerateStatus: [200, 403]
+      });
+      if (response.status !== 200) {
+        for (const expectation of uniqueExpectations) {
+          results.set(expectation.path, {
+            status: "unknown",
+            actual: `HTTP ${response.status}`,
+            detail: `Unable to inspect runtime capabilities in ${normalizeNamespaceLabel(namespace)}: HTTP ${response.status}`
+          });
+        }
+        return results;
+      }
+      const data = response.body.data && typeof response.body.data === "object" ? response.body.data : {};
+      for (const expectation of uniqueExpectations) {
+        const raw = data[expectation.path] ?? (uniqueExpectations.length === 1 ? data.capabilities : undefined);
+        const capabilities = Array.isArray(raw) ? raw.map(String) : [];
+        const allowed = expectation.required.some((capability) => capabilities.includes(capability));
+        results.set(expectation.path, {
+          status: capabilities.length === 0 ? "unknown" : allowed ? "pass" : "fail",
+          actual: capabilities.length > 0 ? capabilities.join(", ") : "not returned",
+          detail: capabilities.length > 0
+            ? `Runtime token capabilities returned for ${expectation.path}`
+            : `Vault returned no capability list for ${expectation.path}`
+        });
+      }
+      return results;
+    } catch (error) {
+      for (const expectation of uniqueExpectations) {
+        results.set(expectation.path, {
+          status: "unknown",
+          actual: "inspection failed",
+          detail: `Unable to inspect runtime capabilities in ${normalizeNamespaceLabel(namespace)}: ${errorMessage(error)}`
+        });
+      }
+      return results;
+    }
   }
 
   private namespaceFor(system: SystemSummary): string | undefined {
@@ -893,6 +1204,229 @@ class RealVaultClient implements VaultClient {
       throw new Error(`Real plugin operations are restricted to ${prefix}/`);
     }
   }
+}
+
+type MappingCapabilityExpectation = {
+  path: string;
+  required: string[];
+};
+
+type CapabilityInspection = {
+  status: VaultReconciliationCheck["status"];
+  actual: string;
+  detail?: string;
+};
+
+type RoleInspection = CapabilityInspection;
+
+type ReconciliationItemInput = Pick<
+  VaultReconciliationItem,
+  "id" | "targetType" | "title" | "systemId" | "systemName" | "requestType" | "pluginName" | "checks"
+>;
+
+function reconciliationCheck(
+  kind: VaultReconciliationCheck["kind"],
+  label: string,
+  expected: string,
+  actual: string,
+  status: VaultReconciliationCheck["status"],
+  detail?: string
+): VaultReconciliationCheck {
+  return { kind, label, expected, actual, status, detail };
+}
+
+function finalizeReconciliationItem(input: ReconciliationItemInput): VaultReconciliationItem {
+  const failedChecks = input.checks.filter((check) => check.status === "fail");
+  const unknown = input.checks.find((check) => check.status === "unknown");
+  const criticalKinds = new Set<VaultReconciliationCheck["kind"]>(["mount", "role", "capability", "catalog"]);
+  const failed = failedChecks.find((check) => criticalKinds.has(check.kind)) ?? failedChecks[0];
+  const status: VaultReconciliationItem["status"] = failed ? "drift" : unknown ? "unknown" : "in-sync";
+  const severity: VaultReconciliationItem["severity"] = failed
+    ? failedChecks.some((check) => criticalKinds.has(check.kind)) ? "critical" : "warning"
+    : unknown
+      ? "warning"
+      : "info";
+  const isPlugin = input.targetType === "plugin";
+  return {
+    ...input,
+    status,
+    severity,
+    remediation: status === "in-sync"
+      ? {
+          action: "none",
+          label: "No action required",
+          detail: "Desired and actual Vault state are aligned for the inspected checks.",
+          requiresApproval: false
+        }
+      : status === "unknown"
+        ? {
+            action: isPlugin ? "open-plugin-factory" : "review-system",
+            label: "Complete inspection",
+            detail: unknown?.detail ?? "Additional Vault permissions or plugin-specific checks are required.",
+            requiresApproval: false
+          }
+        : {
+            action: isPlugin ? "open-plugin-factory" : "review-system",
+            label: isPlugin ? "Review in Plugin Factory" : "Review system mapping",
+            detail: failed?.detail ?? "Review the desired-to-actual Diff before creating an approved change.",
+            requiresApproval: true
+          }
+  };
+}
+
+function pluginReconciliationItem(plugin: VaultPluginCatalogEntry): VaultReconciliationItem {
+  const catalogMissing = plugin.status === "orphaned";
+  const mountDeclared = plugin.mountedPaths.length > 0;
+  return finalizeReconciliationItem({
+    id: `plugin:${plugin.pluginType}:${plugin.name}`,
+    targetType: "plugin",
+    title: plugin.name,
+    pluginName: plugin.name,
+    checks: [
+      reconciliationCheck(
+        "catalog",
+        "Plugin Catalog",
+        "registered with command and SHA-256",
+        catalogMissing ? "missing" : plugin.sha256 ? `registered · SHA-256 ${plugin.sha256.slice(0, 12)}...` : "registered",
+        catalogMissing ? "fail" : "pass",
+        catalogMissing
+          ? "A mounted external Plugin has no matching Catalog registration"
+          : "The external Plugin is present in the Vault Plugin Catalog"
+      ),
+      reconciliationCheck(
+        "mount",
+        "Plugin Mount",
+        plugin.status === "registered" ? "desired Mount not declared" : "at least one live Mount",
+        mountDeclared ? plugin.mountedPaths.map((path) => `${path}/`).join(", ") : "not mounted",
+        mountDeclared ? "pass" : "unknown",
+        mountDeclared
+          ? "Live Mount paths were matched to this Catalog entry"
+          : "A Catalog-only Plugin is valid, but its desired Mount state is not declared in the Portal"
+      )
+    ]
+  });
+}
+
+function reconciliationReport(
+  mode: "mock" | "real",
+  items: VaultReconciliationItem[],
+  routing: VaultReconciliationReport["routing"],
+  warnings: string[]
+): VaultReconciliationReport {
+  return {
+    mode,
+    syncedAt: new Date().toISOString(),
+    routing,
+    summary: {
+      total: items.length,
+      inSync: items.filter((item) => item.status === "in-sync").length,
+      drifted: items.filter((item) => item.status === "drift").length,
+      unknown: items.filter((item) => item.status === "unknown").length,
+      critical: items.filter((item) => item.status === "drift" && item.severity === "critical").length,
+      mappingDrift: items.filter((item) => item.targetType === "mapping" && item.status === "drift").length,
+      pluginDrift: items.filter((item) => item.targetType === "plugin" && item.status === "drift").length
+    },
+    items: items.sort((left, right) => {
+      const statusOrder = { drift: 0, unknown: 1, "in-sync": 2 } as const;
+      return statusOrder[left.status] - statusOrder[right.status] || left.title.localeCompare(right.title);
+    }),
+    warnings
+  };
+}
+
+function vaultNamespaceRouting(
+  systems: SystemSummary[],
+  config: AppConfig
+): VaultReconciliationReport["routing"] {
+  return {
+    mode: config.vaultNamespace ? "fixed" : config.vaultUseSystemNamespace ? "system" : "root",
+    ...(config.vaultNamespace ? { configuredNamespace: normalizeNamespaceLabel(config.vaultNamespace) } : {}),
+    desiredNamespaces: desiredNamespaces(systems)
+  };
+}
+
+function desiredNamespaces(systems: SystemSummary[]): string[] {
+  return uniqueStrings(systems.map((system) => normalizeNamespaceLabel(system.vaultNamespace))).sort();
+}
+
+function normalizeNamespaceLabel(namespace: string | undefined): string {
+  const normalized = namespace?.replace(/^\/+|\/+$/g, "").trim();
+  return !normalized || normalized === "root" ? "root" : normalized;
+}
+
+function namespaceKey(namespace: string | undefined): string {
+  return normalizeNamespaceLabel(namespace);
+}
+
+function reconciliationTargetKey(system: SystemSummary, mapping: VaultMapping): string {
+  return `mapping:${system.id}:${mapping.id}`;
+}
+
+function reconciliationSignature(systems: SystemSummary[], config: AppConfig): string {
+  return JSON.stringify({
+    namespace: config.vaultNamespace,
+    useSystemNamespace: config.vaultUseSystemNamespace,
+    systems: systems.map((system) => ({
+      id: system.id,
+      namespace: system.vaultNamespace,
+      mappings: system.vaultMountMappings.map((mapping) => ({
+        id: mapping.id,
+        mountPath: mapping.mountPath,
+        roleName: mapping.roleName,
+        requestType: mapping.requestType,
+        enabled: mapping.enabled
+      }))
+    }))
+  });
+}
+
+function mappingCapabilityExpectation(mapping: VaultMapping): MappingCapabilityExpectation {
+  const mount = normalizeMount(mapping.mountPath);
+  const role = normalizeMount(mapping.roleName);
+  switch (mapping.requestType) {
+    case "KV_READ":
+      return { path: `${mount}/data/${role}`, required: ["read"] };
+    case "KV_WRITE":
+      return { path: `${mount}/data/${role}`, required: ["create", "update"] };
+    case "DB_CREDENTIAL":
+      return { path: `${mount}/creds/${role}`, required: ["read"] };
+    case "PKI_CERTIFICATE":
+      return { path: `${mount}/issue/${role}`, required: ["create", "update"] };
+    case "SSH_CERTIFICATE":
+      return { path: `${mount}/sign/${role}`, required: ["create", "update"] };
+    case "APPROLE_SECRET_ID":
+      return { path: `${mount}/role/${role}/secret-id`, required: ["create", "update"] };
+    case "NETWORK_DEVICE_ROTATION":
+      return { path: `${mount}/rotate/${role}`, required: ["create", "update"] };
+    default:
+      return { path: `${mount}/creds/${role}`, required: ["create", "update"] };
+  }
+}
+
+function mappingRoleInspectionPath(mapping: VaultMapping): string | undefined {
+  const mount = normalizeMount(mapping.mountPath);
+  const role = encodeURIComponent(normalizeMount(mapping.roleName));
+  switch (mapping.requestType) {
+    case "DB_CREDENTIAL":
+    case "PKI_CERTIFICATE":
+    case "SSH_CERTIFICATE":
+      return `${mount}/roles/${role}`;
+    case "APPROLE_SECRET_ID":
+      return `${mount}/role/${role}`;
+    default:
+      return undefined;
+  }
+}
+
+function roleInspectionNotApplicableDetail(mapping: VaultMapping): string {
+  if (mapping.requestType === "KV_READ" || mapping.requestType === "KV_WRITE") {
+    return "KV mappings use this field as a data path, not a Vault Role";
+  }
+  return "This custom Plugin does not declare a standard Role inspection endpoint";
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
 
 type VaultCatalogCandidate = {

@@ -229,7 +229,61 @@ export interface VaultLiveStatus {
   health: VaultHealthStatus;
   mappings: VaultMappingHealth[];
   inventory?: VaultInventory;
+  reconciliation?: VaultReconciliationReport;
   syncedAt: string;
+}
+
+export type VaultReconciliationCheckKind = "mount" | "namespace" | "role" | "capability" | "catalog";
+
+export type VaultReconciliationCheckStatus = "pass" | "fail" | "unknown" | "not-applicable";
+
+export interface VaultReconciliationCheck {
+  kind: VaultReconciliationCheckKind;
+  status: VaultReconciliationCheckStatus;
+  label: string;
+  expected: string;
+  actual: string;
+  detail?: string;
+}
+
+export interface VaultReconciliationItem {
+  id: string;
+  targetType: "mapping" | "plugin";
+  title: string;
+  status: "in-sync" | "drift" | "unknown";
+  severity: "info" | "warning" | "critical";
+  systemId?: string;
+  systemName?: string;
+  requestType?: RequestType;
+  pluginName?: string;
+  checks: VaultReconciliationCheck[];
+  remediation: {
+    action: "review-system" | "open-plugin-factory" | "accept-drift" | "none";
+    label: string;
+    detail: string;
+    requiresApproval: boolean;
+  };
+}
+
+export interface VaultReconciliationReport {
+  mode: "mock" | "real";
+  syncedAt: string;
+  routing: {
+    mode: "fixed" | "system" | "root";
+    configuredNamespace?: string;
+    desiredNamespaces: string[];
+  };
+  summary: {
+    total: number;
+    inSync: number;
+    drifted: number;
+    unknown: number;
+    critical: number;
+    mappingDrift: number;
+    pluginDrift: number;
+  };
+  items: VaultReconciliationItem[];
+  warnings: string[];
 }
 
 export type VaultPluginType = "auth" | "secret" | "database";

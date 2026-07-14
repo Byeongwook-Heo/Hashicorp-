@@ -432,13 +432,15 @@ async function main(): Promise<void> {
       const canViewInventory = req.user.roles.some((role) => role === "vault-admin" || role === "auditor");
       const forceRefresh = canViewInventory && req.query.refresh === "true";
       const systems = await store.listSystems(vaultSystemActor);
-      const inventory = canViewInventory ? await vault.inventory(forceRefresh) : undefined;
+      const reconciliation = canViewInventory ? await vault.reconcile(systems, forceRefresh) : undefined;
+      const inventory = canViewInventory ? await vault.inventory(false) : undefined;
       const [health, mappings] = await Promise.all([vault.health(), vault.inspectMappings(systems)]);
       res.set("Cache-Control", "no-store");
       res.json({
         health,
         mappings,
         ...(inventory ? { inventory } : {}),
+        ...(reconciliation ? { reconciliation } : {}),
         syncedAt: inventory?.syncedAt ?? new Date().toISOString()
       });
     } catch (error) {

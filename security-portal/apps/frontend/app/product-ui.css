@@ -369,6 +369,545 @@ button:hover:not(:disabled),
   border-bottom: 1px solid var(--line);
 }
 
+.reconciliationHealthStrip {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 5px;
+  background: var(--panel);
+}
+
+.reconciliationHealthStrip.hasDrift {
+  border-left-color: var(--vault-strong);
+}
+
+.reconciliationHealthStrip > div:first-child,
+.reconciliationHealthStrip > div:first-child > span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.reconciliationHealthStrip > div:first-child {
+  gap: 10px;
+}
+
+.reconciliationHealthStrip > div:first-child > svg {
+  flex: 0 0 auto;
+  color: var(--green);
+}
+
+.reconciliationHealthStrip.hasDrift > div:first-child > svg {
+  color: var(--vault-strong);
+}
+
+.reconciliationHealthStrip > div:first-child > span {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reconciliationHealthStrip strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.reconciliationHealthStrip small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.reconciliationHealthMetrics {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 18px;
+}
+
+.reconciliationHealthMetrics span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.reconciliationHealthMetrics strong {
+  font-size: 14px;
+}
+
+.reconciliationPanel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.reconciliationHeader {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reconciliationTitle {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 11px;
+}
+
+.reconciliationIcon {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  background: var(--vault);
+  color: #17150d;
+}
+
+.reconciliationTitle > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.reconciliationTitle h2,
+.reconciliationTitle p {
+  margin: 0;
+}
+
+.reconciliationTitle h2 {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.reconciliationTitle p {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.reconciliationRouting {
+  display: grid;
+  min-width: 136px;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+  text-align: right;
+}
+
+.reconciliationRouting span {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.reconciliationRouting strong {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.reconciliationSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+
+.reconciliationSummary .miniStat {
+  min-height: 64px;
+  padding: 11px 16px;
+  border-right: 1px solid var(--line-soft);
+}
+
+.reconciliationSummary .miniStat:last-child {
+  border-right: 0;
+}
+
+.reconciliationToolbar {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-soft);
+}
+
+.reconciliationFilters {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+}
+
+.reconciliationFilters button {
+  display: inline-flex;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 10px;
+}
+
+.reconciliationFilters button:hover,
+.reconciliationFilters button.active {
+  border-color: var(--line-strong);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.reconciliationFilters button strong {
+  display: inline-flex;
+  min-width: 18px;
+  min-height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-size: 9px;
+}
+
+.reconciliationGate {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.reconciliationList {
+  display: grid;
+}
+
+.reconciliationRow {
+  scroll-margin-top: 90px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.reconciliationRow:last-child {
+  border-bottom: 0;
+}
+
+.reconciliationRow > summary {
+  display: grid;
+  min-height: 58px;
+  cursor: pointer;
+  grid-template-columns: 28px minmax(0, 1fr) auto 18px;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 14px;
+  list-style: none;
+  transition: background 130ms ease;
+}
+
+.reconciliationRow > summary::-webkit-details-marker {
+  display: none;
+}
+
+.reconciliationRow > summary:hover,
+.reconciliationRow[open] > summary,
+.reconciliationRow:target > summary {
+  background: var(--panel-soft);
+}
+
+.reconciliationRow:target {
+  box-shadow: inset 3px 0 0 var(--vault-strong);
+}
+
+.reconciliationRowStatus {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  color: var(--green);
+}
+
+.reconciliationRow.drift .reconciliationRowStatus {
+  color: var(--red);
+}
+
+.reconciliationRow.unknown .reconciliationRowStatus {
+  color: var(--vault-strong);
+}
+
+.reconciliationRowTitle {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.reconciliationRowTitle strong,
+.reconciliationRowTitle small {
+  overflow-wrap: anywhere;
+}
+
+.reconciliationRowTitle strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.reconciliationRowTitle small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.reconciliationStatus {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--muted-strong);
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.reconciliationStatus.drift {
+  border-color: color-mix(in srgb, var(--red) 38%, var(--line));
+  background: color-mix(in srgb, var(--red) 7%, var(--panel));
+  color: var(--red);
+}
+
+.reconciliationStatus.unknown {
+  border-color: color-mix(in srgb, var(--vault) 50%, var(--line));
+  background: color-mix(in srgb, var(--vault) 7%, var(--panel));
+  color: var(--vault-strong);
+}
+
+.reconciliationStatus.in-sync {
+  border-color: color-mix(in srgb, var(--green) 35%, var(--line));
+  background: color-mix(in srgb, var(--green) 7%, var(--panel));
+  color: var(--green);
+}
+
+.reconciliationChevron {
+  color: var(--muted);
+  transition: transform 150ms ease;
+}
+
+.reconciliationRow[open] .reconciliationChevron {
+  transform: rotate(90deg);
+}
+
+.reconciliationDetails {
+  display: grid;
+  gap: 12px;
+  padding: 0 14px 14px 52px;
+  background: var(--panel-soft);
+}
+
+.reconciliationChecks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.reconciliationCheck {
+  min-width: 0;
+  padding: 11px 12px;
+  border-right: 1px solid var(--line-soft);
+}
+
+.reconciliationCheck:last-child {
+  border-right: 0;
+}
+
+.reconciliationCheck > header,
+.reconciliationCheck > header > span {
+  display: flex;
+  align-items: center;
+}
+
+.reconciliationCheck > header {
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.reconciliationCheck > header > span {
+  min-width: 0;
+  gap: 6px;
+}
+
+.reconciliationCheck > header svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.reconciliationCheck.pass > header svg {
+  color: var(--green);
+}
+
+.reconciliationCheck.fail > header svg {
+  color: var(--red);
+}
+
+.reconciliationCheck > header strong,
+.reconciliationCheck > header em {
+  font-size: 9px;
+}
+
+.reconciliationCheck > header strong {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.reconciliationCheck > header em {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-style: normal;
+}
+
+.reconciliationCheck dl {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 4px 7px;
+  margin: 0;
+}
+
+.reconciliationCheck dt,
+.reconciliationCheck dd,
+.reconciliationCheck p {
+  overflow-wrap: anywhere;
+  font-size: 9px;
+}
+
+.reconciliationCheck dt {
+  color: var(--muted);
+}
+
+.reconciliationCheck dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.reconciliationCheck p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.reconciliationRemediation {
+  display: grid;
+  min-height: 54px;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 10px;
+  border-left: 2px solid var(--line-strong);
+  background: var(--panel);
+}
+
+.reconciliationRow.drift .reconciliationRemediation {
+  border-left-color: var(--vault-strong);
+}
+
+.reconciliationRemediation > span:first-child {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  color: var(--vault-strong);
+}
+
+.reconciliationRemediation > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.reconciliationRemediation strong,
+.reconciliationRemediation p {
+  overflow-wrap: anywhere;
+}
+
+.reconciliationRemediation strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.reconciliationRemediation p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.reconciliationApproval {
+  display: inline-flex;
+  min-height: 23px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--vault) 55%, var(--line));
+  border-radius: 3px;
+  color: var(--vault-strong);
+  font-size: 8px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.reconciliationRemediation > a {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.reconciliationRemediation > a:hover {
+  border-color: var(--vault-strong);
+  background: color-mix(in srgb, var(--vault) 8%, var(--panel));
+}
+
+.reconciliationEmpty {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .dependencyChipCloud span.live,
 .inlineLiveStatus.live {
   border-color: color-mix(in srgb, var(--green) 45%, var(--line));
@@ -3224,6 +3763,18 @@ textarea:focus {
     display: flex;
     overflow: visible;
   }
+
+  .reconciliationChecks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reconciliationCheck:nth-child(2) {
+    border-right: 0;
+  }
+
+  .reconciliationCheck:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line-soft);
+  }
 }
 
 @media (max-width: 640px) {
@@ -3350,6 +3901,90 @@ textarea:focus {
 
   .vaultInventorySummary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reconciliationHealthStrip,
+  .reconciliationHeader,
+  .reconciliationToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reconciliationHealthMetrics {
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 9px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .reconciliationRouting {
+    min-width: 0;
+    padding: 9px 0 0;
+    border-top: 1px solid var(--line-soft);
+    border-left: 0;
+    text-align: left;
+  }
+
+  .reconciliationSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reconciliationSummary .miniStat:nth-child(2) {
+    border-right: 0;
+  }
+
+  .reconciliationSummary .miniStat:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .reconciliationFilters {
+    width: 100%;
+  }
+
+  .reconciliationGate {
+    white-space: normal;
+  }
+
+  .reconciliationRow > summary {
+    grid-template-columns: 28px minmax(0, 1fr) 18px;
+  }
+
+  .reconciliationRow > summary .reconciliationStatus {
+    grid-column: 2;
+    width: max-content;
+  }
+
+  .reconciliationRow > summary .reconciliationChevron {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+  }
+
+  .reconciliationDetails {
+    padding-left: 14px;
+  }
+
+  .reconciliationChecks {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reconciliationCheck,
+  .reconciliationCheck:nth-child(2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .reconciliationCheck:last-child {
+    border-bottom: 0;
+  }
+
+  .reconciliationRemediation {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .reconciliationApproval,
+  .reconciliationRemediation > a {
+    grid-column: 2;
+    width: max-content;
   }
 }
 
