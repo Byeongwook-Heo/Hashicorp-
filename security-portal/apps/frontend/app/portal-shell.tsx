@@ -3418,6 +3418,7 @@ function PluginFactory({
     localize(t, "Compare Sectigo and DigiCert", "Sectigo와 DigiCert를 비교해줘")
   ];
   const currentJob = factoryJobs.find((job) => job.id === activeJobId);
+  const factoryWorkspaceSwitchBlocked = busy === "load" || busy === "apply";
   const factoryBuildPhase = autoRepair?.phase ?? (autoRepair?.status === "pass" ? "complete" : autoRepair?.status === "cancelled" ? "cancelled" : "queued");
   const factoryBuildAttempt = autoRepair
     ? Math.min(autoRepair.activeAttempt ?? autoRepair.attempts.length + 1, autoRepair.maxAttempts)
@@ -4049,6 +4050,7 @@ function PluginFactory({
 
   function loadFactoryJob(job: VaultPluginFactoryJob) {
     workspaceIdRef.current = (job.snapshot as FactoryWorkspaceSnapshot).workspaceId ?? job.id;
+    setBusy(null);
     setWorkspaceSaving(false);
     setActiveJobId(job.id);
     activeJobIdRef.current = job.id;
@@ -4070,6 +4072,7 @@ function PluginFactory({
 
   function startNewFactoryConversation() {
     workspaceIdRef.current = createFactoryWorkspaceId();
+    setBusy(null);
     setWorkspaceSaving(false);
     const initialTemplate = templates[0];
     if (initialTemplate) chooseTemplate(initialTemplate);
@@ -4957,7 +4960,12 @@ function PluginFactory({
           </div>
         </div>
         <div className="factoryWorkspaceActions">
-          <button className="primary" type="button" onClick={startNewFactoryConversation} disabled={busy !== null}>
+          <button
+            className="primary"
+            disabled={factoryWorkspaceSwitchBlocked}
+            onClick={startNewFactoryConversation}
+            type="button"
+          >
             <MessageSquare aria-hidden="true" size={16} />
             {localize(t, "New conversation", "새 대화")}
           </button>
@@ -6135,7 +6143,7 @@ function PluginFactory({
                     <button
                       aria-label={localize(t, `Open history ${historyTitle}`, `${historyTitle} 이력 열기`)}
                       className="factoryJobSelect"
-                      disabled={busy !== null}
+                      disabled={factoryWorkspaceSwitchBlocked}
                       onClick={() => loadFactoryJob(job)}
                       type="button"
                     >
