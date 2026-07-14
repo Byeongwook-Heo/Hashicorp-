@@ -41,10 +41,23 @@ export function createVaultUiProxy(config: VaultUiProxyConfig): RequestHandler {
       const upstream = await fetchImpl(target, {
         method,
         headers: vaultUiRequestHeaders(req.headers),
-        body: vaultUiRequestBody(req),
+        body: serializeVaultUiRequestBody({
+          method,
+          contentType: req.header("content-type"),
+          body: req.body,
+          hasBody: requestHasBody(req)
+        }),
         redirect: "manual",
         signal: AbortSignal.timeout(config.timeoutMs ?? 30_000)
       });
+
+      if (!upstream.ok) {
+        console.warn("Vault UI gateway upstream request failed", {
+          method,
+          path: target.pathname,
+          status: upstream.status
+        });
+      }
 
       res.status(upstream.status);
       upstream.headers.forEach((value, name) => {
@@ -96,13 +109,24 @@ export function vaultUiRequestHeaders(
   return headers;
 }
 
-function vaultUiRequestBody(req: Request): BodyInit | undefined {
-  if (req.method === "GET" || req.method === "HEAD" || req.method === "LIST") return undefined;
-  const contentType = req.header("content-type")?.toLowerCase() ?? "";
-  if (contentType.includes("json")) return JSON.stringify(req.body ?? {});
-  if (typeof req.body === "string") return req.body;
-  if (req.body === undefined || req.body === null) return undefined;
+export function serializeVaultUiRequestBody(input: {
+  method: string;
+  contentType?: string;
+  body: unknown;
+  hasBody: boolean;
+}): BodyInit | undefined {
+  if (["GET", "HEAD", "LIST"].includes(input.method.toUpperCase()) || !input.hasBody) return undefined;
+  const contentType = input.contentType?.toLowerCase() ?? "";
+  if (contentType.includes("json")) return JSON.stringify(input.body ?? {});
+  if (typeof input.body === "string") return input.body;
+  if (input.body === undefined || input.body === null) return undefined;
   throw new Error("Vault UI gateway accepts JSON request bodies only");
+}
+
+function requestHasBody(req: Request): boolean {
+  const contentLength = req.header("content-length");
+  if (contentLength !== undefined) return Number(contentLength) > 0;
+  return Boolean(req.header("transfer-encoding"));
 }
 
 function normalizeProxyUrl(originalUrl: string): string {

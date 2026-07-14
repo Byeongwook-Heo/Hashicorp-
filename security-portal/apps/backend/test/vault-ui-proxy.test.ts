@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildVaultUiTarget, vaultUiRequestHeaders } from "../src/vault/vault-ui-proxy";
+import {
+  buildVaultUiTarget,
+  serializeVaultUiRequestBody,
+  vaultUiRequestHeaders
+} from "../src/vault/vault-ui-proxy";
 
 describe("Vault UI gateway", () => {
   it("forwards only Vault UI and API paths to the configured Vault origin", () => {
@@ -35,5 +39,26 @@ describe("Vault UI gateway", () => {
       "x-vault-namespace": "admin",
       "x-vault-token": "vault-token"
     });
+  });
+
+  it("does not invent a JSON body for bodyless Vault UI DELETE requests", () => {
+    expect(serializeVaultUiRequestBody({
+      method: "DELETE",
+      contentType: "application/json",
+      body: {},
+      hasBody: false
+    })).toBeUndefined();
+    expect(serializeVaultUiRequestBody({
+      method: "POST",
+      contentType: "application/json",
+      body: { type: "kv" },
+      hasBody: true
+    })).toBe(JSON.stringify({ type: "kv" }));
+    expect(serializeVaultUiRequestBody({
+      method: "GET",
+      contentType: "application/json",
+      body: { ignored: true },
+      hasBody: true
+    })).toBeUndefined();
   });
 });
