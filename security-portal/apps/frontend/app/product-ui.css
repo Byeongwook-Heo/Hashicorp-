@@ -236,6 +236,27 @@ button:hover:not(:disabled),
   background: transparent;
 }
 
+.vaultUiLink {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.vaultUiLink:hover {
+  border-color: var(--line-strong);
+  background: var(--panel-soft);
+}
+
 .globalSearchTrigger {
   width: min(280px, 23vw);
   min-width: 184px;
@@ -1650,6 +1671,15 @@ tbody tr:hover {
 
   .globalSearchTrigger {
     width: 170px;
+  }
+
+  .vaultUiLink {
+    width: 36px;
+    padding: 0;
+  }
+
+  .vaultUiLink span {
+    display: none;
   }
 
   .userBadge {

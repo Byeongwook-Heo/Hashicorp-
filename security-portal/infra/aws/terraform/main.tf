@@ -481,6 +481,22 @@ resource "aws_lb_listener_rule" "backend_admin" {
   }
 }
 
+resource "aws_lb_listener_rule" "vault_ui_proxy" {
+  listener_arn = aws_lb_listener.http.arn
+  priority     = 30
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.backend.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/ui", "/ui/*", "/v1", "/v1/*"]
+    }
+  }
+}
+
 resource "aws_ecs_task_definition" "frontend" {
   family                   = "${local.name_prefix}-frontend"
   requires_compatibilities = ["FARGATE"]

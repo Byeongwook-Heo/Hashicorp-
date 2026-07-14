@@ -50,6 +50,7 @@ import {
   Code2,
   Database,
   Download,
+  ExternalLink,
   FileDiff,
   Files,
   GitCompare,
@@ -892,6 +893,19 @@ export default function PortalShell({ view }: { view: View }) {
             </div>
           </div>
           <div className="topbarTools">
+            {vaultHealth?.mode === "real" ? (
+              <a
+                aria-label={localize(t, "Open Vault UI in a new tab", "새 탭에서 Vault UI 열기")}
+                className="topbarAction vaultUiLink"
+                href="/ui/"
+                rel="noopener noreferrer"
+                target="_blank"
+                title={localize(t, "Open Vault UI", "Vault UI 열기")}
+              >
+                <ExternalLink aria-hidden="true" size={17} />
+                <span>Vault UI</span>
+              </a>
+            ) : null}
             <button
               aria-expanded={globalSearchOpen}
               aria-haspopup="dialog"

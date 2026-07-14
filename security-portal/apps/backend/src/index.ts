@@ -36,6 +36,7 @@ import { FactoryRequirementsInterviewer } from "./plugin-factory/factory-require
 import { VaultPluginDistributor } from "./plugin-factory/plugin-distributor";
 import { redact } from "./utils/redact";
 import { createVaultClient } from "./vault/vault-client";
+import { createVaultUiProxy } from "./vault/vault-ui-proxy";
 import { WorkflowService } from "./workflow/workflow-service";
 
 const requestSchema = z.object({
@@ -387,6 +388,11 @@ async function main(): Promise<void> {
     }
     next();
   });
+  app.all(
+    ["/ui", "/ui/*", "/v1", "/v1/*"],
+    requireUser(store, config.sessionCookieName),
+    createVaultUiProxy({ vaultMode: config.vaultMode, vaultAddr: config.vaultAddr })
+  );
 
   app.get("/health", (_req, res) => {
     res.json({ ok: true, service: "security-portal-backend" });
