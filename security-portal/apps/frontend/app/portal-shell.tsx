@@ -6364,7 +6364,13 @@ function PluginFactory({
                         </button>
                         <button
                           className="dangerButton"
-                          disabled={!canApply || !mountConfirmationMatches || mountActionBusy !== null || busy !== null}
+                          disabled={
+                            !canApply ||
+                            currentJob?.approval.status !== "approved" ||
+                            !mountConfirmationMatches ||
+                            mountActionBusy !== null ||
+                            busy !== null
+                          }
                           onClick={() => void removeExistingFactoryMount()}
                           type="button"
                         >
