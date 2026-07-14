@@ -226,14 +226,21 @@ export class MemoryStore implements PortalStore {
     return this.factoryJobs.get(id);
   }
 
-  async updateFactoryJob(id: string, input: UpdateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob> {
+  async updateFactoryJob(
+    id: string,
+    input: UpdateVaultPluginFactoryJobInput,
+    options: { expectedUpdatedAt?: string } = {}
+  ): Promise<VaultPluginFactoryJob> {
     const current = this.factoryJobs.get(id);
     if (!current) throw new Error("Factory job not found");
+    if (options.expectedUpdatedAt && current.updatedAt !== options.expectedUpdatedAt) {
+      throw new Error("Factory job changed while saving");
+    }
     const next: VaultPluginFactoryJob = {
       ...current,
       ...input,
       progress: Math.max(0, Math.min(100, input.progress ?? current.progress)),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString()
     };
     this.factoryJobs.set(id, next);
     return next;

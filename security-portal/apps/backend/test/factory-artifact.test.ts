@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { factoryArtifactEvidence, hasVerifiedFactoryArtifact } from "../src/plugin-factory/factory-artifact";
 import { MemoryStore } from "../src/store/memory-store";
 
 const sha256 = "a".repeat(64);
+const files = [{ path: "main.go", content: "package main\n" }];
+const scaffoldSha256 = createHash("sha256")
+  .update(`main.go\0package main\n\0`)
+  .digest("hex");
 const artifact = {
   bucket: "factory-artifacts",
   key: "factory-builds/run/artifact/plugin",
@@ -22,8 +27,8 @@ describe("Factory artifact evidence", () => {
   it("accepts a persisted verified artifact for real Vault approval", async () => {
     const job = await createJob({
       artifactSha256: sha256,
-      generated: { buildArtifact: artifact, files: [] },
-      autoRepair: { status: "pass", artifact }
+      generated: { buildArtifact: artifact, files },
+      autoRepair: { status: "pass", artifact, scaffoldSha256 }
     });
 
     expect(hasVerifiedFactoryArtifact(job, true)).toBe(true);
@@ -31,8 +36,8 @@ describe("Factory artifact evidence", () => {
 
   it("restores artifact evidence from the completed auto-repair result", async () => {
     const job = await createJob({
-      generated: { files: [] },
-      autoRepair: { status: "pass", artifact }
+      generated: { files },
+      autoRepair: { status: "pass", artifact, scaffoldSha256 }
     });
 
     expect(factoryArtifactEvidence(job)).toMatchObject({
@@ -46,17 +51,28 @@ describe("Factory artifact evidence", () => {
   it("rejects an unstored or checksum-mismatched artifact", async () => {
     const unstored = await createJob({
       artifactSha256: sha256,
-      generated: { buildArtifact: { sha256 }, files: [] },
-      autoRepair: { status: "pass", artifact: { sha256 } }
+      generated: { buildArtifact: { sha256 }, files },
+      autoRepair: { status: "pass", artifact: { sha256 }, scaffoldSha256 }
     });
     const mismatched = await createJob({
       artifactSha256: "b".repeat(64),
-      generated: { buildArtifact: artifact, files: [] },
-      autoRepair: { status: "pass", artifact }
+      generated: { buildArtifact: artifact, files },
+      autoRepair: { status: "pass", artifact, scaffoldSha256 }
     });
 
     expect(hasVerifiedFactoryArtifact(unstored, true)).toBe(false);
     expect(hasVerifiedFactoryArtifact(unstored, false)).toBe(true);
     expect(hasVerifiedFactoryArtifact(mismatched, true)).toBe(false);
+  });
+
+  it("rejects a verified artifact when the saved source differs from the built source", async () => {
+    const job = await createJob({
+      artifactSha256: sha256,
+      draftFiles: [{ path: "main.go", content: "package changed\n" }],
+      generated: { buildArtifact: artifact, files },
+      autoRepair: { status: "pass", artifact, scaffoldSha256, files }
+    });
+
+    expect(hasVerifiedFactoryArtifact(job, true)).toBe(false);
   });
 });

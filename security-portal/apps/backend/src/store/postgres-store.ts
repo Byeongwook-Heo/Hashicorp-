@@ -351,7 +351,11 @@ export class PostgresStore implements PortalStore {
     return result.rows[0] ? mapFactoryJob(result.rows[0]) : undefined;
   }
 
-  async updateFactoryJob(id: string, input: UpdateVaultPluginFactoryJobInput): Promise<VaultPluginFactoryJob> {
+  async updateFactoryJob(
+    id: string,
+    input: UpdateVaultPluginFactoryJobInput,
+    options: { expectedUpdatedAt?: string } = {}
+  ): Promise<VaultPluginFactoryJob> {
     const current = await this.getFactoryJob(id);
     if (!current) throw new Error("Factory job not found");
     const next = {
@@ -367,7 +371,11 @@ export class PostgresStore implements PortalStore {
       approval: input.approval ?? current.approval,
       deployment: input.deployment ?? current.deployment
     };
-    await this.pool.query(
+    const nextUpdatedAt = new Date(Math.max(Date.now(), Date.parse(current.updatedAt) + 1)).toISOString();
+    const expectedUpdatedAtClause = options.expectedUpdatedAt
+      ? "and date_trunc('milliseconds', updated_at) = $14::timestamptz"
+      : "";
+    const result = await this.pool.query(
       `update factory_jobs set
         template_id = $2,
         plugin_name = $3,
@@ -380,8 +388,9 @@ export class PostgresStore implements PortalStore {
         events_json = $10,
         approval_json = $11,
         deployment_json = $12,
-        updated_at = now()
-       where id = $1`,
+        updated_at = $13
+       where id = $1 ${expectedUpdatedAtClause}
+       returning *`,
       [
         id,
         next.templateId ?? null,
@@ -394,12 +403,16 @@ export class PostgresStore implements PortalStore {
         JSON.stringify(next.snapshot),
         JSON.stringify(next.events),
         JSON.stringify(next.approval),
-        JSON.stringify(next.deployment)
+        JSON.stringify(next.deployment),
+        nextUpdatedAt,
+        ...(options.expectedUpdatedAt ? [options.expectedUpdatedAt] : [])
       ]
     );
-    const updated = await this.getFactoryJob(id);
-    if (!updated) throw new Error("Factory job not found");
-    return updated;
+    if (!result.rows[0]) {
+      if (options.expectedUpdatedAt) throw new Error("Factory job changed while saving");
+      throw new Error("Factory job not found");
+    }
+    return mapFactoryJob(result.rows[0]);
   }
 
   async deleteFactoryJob(id: string): Promise<VaultPluginFactoryJob> {

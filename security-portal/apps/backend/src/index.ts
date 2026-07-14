@@ -28,6 +28,7 @@ import {
   hasVerifiedFactoryArtifact
 } from "./plugin-factory/factory-artifact";
 import { FactoryBuildService } from "./plugin-factory/factory-build-service";
+import { recoverStalledFactoryBuildJobs } from "./plugin-factory/factory-job-recovery";
 import { FactoryRequirementsInterviewer } from "./plugin-factory/factory-requirements";
 import { VaultPluginDistributor } from "./plugin-factory/plugin-distributor";
 import { redact } from "./utils/redact";
@@ -227,6 +228,7 @@ const factoryJobUpdateSchema = z
     stage: factoryJobStageSchema.optional(),
     progress: z.number().int().min(0).max(100).optional(),
     snapshot: z.record(z.unknown()).optional(),
+    expectedUpdatedAt: z.string().datetime().optional(),
     events: z.array(factoryJobEventSchema).max(100).optional(),
     deployment: z
       .object({
@@ -237,8 +239,11 @@ const factoryJobUpdateSchema = z
       })
       .optional()
   })
-  .refine((value) => Object.values(value).some((field) => field !== undefined), {
+  .refine((value) => Object.entries(value).some(([key, field]) => key !== "expectedUpdatedAt" && field !== undefined), {
     message: "At least one Factory job field is required"
+  })
+  .refine((value) => !value.snapshot || Boolean(value.expectedUpdatedAt), {
+    message: "expectedUpdatedAt is required when saving a Factory snapshot"
   });
 
 const protectedFactoryJobDeleteStatuses = new Set<VaultPluginFactoryJob["status"]>([
@@ -359,6 +364,7 @@ async function main(): Promise<void> {
   });
   const factoryBuildRuns = new Map<string, FactoryBuildRunRecord>();
   const factoryRequirementsInterviews = new Map<string, FactoryRequirementsRecord>();
+  await recoverStalledFactoryBuildJobs(store, config.factoryBuildTimeoutMs ?? 600000);
 
   const app = express();
   app.use(helmet({ contentSecurityPolicy: false }));
@@ -768,22 +774,23 @@ async function main(): Promise<void> {
     try {
       const job = await requireFactoryJobAccess(store, requiredParam(req, "id"), req.user);
       const body = factoryJobUpdateSchema.parse(req.body);
+      const { expectedUpdatedAt, ...bodyPatch } = body;
       const isOwner = job.ownerId === req.user.id;
       const isAdmin = req.user.roles.includes("vault-admin");
       const isApprover = req.user.roles.includes("security-approver");
       if (!isOwner && !isAdmin && !isApprover) throw new Error("Forbidden");
 
-      let update: Parameters<PortalStore["updateFactoryJob"]>[1] = body;
+      let update: Parameters<PortalStore["updateFactoryJob"]>[1] = bodyPatch;
       if (!isOwner && !isAdmin) {
-        if (!body.deployment || Object.keys(body).some((field) => field !== "deployment")) throw new Error("Forbidden");
-        update = { deployment: { ...job.deployment, environment: body.deployment.environment } };
+        if (!bodyPatch.deployment || Object.keys(bodyPatch).some((field) => field !== "deployment")) throw new Error("Forbidden");
+        update = { deployment: { ...job.deployment, environment: bodyPatch.deployment.environment } };
       }
-      if (job.approval.status === "approved" && (body.snapshot || body.pluginName || body.templateId)) {
+      if (job.approval.status === "approved" && (bodyPatch.snapshot || bodyPatch.pluginName || bodyPatch.templateId)) {
         const candidate: VaultPluginFactoryJob = {
           ...job,
-          templateId: body.templateId ?? job.templateId,
-          pluginName: body.pluginName ?? job.pluginName,
-          snapshot: body.snapshot ?? job.snapshot
+          templateId: bodyPatch.templateId ?? job.templateId,
+          pluginName: bodyPatch.pluginName ?? job.pluginName,
+          snapshot: bodyPatch.snapshot ?? job.snapshot
         };
         const candidateFingerprint = await factoryArtifactFingerprint(candidate);
         if (!job.approval.artifactFingerprint || candidateFingerprint !== job.approval.artifactFingerprint) {
@@ -805,7 +812,9 @@ async function main(): Promise<void> {
           };
         }
       }
-      const updated = await store.updateFactoryJob(job.id, update);
+      const updated = await store.updateFactoryJob(job.id, update, {
+        expectedUpdatedAt: bodyPatch.snapshot ? expectedUpdatedAt : undefined
+      });
       await store.createAuditEvent({
         actorId: req.user.id,
         actorEmail: req.user.email,
@@ -1846,7 +1855,13 @@ function createTemporaryPassword(): string {
 
 function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction): void {
   const message = error instanceof Error ? error.message : "Unexpected error";
-  const status = message === "Forbidden" ? 403 : message.includes("not found") ? 404 : 400;
+  const status = message === "Forbidden"
+    ? 403
+    : message === "Factory job changed while saving"
+      ? 409
+      : message.includes("not found")
+        ? 404
+        : 400;
   console.error("request failed", redact({ message }));
   res.status(status).json({ error: message });
 }

@@ -76,15 +76,29 @@ export function hasVerifiedFactoryArtifact(job: VaultPluginFactoryJob, requireSt
   const autoRepair = asRecord(job.snapshot.autoRepair);
   const buildArtifact = resolvedBuildArtifact(job.snapshot);
   const evidence = factoryArtifactEvidence(job);
+  const builtScaffoldSha256 = nonEmptyString(autoRepair?.scaffoldSha256);
   return Boolean(
     autoRepair?.status === "pass" &&
       evidence.artifactSha256 &&
       /^[a-f0-9]{64}$/i.test(evidence.artifactSha256) &&
       nonEmptyString(buildArtifact.sha256)?.toLowerCase() === evidence.artifactSha256.toLowerCase() &&
+      builtScaffoldSha256 &&
+      hashFactoryFiles(evidence.files) === builtScaffoldSha256 &&
       (!requireStoredArtifact || (evidence.artifactBucket && evidence.artifactKey))
   );
 }
 
 export async function factoryArtifactFingerprint(job: VaultPluginFactoryJob): Promise<string> {
   return createHash("sha256").update(JSON.stringify(factoryArtifactEvidence(job))).digest("hex");
+}
+
+function hashFactoryFiles(files: Array<{ path: string; content: string }>): string {
+  const hash = createHash("sha256");
+  for (const file of files) {
+    hash.update(file.path);
+    hash.update("\0");
+    hash.update(file.content);
+    hash.update("\0");
+  }
+  return hash.digest("hex");
 }

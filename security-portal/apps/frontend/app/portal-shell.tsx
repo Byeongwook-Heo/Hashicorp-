@@ -3481,13 +3481,18 @@ function PluginFactory({
     factoryRuntime.vaultMode !== "real" ||
       (generated?.buildArtifact?.bucket && generated.buildArtifact.key)
   );
+  const buildSourceMatches = Boolean(
+    autoRepair?.status === "pass" && factoryBuildFilesMatch(draftFiles, autoRepair.files)
+  );
   const verifiedBuildArtifactReady = Boolean(
-    autoRepair?.status === "pass" && artifactChecksumMatches && artifactStoredForRuntime
+    autoRepair?.status === "pass" && buildSourceMatches && artifactChecksumMatches && artifactStoredForRuntime
   );
   const artifactPreflightDetail = !generated?.buildArtifact
     ? localize(t, "Run the isolated build", "격리 Build를 실행하세요")
     : autoRepair?.status !== "pass"
       ? localize(t, "Waiting for verified build", "검증된 Build 완료를 기다리는 중")
+      : !buildSourceMatches
+        ? localize(t, "Source changed after build", "Build 후 Source 변경됨")
       : !artifactChecksumMatches
         ? localize(t, "Checksum mismatch", "Checksum 불일치")
         : !artifactStoredForRuntime
@@ -3678,7 +3683,7 @@ function PluginFactory({
   }, [activeFactoryTab, appliedPluginReady, busy, currentJob?.id, generated?.id, mountInspectionJobId, pluginRolledBack]);
 
   useEffect(() => {
-    if (!workspaceReady || !currentUser || busy === "load" || !selectedId || !hasPersistableWorkspace) return;
+    if (!workspaceReady || !currentUser || busy !== null || !selectedId || !hasPersistableWorkspace) return;
     const workspaceId = workspaceIdRef.current;
     const timer = window.setTimeout(() => {
       void persistFactoryWorkspace(workspaceId);
@@ -3739,6 +3744,7 @@ function PluginFactory({
 
   function hydrateFactoryWorkspace(snapshot: FactoryWorkspaceSnapshot, availableTemplates: VaultPluginTemplate[]) {
     resetExistingMountRecovery();
+    const buildState = resolveFactoryWorkspaceBuild(snapshot);
     const template = availableTemplates.find((item) => item.id === snapshot.selectedId) ?? availableTemplates[0];
     if (template) {
       setSelectedId(template.id);
@@ -3749,13 +3755,13 @@ function PluginFactory({
       setDescription(snapshot.description ?? template.description);
     }
     setActiveFactoryTab("workspace");
-    setArtifactSha256(snapshot.artifactSha256 ?? snapshot.generated?.buildArtifact?.sha256 ?? "");
+    setArtifactSha256(buildState.artifactSha256);
     setChatMessages(snapshot.chatMessages?.length ? snapshot.chatMessages : [{ id: "welcome", role: "assistant", content: welcomeMessage }]);
-    setGenerated(snapshot.generated ?? null);
+    setGenerated(buildState.generated);
     setApplyResult(snapshot.applyResult ?? null);
     setRollbackResult(snapshot.rollbackResult ?? null);
-    setDraftFiles(snapshot.draftFiles?.length ? snapshot.draftFiles : snapshot.generated?.files ?? []);
-    setActiveFilePath(snapshot.activeFilePath ?? snapshot.draftFiles?.[0]?.path ?? snapshot.generated?.files[0]?.path ?? "");
+    setDraftFiles(buildState.files);
+    setActiveFilePath(snapshot.activeFilePath ?? buildState.files[0]?.path ?? "");
     setSavedBlueprints(snapshot.savedBlueprints ?? []);
     setPluginHistory(snapshot.pluginHistory ?? []);
     setFavoriteTemplateIds(snapshot.favoriteTemplateIds ?? []);
@@ -3768,7 +3774,7 @@ function PluginFactory({
         ? "review"
         : interview?.missingFields[0] ?? "targetSystem"
     );
-    setAutoRepair(snapshot.autoRepair ?? null);
+    setAutoRepair(buildState.autoRepair);
   }
 
   function upsertFactoryJob(job: VaultPluginFactoryJob) {
@@ -3826,9 +3832,14 @@ function PluginFactory({
     jobId: string,
     patch: Partial<Pick<VaultPluginFactoryJob, "templateId" | "pluginName" | "historyTitle" | "historyNote" | "status" | "stage" | "progress" | "snapshot" | "events" | "deployment">>
   ): Promise<VaultPluginFactoryJob> {
+    const current = factoryJobsRef.current.find((job) => job.id === jobId);
+    if (patch.snapshot && !current) throw new Error("Unable to version the Factory workspace save");
     const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${jobId}`, {
       method: "PATCH",
-      body: JSON.stringify(patch)
+      body: JSON.stringify({
+        ...patch,
+        ...(patch.snapshot ? { expectedUpdatedAt: current?.updatedAt } : {})
+      })
     });
     upsertFactoryJob(response.job);
     return response.job;
@@ -3845,7 +3856,12 @@ function PluginFactory({
       if (activeJob) {
         const response = await api<{ job: VaultPluginFactoryJob }>(`/plugin-factory/jobs/${activeJob.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ templateId: selectedTemplate.id, pluginName: pluginName || selectedTemplate.name, snapshot })
+          body: JSON.stringify({
+            templateId: selectedTemplate.id,
+            pluginName: pluginName || selectedTemplate.name,
+            snapshot,
+            expectedUpdatedAt: activeJob.updatedAt
+          })
         });
         upsertFactoryJob(response.job);
       } else {
@@ -3853,7 +3869,17 @@ function PluginFactory({
       }
     } catch (err) {
       if (workspaceIdRef.current === workspaceId) {
-        setStatus(err instanceof Error ? err.message : localize(t, "Unable to save Factory workspace.", "Factory 작업을 저장하지 못했습니다."));
+        const detail = err instanceof Error ? err.message : localize(t, "Unable to save Factory workspace.", "Factory 작업을 저장하지 못했습니다.");
+        if (activeJob && detail.startsWith("409 ")) {
+          const jobs = await refreshFactoryJobs().catch(() => []);
+          const latest = jobs.find((job) => job.id === activeJob.id);
+          if (latest && workspaceIdRef.current === workspaceId) {
+            reconcileFactoryBuildState(latest.snapshot as FactoryWorkspaceSnapshot);
+            setStatus(localize(t, "Factory build state was refreshed before saving again.", "최신 Factory Build 상태를 반영한 뒤 다시 저장합니다."));
+          }
+        } else {
+          setStatus(detail);
+        }
       }
     } finally {
       if (workspaceIdRef.current === workspaceId) setWorkspaceSaving(false);
@@ -3868,6 +3894,17 @@ function PluginFactory({
     setMountRemovalConfirmation("");
     setMountRemovalResult(null);
     setMountActionBusy(null);
+  }
+
+  function reconcileFactoryBuildState(snapshot: FactoryWorkspaceSnapshot) {
+    const buildState = resolveFactoryWorkspaceBuild(snapshot);
+    setGenerated(buildState.generated);
+    setDraftFiles(buildState.files);
+    setArtifactSha256(buildState.artifactSha256);
+    setAutoRepair(buildState.autoRepair);
+    setActiveFilePath((currentPath) =>
+      buildState.files.some((file) => file.path === currentPath) ? currentPath : buildState.files[0]?.path ?? ""
+    );
   }
 
   function hydratePluginForm(template: VaultPluginTemplate) {
@@ -6315,7 +6352,11 @@ function PluginFactory({
                           spellCheck={false}
                           value={mountRemovalConfirmation}
                         />
-                        <small>{localize(t, "This disables only the Mount. The Plugin Catalog entry is retained.", "이 작업은 Mount만 비활성화하며 Plugin Catalog 항목은 유지합니다.")}</small>
+                        <small>
+                          {currentJob?.approval.status !== "approved"
+                            ? localize(t, "Approval is required before removal. The Plugin Catalog entry is retained.", "삭제 실행 전 승인이 필요하며 Plugin Catalog 항목은 유지합니다.")
+                            : localize(t, "This disables only the Mount. The Plugin Catalog entry is retained.", "이 작업은 Mount만 비활성화하며 Plugin Catalog 항목은 유지합니다.")}
+                        </small>
                       </label>
                       <div className="actions mountConflictActions">
                         <button disabled={mountActionBusy !== null || busy !== null} onClick={() => void inspectExistingFactoryMount()} type="button">
@@ -7780,6 +7821,57 @@ function factoryResultStepDetail(detail: string, t: Copy): string {
 
 function normalizeFactoryMountPath(value: string): string {
   return value.replace(/^\/+|\/+$/g, "");
+}
+
+function resolveFactoryWorkspaceBuild(snapshot: FactoryWorkspaceSnapshot): {
+  generated: VaultPluginGenerateResult | null;
+  files: VaultPluginGeneratedFile[];
+  artifactSha256: string;
+  autoRepair: VaultPluginAutoRepairResult | null;
+} {
+  const autoRepair = snapshot.autoRepair ?? null;
+  const originalGenerated = snapshot.generated ?? null;
+  const completedRepair = Boolean(autoRepair && autoRepair.status !== "running");
+  const generated = originalGenerated && autoRepair && completedRepair
+    ? {
+        ...originalGenerated,
+        files: autoRepair.files,
+        scaffoldSha256: autoRepair.scaffoldSha256,
+        buildTest: autoRepair.buildTest,
+        securityReview: autoRepair.securityReview,
+        buildArtifact: autoRepair.artifact ?? originalGenerated.buildArtifact
+      }
+    : originalGenerated;
+  const repairArtifactSha = autoRepair?.artifact?.sha256 ?? "";
+  const snapshotNeedsRepair = Boolean(
+    autoRepair?.status === "pass" &&
+      repairArtifactSha &&
+      (!snapshot.artifactSha256 ||
+        snapshot.generated?.buildArtifact?.sha256 !== repairArtifactSha ||
+        snapshot.generated?.buildTest.status !== autoRepair.buildTest.status)
+  );
+  const files = snapshotNeedsRepair
+    ? autoRepair?.files ?? generated?.files ?? []
+    : snapshot.draftFiles?.length
+      ? snapshot.draftFiles
+      : generated?.files ?? [];
+  return {
+    generated,
+    files,
+    artifactSha256:
+      snapshot.artifactSha256?.trim() || generated?.buildArtifact?.sha256 || repairArtifactSha,
+    autoRepair
+  };
+}
+
+function factoryBuildFilesMatch(
+  currentFiles: VaultPluginGeneratedFile[],
+  builtFiles: VaultPluginGeneratedFile[]
+): boolean {
+  if (!currentFiles.length || currentFiles.length !== builtFiles.length) return false;
+  const current = [...currentFiles].sort((left, right) => left.path.localeCompare(right.path));
+  const built = [...builtFiles].sort((left, right) => left.path.localeCompare(right.path));
+  return current.every((file, index) => file.path === built[index]?.path && file.content === built[index]?.content);
 }
 
 function factoryMountConflictPath(job: VaultPluginFactoryJob): string | null {
