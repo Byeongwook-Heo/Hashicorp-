@@ -1100,6 +1100,7 @@ async function main(): Promise<void> {
           stage: "test",
           progress: 45,
           approval: { status: "not-requested" },
+          deployment: { ...job.deployment, rollbackReady: false },
           snapshot: {
             ...job.snapshot,
             artifactSha256: "",
@@ -1163,7 +1164,7 @@ async function main(): Promise<void> {
                   artifactSha256: result.artifact?.sha256 ?? "",
                   autoRepair: result
                 },
-                deployment: { ...latest.deployment, rollbackReady: result.status === "pass" },
+                deployment: { ...latest.deployment, rollbackReady: false },
                 events: [
                   ...buildEvents,
                   ...(attempt
@@ -1268,6 +1269,7 @@ async function main(): Promise<void> {
     requireUser(store, config.sessionCookieName),
     requireAnyRole(["vault-admin"]),
     async (req, res, next) => {
+      let applyJobId: string | undefined;
       try {
         const body = pluginApplySchema.parse(req.body);
         const job = await requireFactoryJobAccess(store, body.jobId, req.user);
@@ -1296,6 +1298,7 @@ async function main(): Promise<void> {
           status: "running",
           stage: "deploy",
           progress: 90,
+          deployment: { ...job.deployment, rollbackReady: false },
           events: [
             ...job.events,
             {
@@ -1307,6 +1310,7 @@ async function main(): Promise<void> {
             }
           ].slice(-100)
         });
+        applyJobId = job.id;
         let distribution: Awaited<ReturnType<typeof pluginDistributor.distribute>> | undefined;
         if (config.vaultMode === "real") {
           if (!body.artifactBucket || !body.artifactKey) {
@@ -1358,6 +1362,38 @@ async function main(): Promise<void> {
         });
         res.json({ result });
       } catch (error) {
+        if (applyJobId) {
+          const failedJob = await store.getFactoryJob(applyJobId);
+          if (failedJob) {
+            const message = error instanceof Error ? error.message : String(error);
+            const rollbackRequired = message.includes("cleanup failed");
+            await store.updateFactoryJob(failedJob.id, {
+              status: "failed",
+              stage: "complete",
+              progress: 90,
+              deployment: { ...failedJob.deployment, rollbackReady: rollbackRequired },
+              events: [
+                ...failedJob.events,
+                {
+                  id: crypto.randomUUID(),
+                  label: "apply-failed",
+                  detail: message,
+                  status: "failed" as const,
+                  createdAt: new Date().toISOString()
+                }
+              ].slice(-100)
+            });
+            await store.createAuditEvent({
+              actorId: req.user.id,
+              actorEmail: req.user.email,
+              action: "vault_plugin.apply_failed",
+              targetType: "vault_plugin_job",
+              targetId: failedJob.id,
+              result: "failure",
+              metadata: redact({ error: message, rollback_required: rollbackRequired })
+            });
+          }
+        }
         next(error);
       }
     }

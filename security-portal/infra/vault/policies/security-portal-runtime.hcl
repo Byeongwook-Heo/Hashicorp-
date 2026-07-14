@@ -9,3 +9,7 @@ path "sys/leases/revoke" {
 path "factory-lab/*" {
   capabilities = ["create", "update", "read", "list", "delete"]
 }
+
+path "auth/factory-lab/*" {
+  capabilities = ["read"]
+}

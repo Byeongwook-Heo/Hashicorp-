@@ -438,6 +438,8 @@ describe("Vault plugin factory", () => {
   it("registers and enables a real secret plugin with Vault catalog APIs", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: {} }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errors: ["not found"] }), { status: 404 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }))
       .mockResolvedValueOnce(
@@ -477,6 +479,8 @@ describe("Vault plugin factory", () => {
 
     expect(result.mode).toBe("real");
     expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://vault.service:8200/v1/sys/mounts",
+      "http://vault.service:8200/v1/sys/plugins/catalog/secret/vault-plugin-secrets-minio",
       "http://vault.service:8200/v1/sys/plugins/catalog/secret/vault-plugin-secrets-minio",
       "http://vault.service:8200/v1/sys/mounts/minio",
       "http://vault.service:8200/v1/sys/mounts",
@@ -485,7 +489,7 @@ describe("Vault plugin factory", () => {
     expect(result.steps.at(-1)).toEqual(
       expect.objectContaining({ label: "Plugin read smoke test", status: "success" })
     );
-    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+    expect(fetchMock.mock.calls[3]?.[1]).toEqual(
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -495,6 +499,53 @@ describe("Vault plugin factory", () => {
         })
       })
     );
+  });
+
+  it("automatically removes a new mount and catalog entry when the smoke test fails", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: {} }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errors: ["not found"] }), { status: 404 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({}), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: {
+              "minio/": { type: "vault-plugin-secrets-minio" }
+            }
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errors: ["permission denied"] }), { status: 403 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    const client = createVaultClient({
+      ...mockConfig,
+      vaultMode: "real",
+      vaultAuthMode: "token",
+      vaultAddr: "http://vault.service:8200",
+      vaultToken: "root"
+    });
+
+    await expect(
+      client.applyPlugin({
+        pluginType: "secret",
+        pluginName: "vault-plugin-secrets-minio",
+        mountPath: "minio",
+        version: "v0.1.0",
+        command: "vault-plugin-secrets-minio",
+        artifactSha256: "c".repeat(64)
+      })
+    ).rejects.toThrow(
+      "Automatic rollback: mount cleanup returned 204, catalog cleanup returned 204"
+    );
+    expect(fetchMock.mock.calls.slice(-2).map((call) => [call[0], call[1]?.method])).toEqual([
+      ["http://vault.service:8200/v1/sys/mounts/minio", "DELETE"],
+      ["http://vault.service:8200/v1/sys/plugins/catalog/secret/vault-plugin-secrets-minio", "DELETE"]
+    ]);
   });
 });
 

@@ -291,80 +291,149 @@ class RealVaultClient implements VaultClient {
       request.pluginType === "auth" ? `sys/auth/${mountPath}` : `sys/mounts/${mountPath}`;
     const enableListPath = request.pluginType === "auth" ? "sys/auth" : "sys/mounts";
 
-    const register = await this.vaultRequest("POST", catalogPath, {
-      namespace: this.config.vaultNamespace,
-      credentialScope: "plugin",
-      body: {
-        sha256: request.artifactSha256,
-        command: request.command,
-        version: request.version
-      }
-    });
-    const enable = await this.vaultRequest("POST", enablePath, {
-      namespace: this.config.vaultNamespace,
-      credentialScope: "plugin",
-      body: {
-        type: pluginName,
-        description: request.description ?? `${pluginName} managed by Security Portal`,
-        config: {
-          plugin_version: request.version
-        }
-      }
-    });
-    const verify = await this.vaultRequest("GET", enableListPath, {
+    const mountsBefore = await this.vaultRequest("GET", enableListPath, {
       namespace: this.config.vaultNamespace,
       credentialScope: "plugin",
       tolerateStatus: [200]
     });
-    const mounted = verify.body.data?.[`${mountPath}/`] ?? verify.body.data?.[mountPath];
-    if (!mounted) {
-      throw new Error(`Vault mounted plugin ${mountPath} was not present in ${enableListPath}`);
+    if (mountsBefore.body.data?.[`${mountPath}/`] ?? mountsBefore.body.data?.[mountPath]) {
+      throw new Error(`Vault mount ${mountPath} already exists`);
     }
-    const smokePath =
-      request.pluginType === "auth" ? `auth/${mountPath}/login` : `${mountPath}/config`;
-    const smoke = await this.vaultRequest("GET", smokePath, {
+
+    const catalogBefore = await this.vaultRequest("GET", catalogPath, {
       namespace: this.config.vaultNamespace,
       credentialScope: "plugin",
-      tolerateStatus: [200]
+      tolerateStatus: [200, 404]
     });
+    const existingCatalog = catalogBefore.status === 200 ? catalogBefore.body.data ?? {} : undefined;
+    if (
+      existingCatalog &&
+      (String(existingCatalog.sha256 ?? "").toLowerCase() !== request.artifactSha256.toLowerCase() ||
+        String(existingCatalog.command ?? "") !== request.command)
+    ) {
+      throw new Error(`Vault plugin catalog entry ${pluginName} does not match the approved artifact`);
+    }
 
-    return {
-      mode: "real",
-      applied: true,
-      pluginName,
-      mountPath,
-      pluginType: request.pluginType,
-      version: request.version,
-      steps: [
-        {
-          label: "Catalog registration",
-          status: "success",
-          detail: `${catalogPath} returned ${register.status}`
-        },
-        {
-          label: "Enable mount",
-          status: "success",
-          detail: `${enablePath} returned ${enable.status}`
-        },
-        {
-          label: "Verify mount list",
-          status: "success",
-          detail: `Verified via ${enableListPath}`
-        },
-        {
-          label: "Plugin read smoke test",
-          status: "success",
-          detail: `${smokePath} returned ${smoke.status}`
+    let catalogCreatedByAttempt = false;
+    let mountCreatedByAttempt = false;
+    let registerStatus = catalogBefore.status;
+    let enableStatus = 0;
+
+    try {
+      if (!existingCatalog) {
+        catalogCreatedByAttempt = true;
+        const register = await this.vaultRequest("POST", catalogPath, {
+          namespace: this.config.vaultNamespace,
+          credentialScope: "plugin",
+          body: {
+            sha256: request.artifactSha256,
+            command: request.command,
+            version: request.version
+          }
+        });
+        registerStatus = register.status;
+      }
+
+      mountCreatedByAttempt = true;
+      const enable = await this.vaultRequest("POST", enablePath, {
+        namespace: this.config.vaultNamespace,
+        credentialScope: "plugin",
+        body: {
+          type: pluginName,
+          description: request.description ?? `${pluginName} managed by Security Portal`,
+          config: {
+            plugin_version: request.version
+          }
         }
-      ],
-      detail: redact({
-        register_status: register.status,
-        enable_status: enable.status,
-        smoke_status: smoke.status,
-        smoke_response_keys: Object.keys(smoke.body.data ?? {}),
-        mounted
-      })
-    };
+      });
+      enableStatus = enable.status;
+
+      const verify = await this.vaultRequest("GET", enableListPath, {
+        namespace: this.config.vaultNamespace,
+        credentialScope: "plugin",
+        tolerateStatus: [200]
+      });
+      const mounted = verify.body.data?.[`${mountPath}/`] ?? verify.body.data?.[mountPath];
+      if (!mounted) {
+        throw new Error(`Vault mounted plugin ${mountPath} was not present in ${enableListPath}`);
+      }
+
+      const smokePath =
+        request.pluginType === "auth" ? `auth/${mountPath}/login` : `${mountPath}/config`;
+      const smoke = await this.vaultRequest("GET", smokePath, {
+        namespace: this.config.vaultNamespace,
+        credentialScope: "runtime",
+        tolerateStatus: [200]
+      });
+
+      return {
+        mode: "real",
+        applied: true,
+        pluginName,
+        mountPath,
+        pluginType: request.pluginType,
+        version: request.version,
+        steps: [
+          {
+            label: "Catalog registration",
+            status: "success",
+            detail: existingCatalog
+              ? `Reused the matching ${catalogPath} entry`
+              : `${catalogPath} returned ${registerStatus}`
+          },
+          {
+            label: "Enable mount",
+            status: "success",
+            detail: `${enablePath} returned ${enableStatus}`
+          },
+          {
+            label: "Verify mount list",
+            status: "success",
+            detail: `Verified via ${enableListPath}`
+          },
+          {
+            label: "Plugin read smoke test",
+            status: "success",
+            detail: `${smokePath} returned ${smoke.status}`
+          }
+        ],
+        detail: redact({
+          register_status: registerStatus,
+          catalog_reused: Boolean(existingCatalog),
+          enable_status: enableStatus,
+          smoke_status: smoke.status,
+          smoke_response_keys: Object.keys(smoke.body.data ?? {}),
+          mounted
+        })
+      };
+    } catch (error) {
+      const cleanup: string[] = [];
+      if (mountCreatedByAttempt) {
+        const disable = await this.vaultRequest("DELETE", enablePath, {
+          namespace: this.config.vaultNamespace,
+          credentialScope: "plugin",
+          tolerateStatus: [200, 204, 404]
+        }).catch((cleanupError) => {
+          cleanup.push(`mount cleanup failed: ${errorMessage(cleanupError)}`);
+          return undefined;
+        });
+        if (disable) cleanup.push(`mount cleanup returned ${disable.status}`);
+      }
+      if (catalogCreatedByAttempt) {
+        const remove = await this.vaultRequest("DELETE", catalogPath, {
+          namespace: this.config.vaultNamespace,
+          credentialScope: "plugin",
+          tolerateStatus: [200, 204, 404]
+        }).catch((cleanupError) => {
+          cleanup.push(`catalog cleanup failed: ${errorMessage(cleanupError)}`);
+          return undefined;
+        });
+        if (remove) cleanup.push(`catalog cleanup returned ${remove.status}`);
+      }
+      throw new Error(
+        `Vault plugin apply failed: ${errorMessage(error)}. Automatic rollback: ${cleanup.join(", ") || "no mutation required"}`
+      );
+    }
   }
 
   async rollbackPlugin(request: VaultPluginRollbackRequest): Promise<VaultPluginRollbackResult> {
@@ -642,6 +711,10 @@ function stringField(payload: Record<string, unknown>, key: string, fallback: st
 function objectField(payload: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = payload[key];
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function safeJson(response: Response): Promise<unknown> {

@@ -5976,7 +5976,10 @@ function PluginFactory({
               </div>
             </section>
           ) : null}
-          {applyResult?.applied && generated.rollbackPlan.available ? (
+          {generated.rollbackPlan.available &&
+          (applyResult?.applied ||
+            (currentJob?.deployment.rollbackReady &&
+              (currentJob.status === "complete" || currentJob.status === "failed"))) ? (
             <section className="rollbackZone">
               <div className="panelHeader">
                 <div><h3>{localize(t, "Rollback", "롤백")}</h3><p>{factoryRollbackSummary(generated, t)}</p></div>
@@ -5992,7 +5995,7 @@ function PluginFactory({
               </label>
               <div className="actions">
                 <button onClick={() => void previewRollback()} type="button">{localize(t, "Preview commands", "명령 미리보기")}</button>
-                <button disabled={!canApply || !applyResult?.applied || !rollbackConfirmed || busy !== null} onClick={() => void executePluginRollback()} type="button">
+                <button disabled={!canApply || !(applyResult?.applied || currentJob?.deployment.rollbackReady) || !rollbackConfirmed || busy !== null} onClick={() => void executePluginRollback()} type="button">
                   {localize(t, "Execute rollback", "롤백 실행")}
                 </button>
               </div>
