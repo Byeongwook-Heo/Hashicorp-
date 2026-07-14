@@ -21,6 +21,11 @@ import { PostgresStore } from "./store/postgres-store";
 import type { PortalStore } from "./store/types";
 import { generateVaultPluginScaffold, vaultPluginTemplates } from "./plugin-factory/catalog";
 import { FactoryAssistant } from "./plugin-factory/factory-assistant";
+import {
+  factoryArtifactEvidence,
+  factoryArtifactFingerprint,
+  hasVerifiedFactoryArtifact
+} from "./plugin-factory/factory-artifact";
 import { FactoryBuildService } from "./plugin-factory/factory-build-service";
 import { FactoryRequirementsInterviewer } from "./plugin-factory/factory-requirements";
 import { VaultPluginDistributor } from "./plugin-factory/plugin-distributor";
@@ -292,6 +297,7 @@ type FactoryBuildRunRecord = {
   result: VaultPluginAutoRepairResult;
   controller: AbortController;
   cancelled: boolean;
+  persisted: boolean;
 };
 
 type FactoryRequirementsRecord = {
@@ -862,14 +868,9 @@ async function main(): Promise<void> {
 
       if (body.action === "request-approval") {
         if (job.ownerId !== req.user.id && !req.user.roles.includes("vault-admin")) throw new Error("Forbidden");
-        const evidence = factoryArtifactEvidence(job);
-        const autoRepair = asRecord(job.snapshot.autoRepair);
-        const hasVerifiedArtifact =
-          autoRepair?.status === "pass" &&
-          typeof evidence.artifactSha256 === "string" &&
-          /^[a-f0-9]{64}$/i.test(evidence.artifactSha256) &&
-          (config.vaultMode !== "real" || Boolean(evidence.artifactBucket && evidence.artifactKey));
-        if (!hasVerifiedArtifact) throw new Error("A verified build artifact is required before approval");
+        if (!hasVerifiedFactoryArtifact(job, config.vaultMode === "real")) {
+          throw new Error("A verified build artifact is required before approval");
+        }
         update = {
           status: "waiting-approval",
           stage: "approval",
@@ -934,7 +935,7 @@ async function main(): Promise<void> {
             summary: "The isolated build was cancelled before Vault apply."
           };
           cancelledBuildResult = cancelledResult;
-          factoryBuildRuns.set(runId, { ...run, result: cancelledResult, cancelled: true });
+          factoryBuildRuns.set(runId, { ...run, result: cancelledResult, cancelled: true, persisted: true });
           run.controller.abort();
         }
         update = {
@@ -1093,7 +1094,8 @@ async function main(): Promise<void> {
           jobId: job.id,
           result: initialResult,
           controller,
-          cancelled: false
+          cancelled: false,
+          persisted: true
         });
         await store.updateFactoryJob(job.id, {
           status: "running",
@@ -1130,17 +1132,18 @@ async function main(): Promise<void> {
             async (result) => {
               const activeRun = factoryBuildRuns.get(runId);
               if (activeRun?.cancelled) return;
+              const final = result.status !== "running";
               factoryBuildRuns.set(runId, {
                 ownerId: req.user.id,
                 jobId: job.id,
                 result,
                 controller,
-                cancelled: false
+                cancelled: false,
+                persisted: !final
               });
               const latest = (await store.getFactoryJob(job.id)) ?? job;
               if (factoryBuildRuns.get(runId)?.cancelled) return;
               const generated = asRecord(latest.snapshot.generated) ?? {};
-              const final = result.status !== "running";
               const nextGenerated = {
                 ...generated,
                 files: result.files,
@@ -1185,6 +1188,9 @@ async function main(): Promise<void> {
                     : [])
                 ].slice(-100)
               });
+              const persistedRun = factoryBuildRuns.get(runId);
+              if (!persistedRun || persistedRun.cancelled) return;
+              factoryBuildRuns.set(runId, { ...persistedRun, result, persisted: true });
               if (final) {
                 await store.createAuditEvent({
                   actorId: req.user.id,
@@ -1232,7 +1238,8 @@ async function main(): Promise<void> {
               jobId: job.id,
               result: failed,
               controller,
-              cancelled: false
+              cancelled: false,
+              persisted: false
             });
             const latest = (await store.getFactoryJob(job.id)) ?? job;
             if (factoryBuildRuns.get(runId)?.cancelled) return;
@@ -1242,6 +1249,9 @@ async function main(): Promise<void> {
               progress: 45,
               snapshot: { ...latest.snapshot, autoRepair: failed, artifactSha256: "" }
             });
+            const persistedRun = factoryBuildRuns.get(runId);
+            if (!persistedRun || persistedRun.cancelled) return;
+            factoryBuildRuns.set(runId, { ...persistedRun, result: failed, persisted: true });
           });
       } catch (error) {
         next(error);
@@ -1258,7 +1268,16 @@ async function main(): Promise<void> {
       }
       const canReview = req.user.roles.some((role) => role === "vault-admin" || role === "security-approver" || role === "auditor");
       if (run.ownerId !== req.user.id && !canReview) throw new Error("Forbidden");
-      res.json({ run: run.result });
+      const result = !run.persisted && run.result.status !== "running"
+        ? {
+            ...run.result,
+            status: "running" as const,
+            phase: "verifying" as const,
+            completedAt: undefined,
+            summary: "Saving the verified build artifact to the Factory job."
+          }
+        : run.result;
+      res.json({ run: result });
     } catch (error) {
       next(error);
     }
@@ -1563,62 +1582,6 @@ async function main(): Promise<void> {
   app.listen(config.port, () => {
     console.log(`security-portal-backend listening on ${config.port}`);
   });
-}
-
-type FactoryArtifactEvidence = {
-  artifactBucket?: string;
-  artifactKey?: string;
-  artifactSha256?: string;
-  command?: string;
-  description?: string;
-  files: Array<{ content: string; language?: string; path: string }>;
-  mountPath?: string;
-  pluginName?: string;
-  pluginType?: string;
-  templateId?: string;
-  version?: string;
-};
-
-function factoryArtifactEvidence(job: VaultPluginFactoryJob): FactoryArtifactEvidence {
-  const snapshot = job.snapshot;
-  const generated = asRecord(snapshot.generated);
-  const template = asRecord(generated?.template);
-  const buildArtifact = asRecord(generated?.buildArtifact);
-  const rawFiles = Array.isArray(snapshot.draftFiles)
-    ? snapshot.draftFiles
-    : Array.isArray(generated?.files)
-      ? generated.files
-      : [];
-  const files = rawFiles
-    .map((file) => asRecord(file))
-    .filter((file): file is Record<string, unknown> => Boolean(file))
-    .map((file) => ({
-      path: typeof file.path === "string" ? file.path : "",
-      language: typeof file.language === "string" ? file.language : undefined,
-      content: typeof file.content === "string" ? file.content : ""
-    }))
-    .filter((file) => file.path)
-    .sort((a, b) => a.path.localeCompare(b.path));
-
-  return {
-    artifactBucket: typeof buildArtifact?.bucket === "string" ? buildArtifact.bucket : undefined,
-    artifactKey: typeof buildArtifact?.key === "string" ? buildArtifact.key : undefined,
-    artifactSha256: typeof snapshot.artifactSha256 === "string" ? snapshot.artifactSha256 : undefined,
-    command: typeof generated?.command === "string" ? generated.command : undefined,
-    description: typeof generated?.description === "string" ? generated.description : undefined,
-    files,
-    mountPath: typeof generated?.mountPath === "string" ? generated.mountPath : undefined,
-    pluginName: typeof generated?.pluginName === "string" ? generated.pluginName : job.pluginName,
-    pluginType: typeof template?.pluginType === "string" ? template.pluginType : undefined,
-    templateId: job.templateId,
-    version: typeof generated?.version === "string" ? generated.version : undefined
-  };
-}
-
-async function factoryArtifactFingerprint(job: VaultPluginFactoryJob): Promise<string> {
-  const encoded = new TextEncoder().encode(JSON.stringify(factoryArtifactEvidence(job)));
-  const digest = await crypto.subtle.digest("SHA-256", encoded);
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function factoryBuildProgress(result: VaultPluginAutoRepairResult): number {

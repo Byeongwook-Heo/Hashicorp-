@@ -3452,6 +3452,27 @@ function PluginFactory({
   const activeRequirementValue = requirementsInterview && activeRequirementQuestion
     ? requirementsInterview.spec[activeRequirementQuestion.field]
     : "";
+  const artifactChecksumMatches = Boolean(
+    generated?.buildArtifact &&
+      generated.buildArtifact.sha256 === artifactSha256 &&
+      /^[a-f0-9]{64}$/i.test(artifactSha256)
+  );
+  const artifactStoredForRuntime = Boolean(
+    factoryRuntime.vaultMode !== "real" ||
+      (generated?.buildArtifact?.bucket && generated.buildArtifact.key)
+  );
+  const verifiedBuildArtifactReady = Boolean(
+    autoRepair?.status === "pass" && artifactChecksumMatches && artifactStoredForRuntime
+  );
+  const artifactPreflightDetail = !generated?.buildArtifact
+    ? localize(t, "Run the isolated build", "격리 Build를 실행하세요")
+    : autoRepair?.status !== "pass"
+      ? localize(t, "Waiting for verified build", "검증된 Build 완료를 기다리는 중")
+      : !artifactChecksumMatches
+        ? localize(t, "Checksum mismatch", "Checksum 불일치")
+        : !artifactStoredForRuntime
+          ? localize(t, "Waiting for stored artifact", "저장된 Artifact 동기화 대기")
+          : shortId(artifactSha256);
   const preflightChecks = [
     {
       label: factoryLocalize(t, "Build and tests", "빌드 및 테스트"),
@@ -3467,12 +3488,8 @@ function PluginFactory({
     },
     {
       label: localize(t, "Artifact checksum", "아티팩트 체크섬"),
-      detail: artifactSha256 ? shortId(artifactSha256) : localize(t, "Missing", "없음"),
-      pass: Boolean(
-        generated?.buildArtifact &&
-          generated.buildArtifact.sha256 === artifactSha256 &&
-          /^[a-f0-9]{64}$/i.test(artifactSha256)
-      )
+      detail: artifactPreflightDetail,
+      pass: verifiedBuildArtifactReady
     },
     {
       label: localize(t, "Approval", "승인"),
@@ -3940,7 +3957,19 @@ function PluginFactory({
       );
       if (action === "approve" || action === "reject") setApprovalNote("");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : localize(t, "Unable to update Factory job.", "Factory 작업을 변경하지 못했습니다."));
+      const message = err instanceof Error ? err.message : "";
+      if (action === "request-approval" && /verified build artifact/i.test(message)) {
+        setActiveFactoryTab("build");
+        setStatus(
+          localize(
+            t,
+            "The verified build artifact is still being saved. Wait for Build to complete, then request approval again.",
+            "검증된 Build Artifact를 저장하고 있습니다. Build 완료 후 다시 승인 요청을 눌러주세요."
+          )
+        );
+        return;
+      }
+      setStatus(message || localize(t, "Unable to update Factory job.", "Factory 작업을 변경하지 못했습니다."));
     }
   }
 
