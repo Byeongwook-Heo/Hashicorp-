@@ -3482,6 +3482,19 @@ function PluginFactory({
   ];
   const approvalPreflightPassed = preflightChecks.slice(0, 3).every((check) => check.pass);
   const preflightPassed = preflightChecks.every((check) => check.pass);
+  const pluginRolledBack = Boolean(rollbackResult?.rolledBack || currentJob?.status === "rolled-back");
+  const appliedPluginReady = Boolean(
+    !pluginRolledBack &&
+      (applyResult?.applied ||
+        (currentJob?.status === "complete" && currentJob.deployment.rollbackReady))
+  );
+  const rollbackAvailable = Boolean(
+    !pluginRolledBack &&
+      (applyResult?.applied ||
+        (currentJob?.deployment.rollbackReady &&
+          (currentJob.status === "complete" || currentJob.status === "failed")))
+  );
+  const applyInProgress = currentJob?.status === "running" && currentJob.stage === "deploy";
   const workflowStages = [
     {
       id: "design",
@@ -3496,7 +3509,7 @@ function PluginFactory({
       complete: Boolean(generated && generated.securityReview.posture !== "blocked")
     },
     { id: "approval", label: localize(t, "Approval", "승인"), complete: currentJob?.approval.status === "approved" },
-    { id: "deploy", label: localize(t, "Vault apply", "Vault 적용"), complete: Boolean(applyResult?.applied) }
+    { id: "deploy", label: localize(t, "Vault apply", "Vault 적용"), complete: appliedPluginReady || pluginRolledBack }
   ];
   const currentWorkflowStage = workflowStages.find((stage) => !stage.complete) ?? workflowStages[workflowStages.length - 1];
   const completedWorkflowCount = workflowStages.filter((stage) => stage.complete).length;
@@ -3530,16 +3543,18 @@ function PluginFactory({
           },
           {
             id: "deploy" as const,
-            icon: rollbackResult?.rolledBack ? Undo2 : applyResult?.applied ? CheckCircle2 : Rocket,
-            label: applyResult
+            icon: pluginRolledBack ? Undo2 : appliedPluginReady ? CheckCircle2 : Rocket,
+            label: pluginRolledBack || appliedPluginReady || applyResult
               ? localize(t, "Apply result", "적용 결과")
               : localize(t, "Apply", "적용"),
             status: factoryStatusLabel(
-              rollbackResult?.rolledBack
+              pluginRolledBack
                 ? "rolled-back"
-                : applyResult?.applied
+                : appliedPluginReady
                   ? "complete"
-                  : currentJob?.approval.status ?? "draft",
+                  : currentJob?.status === "failed"
+                    ? "failed"
+                    : currentJob?.approval.status ?? "draft",
               t
             )
           }
@@ -5908,8 +5923,9 @@ function PluginFactory({
                 </button>
               </div>
               {canApply ? (
-                <button className="primary deployNowButton" disabled={!generated || !preflightPassed || busy !== null} onClick={() => void applyPlugin()} type="button">
-                  <Rocket aria-hidden="true" size={17} /> {localize(t, "Apply now", "지금 적용")}
+                <button className="primary deployNowButton" disabled={!generated || !preflightPassed || rollbackAvailable || applyInProgress || busy !== null} onClick={() => void applyPlugin()} type="button">
+                  {appliedPluginReady ? <CheckCircle2 aria-hidden="true" size={17} /> : <Rocket aria-hidden="true" size={17} />}
+                  {appliedPluginReady ? localize(t, "Applied", "적용 완료") : localize(t, "Apply now", "지금 적용")}
                 </button>
               ) : (
                 <div className="permissionNote">
@@ -5976,10 +5992,7 @@ function PluginFactory({
               </div>
             </section>
           ) : null}
-          {generated.rollbackPlan.available &&
-          (applyResult?.applied ||
-            (currentJob?.deployment.rollbackReady &&
-              (currentJob.status === "complete" || currentJob.status === "failed"))) ? (
+          {generated.rollbackPlan.available && rollbackAvailable ? (
             <section className="rollbackZone">
               <div className="panelHeader">
                 <div><h3>{localize(t, "Rollback", "롤백")}</h3><p>{factoryRollbackSummary(generated, t)}</p></div>
@@ -5995,7 +6008,7 @@ function PluginFactory({
               </label>
               <div className="actions">
                 <button onClick={() => void previewRollback()} type="button">{localize(t, "Preview commands", "명령 미리보기")}</button>
-                <button disabled={!canApply || !(applyResult?.applied || currentJob?.deployment.rollbackReady) || !rollbackConfirmed || busy !== null} onClick={() => void executePluginRollback()} type="button">
+                <button disabled={!canApply || !rollbackAvailable || !rollbackConfirmed || busy !== null} onClick={() => void executePluginRollback()} type="button">
                   {localize(t, "Execute rollback", "롤백 실행")}
                 </button>
               </div>
