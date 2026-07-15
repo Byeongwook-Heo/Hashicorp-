@@ -331,13 +331,13 @@ describe("Vault plugin factory", () => {
     );
   });
 
-  it("adds exactly 30 non-duplicate expansion templates without reserved Vault or portal targets", () => {
+  it("adds the reviewed non-duplicate expansion templates without reserved Vault or portal targets", () => {
     const expansion = vaultPluginTemplates.filter((template) => template.tags.includes("catalog expansion"));
     const expansionNames = expansion.map((template) => template.name);
     const reservedTargets = new Set<string>(factoryExpansionReservedTargets);
 
-    expect(vaultPluginTemplates).toHaveLength(52);
-    expect(expansion).toHaveLength(30);
+    expect(vaultPluginTemplates).toHaveLength(53);
+    expect(expansion).toHaveLength(31);
     expect(expansionNames).toEqual(factoryExpansionTemplates.map((template) => template.name));
     expect(new Set(vaultPluginTemplates.map((template) => template.id)).size).toBe(vaultPluginTemplates.length);
     expect(new Set(vaultPluginTemplates.map((template) => template.name)).size).toBe(vaultPluginTemplates.length);
@@ -359,7 +359,7 @@ describe("Vault plugin factory", () => {
     const expansion = vaultPluginTemplates.filter((template) => template.tags.includes("catalog expansion"));
 
     expect(expansion.filter((template) => template.tags.includes("priority"))).toHaveLength(8);
-    expect(expansion.filter((template) => template.tags.includes("conditional"))).toHaveLength(12);
+    expect(expansion.filter((template) => template.tags.includes("conditional"))).toHaveLength(13);
     expect(expansion.filter((template) => template.tags.includes("lab"))).toHaveLength(10);
     expect(expansion.filter((template) => template.source === "partner").map((template) => template.integrationTarget)).toEqual([
       "sectigo-pki",
@@ -390,6 +390,33 @@ describe("Vault plugin factory", () => {
       "sys/plugins/catalog/secret/team-github-app-token"
     );
     expect(generated.buildTest.status).toBe("warn");
+  });
+
+  it("generates a functional GitHub PAT rotation secrets engine", () => {
+    const generated = generateVaultPluginScaffold({
+      templateId: "expansion-github-pat-rotation",
+      pluginName: "team-github-pat-rotation",
+      mountPath: "team/github-pat",
+      version: "v0.1.0",
+      command: "team-github-pat-rotation",
+      description: "Validate and rotate GitHub personal access tokens"
+    });
+    const backend = generated.files.find((file) => file.path === "internal/plugin/backend.go")?.content ?? "";
+    const backendTest = generated.files.find((file) => file.path === "internal/plugin/backend_test.go")?.content ?? "";
+    const readme = generated.files.find((file) => file.path === "README.md")?.content ?? "";
+
+    expect(generated.template.integrationTarget).toBe("github-pat");
+    expect(generated.template.marketplace.maturity).toBe("conditional");
+    expect(generated.files).toHaveLength(8);
+    expect(backend).toContain('Pattern: "rotate/"');
+    expect(backend).toContain('Pattern: "creds/"');
+    expect(backend).toContain("validatePAT");
+    expect(backend).toContain("revokeOrganizationAccess");
+    expect(backend).not.toContain("replace scaffold callbacks");
+    expect(backendTest).toContain("TestRotatePATSwitchesTokenAndRevokesPreviousOrganizationAccess");
+    expect(readme).toContain("does **not** create a PAT");
+    expect(readme).toContain("Classic PAT");
+    expect(generated.warnings.join(" ")).toContain("operator-supplied PAT");
   });
 
   it("generates a scaffold with source files, build commands, and a Vault apply plan", () => {

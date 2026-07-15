@@ -95,6 +95,21 @@ describe("FactoryAssistant", () => {
     expect(result.reply).not.toContain("Kafka");
   });
 
+  it("selects GitHub PAT Rotation instead of the GitHub App template", async () => {
+    const assistant = new FactoryAssistant(rulesConfig, vaultPluginTemplates);
+    const patTemplate = vaultPluginTemplates.find((item) => item.integrationTarget === "github-pat");
+    expect(patTemplate).toBeDefined();
+
+    const result = await assistant.chat({
+      locale: "ko",
+      messages: [{ role: "user", content: "깃허브 PAT 로테이션 플러그인 만들어줘" }]
+    });
+
+    expect(result.action).toEqual({ type: "generate", templateId: patTemplate?.id });
+    expect(result.reply).toContain("GitHub PAT Rotation");
+    expect(result.reply).not.toContain("GitHub App Secrets");
+  });
+
   it("asks the user to disambiguate when a create request names two templates", async () => {
     const assistant = new FactoryAssistant(rulesConfig, vaultPluginTemplates);
     const result = await assistant.chat({

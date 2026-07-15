@@ -63,6 +63,28 @@ export const factoryExpansionTemplates: FactoryExpansionTemplate[] = [
     catalogTier: "priority"
   },
   {
+    id: "expansion-github-pat-rotation",
+    name: "vault-plugin-secrets-github-pat-rotation",
+    displayName: "GitHub PAT Rotation",
+    pluginType: "secret",
+    source: "community",
+    repository: "Byeongwook-Heo/Hashicorp-",
+    sourceUrl: "https://github.com/Byeongwook-Heo/Hashicorp-",
+    description:
+      "Validate and rotate operator-supplied GitHub personal access tokens, with optional fine-grained PAT organization-access revocation.",
+    target: "github-pat",
+    aliases: [
+      "github pat",
+      "personal access token",
+      "pat rotation",
+      "fine-grained pat",
+      "classic pat",
+      "github token rotation",
+      "PAT 로테이션"
+    ],
+    catalogTier: "conditional"
+  },
+  {
     id: "expansion-sectigo-pki",
     name: "sectigo-vault-pki",
     displayName: "Sectigo SCM PKI",

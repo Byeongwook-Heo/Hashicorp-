@@ -17,6 +17,11 @@ import {
   type FactoryCatalogTier,
   type FactoryExpansionTemplate
 } from "./expansion-catalog";
+import {
+  githubPatRotationBackendFile,
+  githubPatRotationBackendTestFile,
+  githubPatRotationReadmeFile
+} from "./github-pat-rotation-template";
 
 const capturedAt = "2026-07-09";
 const githubPopularityBasis = "GitHub Search API stars for Vault server plugins";
@@ -141,6 +146,7 @@ export function generateVaultPluginScaffold(request: VaultPluginGenerateRequest)
     "gofmt -w ./...",
     "go mod tidy",
     "go test ./...",
+    "mkdir -p dist",
     `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/${command} ./cmd/${pluginName}`,
     `PLUGIN_SHA=$(sha256sum dist/${command} | awk '{print $1;}')`,
     `vault plugin register -command=${command} -sha256=$PLUGIN_SHA -version=${version} ${template.pluginType} ${pluginName}`,
@@ -161,6 +167,12 @@ export function generateVaultPluginScaffold(request: VaultPluginGenerateRequest)
       ? "Auth plugins require sudo capability on sys/auth and should be promoted through approval."
       : "Secrets and database plugins require create/update capability on sys/mounts and catalog registration."
   ];
+  if (template.integrationTarget === "github-pat") {
+    warnings.push(
+      "GitHub does not expose a public API to create PATs; this plugin validates and rotates an operator-supplied PAT.",
+      "Automated retirement revokes a fine-grained PAT's organization access only; classic PATs require manual revocation."
+    );
+  }
 
   return {
     id: crypto.randomUUID(),
@@ -393,7 +405,7 @@ function baseTemplate({
       ...(popularity?.rank ? ["community top 5"] : []),
       ...(source === "learning" ? ["tutorial"] : [])
     ],
-    guardrails: guardrailsFor(pluginType),
+    guardrails: guardrailsFor(pluginType, target),
     marketplace: marketplaceFor({ pluginType, source, target, popularity, catalogTier })
   };
 }
@@ -452,7 +464,14 @@ function marketplaceFor({
   };
 }
 
-function guardrailsFor(pluginType: VaultPluginTemplate["pluginType"]): string[] {
+function guardrailsFor(pluginType: VaultPluginTemplate["pluginType"], target: string): string[] {
+  if (target === "github-pat") {
+    return [
+      "Accept newly created PATs only through a write-only rotation request and never log or echo them.",
+      "Restrict creds/* reads to the intended workload with a dedicated least-privilege Vault policy.",
+      "Treat fine-grained PAT organization-access revocation and classic PAT manual revocation as separate controls."
+    ];
+  }
   if (pluginType === "auth") {
     return [
       "Require sudo-gated approval before sys/auth enable.",
@@ -752,6 +771,7 @@ function buildFiles({
   requirements: VaultPluginRequirements;
 }): VaultPluginGeneratedFile[] {
   const factoryName = template.pluginType === "auth" ? "AuthFactory" : "BackendFactory";
+  const isGithubPatRotation = template.integrationTarget === "github-pat";
   return [
     {
       path: "go.mod",
@@ -811,12 +831,16 @@ func main() {
     {
       path: "internal/plugin/backend.go",
       language: "go",
-      content: backendFile(template, pluginName, requirements)
+      content: isGithubPatRotation
+        ? githubPatRotationBackendFile(pluginName)
+        : backendFile(template, pluginName, requirements)
     },
     {
       path: "internal/plugin/backend_test.go",
       language: "go",
-      content: `package plugin
+      content: isGithubPatRotation
+        ? githubPatRotationBackendTestFile()
+        : `package plugin
 
 import (
 	"context"
@@ -837,7 +861,17 @@ func TestReadStatus(t *testing.T) {
     {
       path: "README.md",
       language: "markdown",
-      content: `# ${pluginName}
+      content: isGithubPatRotation
+        ? githubPatRotationReadmeFile({
+            template,
+            pluginName,
+            mountPath,
+            version,
+            command,
+            description,
+            requirements
+          })
+        : `# ${pluginName}
 
 ${description}
 
@@ -859,6 +893,7 @@ Generated from \`${template.repository}\` as a ${template.pluginType} plugin sta
 \`\`\`bash
 go mod tidy
 go test ./...
+mkdir -p dist
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/${command} ./cmd/${pluginName}
 PLUGIN_SHA=$(sha256sum dist/${command} | awk '{print $1;}')
 \`\`\`
@@ -904,6 +939,7 @@ test:
 	go test ./...
 
 build:
+	mkdir -p dist
 	go build -o dist/$(PLUGIN) ./cmd/${pluginName}
 
 sha: build

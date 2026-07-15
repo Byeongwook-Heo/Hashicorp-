@@ -3545,6 +3545,7 @@ function PluginFactory({
     learning: templates.filter((template) => template.source === "learning").length
   };
   const chatExamples = [
+    localize(t, "Create a GitHub PAT Rotation plugin", "GitHub PAT Rotation Plugin 만들어줘"),
     localize(t, "Create a GitHub App plugin", "GitHub App Plugin 만들어줘"),
     localize(t, "Create a Sectigo PKI plugin", "Sectigo PKI Plugin 만들어줘"),
     localize(t, "Create a ClickHouse database plugin", "ClickHouse Database Plugin 만들어줘"),
@@ -8769,6 +8770,8 @@ function normalizeFactoryPrompt(prompt: string): string {
     ["에이디", "ad"],
     ["엘디에이피", "ldap"],
     ["깃허브", "github"],
+    ["퍼스널 액세스 토큰", "personal access token"],
+    ["로테이션", "rotation"],
     ["섹티고", "sectigo"],
     ["디지서트", "digicert"],
     ["원패스워드", "onepassword"],
@@ -8800,7 +8803,7 @@ function normalizeFactoryPrompt(prompt: string): string {
     ["아랑고디비", "arangodb"],
     ["이벤트스토어", "eventstoredb"]
   ];
-  return synonyms.reduce((value, [source, target]) => value.replaceAll(source, `${source} ${target}`), normalized);
+  return synonyms.reduce((value, [source, target]) => value.replaceAll(source, target), normalized);
 }
 
 function findTemplateFromPrompt(prompt: string, templates: VaultPluginTemplate[]): VaultPluginTemplate | null {
@@ -8834,6 +8837,7 @@ function findTemplateFromPrompt(prompt: string, templates: VaultPluginTemplate[]
 
   let best: { template: VaultPluginTemplate; score: number } | null = null;
   for (const template of templates) {
+    const targetPhrase = template.integrationTarget.toLowerCase().replace(/[-_]+/g, " ");
     const haystack = [
       template.name,
       template.displayName,
@@ -8847,6 +8851,7 @@ function findTemplateFromPrompt(prompt: string, templates: VaultPluginTemplate[]
     let score = 0;
     if (normalized.includes(template.name.toLowerCase())) score += 80;
     if (normalized.includes(template.integrationTarget.toLowerCase())) score += 35;
+    if (targetPhrase !== template.integrationTarget.toLowerCase() && normalized.includes(targetPhrase)) score += 55;
     for (const token of tokens) {
       if (template.integrationTarget.toLowerCase() === token) score += 30;
       else if (template.name.toLowerCase().includes(token)) score += 18;

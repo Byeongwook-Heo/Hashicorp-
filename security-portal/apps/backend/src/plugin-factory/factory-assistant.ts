@@ -721,12 +721,14 @@ function templateMatchScore(prompt: string, template: VaultPluginTemplate): numb
   const name = template.name.toLowerCase();
   const displayName = template.displayName.toLowerCase();
   const target = template.integrationTarget.toLowerCase();
+  const targetPhrase = target.replace(/[-_]+/g, " ");
   const tags = template.tags.map((tag) => tag.toLowerCase());
   const haystack = `${name} ${displayName} ${target} ${template.tags.join(" ")} ${template.description}`.toLowerCase();
   let score = 0;
   if (normalized.includes(name)) score += 80;
   if (normalized.includes(displayName)) score += 70;
   if (normalized.includes(target)) score += 45;
+  if (targetPhrase !== target && normalized.includes(targetPhrase)) score += 65;
   for (const token of normalized.split(/[^a-z0-9가-힣]+/).filter((item) => item.length > 1)) {
     if (token === target) score += 30;
     else if (tags.includes(token)) score += 24;
@@ -739,6 +741,8 @@ function normalizePrompt(prompt: string): string {
   const synonyms: Array<[string, string]> = [
     ["카프카", "kafka"],
     ["깃허브", "github"],
+    ["퍼스널 액세스 토큰", "personal access token"],
+    ["로테이션", "rotation"],
     ["섹티고", "sectigo"],
     ["디지서트", "digicert"],
     ["레디스", "redis"],
@@ -749,10 +753,7 @@ function normalizePrompt(prompt: string): string {
     ["쿠버네티스", "kubernetes"],
     ["스노우플레이크", "snowflake"]
   ];
-  return synonyms.reduce(
-    (value, [source, target]) => value.replaceAll(source, `${source} ${target}`),
-    prompt.toLowerCase()
-  );
+  return synonyms.reduce((value, [source, target]) => value.replaceAll(source, target), prompt.toLowerCase());
 }
 
 function localized(locale: FactoryChatLocale, english: string, korean: string): string {
