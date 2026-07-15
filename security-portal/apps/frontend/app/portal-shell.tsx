@@ -3244,6 +3244,241 @@ type FactoryWorkspaceSnapshot = {
 
 const factoryStepDelayMs = 280;
 
+type FactoryChatExample = {
+  id: string;
+  en: string;
+  ko: string;
+};
+
+type LocalizedFactoryChatExample = {
+  id: string;
+  prompt: string;
+};
+
+const factoryChatExampleGroups = {
+  build: [
+    {
+      id: "build-github-pat-rotation",
+      en: "Create a GitHub PAT Rotation plugin",
+      ko: "GitHub PAT Rotation Plugin 만들어줘"
+    },
+    {
+      id: "build-github-app",
+      en: "Create a GitHub App secrets plugin",
+      ko: "GitHub App Secrets Plugin 만들어줘"
+    },
+    {
+      id: "build-kafka",
+      en: "Create a Kafka secrets plugin",
+      ko: "Kafka Secrets Plugin 만들어줘"
+    },
+    {
+      id: "build-sectigo-pki",
+      en: "Create a Sectigo PKI plugin",
+      ko: "Sectigo PKI Plugin 만들어줘"
+    },
+    {
+      id: "build-digicert-pki",
+      en: "Create a DigiCert PKI plugin",
+      ko: "DigiCert PKI Plugin 만들어줘"
+    },
+    {
+      id: "build-clickhouse",
+      en: "Create a ClickHouse database plugin",
+      ko: "ClickHouse Database Plugin 만들어줘"
+    },
+    {
+      id: "build-openai-apply",
+      en: "Create an OpenAI plugin and apply it to Vault",
+      ko: "OpenAI Plugin 만들고 Vault에 적용해줘"
+    },
+    {
+      id: "build-kubernetes-auth",
+      en: "Create a Kubernetes Auth plugin",
+      ko: "Kubernetes Auth Plugin 만들어줘"
+    },
+    {
+      id: "build-onepassword-connect",
+      en: "Create a 1Password Connect plugin",
+      ko: "1Password Connect Plugin 만들어줘"
+    },
+    {
+      id: "build-redis-database",
+      en: "Create a Redis database plugin",
+      ko: "Redis Database Plugin 만들어줘"
+    },
+    {
+      id: "build-grafana-token",
+      en: "Create a Grafana access token plugin",
+      ko: "Grafana Access Token Plugin 만들어줘"
+    },
+    {
+      id: "build-tailscale-auth-key",
+      en: "Create a Tailscale auth key plugin",
+      ko: "Tailscale Auth Key Plugin 만들어줘"
+    }
+  ],
+  discover: [
+    {
+      id: "discover-all",
+      en: "List every plugin you can make",
+      ko: "만들 수 있는 Plugin 전부 알려줘"
+    },
+    {
+      id: "discover-database",
+      en: "Show only Database plugins",
+      ko: "Database Plugin만 보여줘"
+    },
+    {
+      id: "discover-auth",
+      en: "Show only Auth plugins",
+      ko: "Auth Plugin만 보여줘"
+    },
+    {
+      id: "discover-community",
+      en: "Show Community plugins",
+      ko: "Community Plugin 목록 보여줘"
+    },
+    {
+      id: "discover-partner",
+      en: "Show Partner plugins",
+      ko: "Partner Plugin 목록 보여줘"
+    },
+    {
+      id: "discover-kubernetes",
+      en: "Which plugins support Kubernetes?",
+      ko: "Kubernetes와 연동할 수 있는 Plugin 알려줘"
+    },
+    {
+      id: "discover-short-lived",
+      en: "Which plugins issue short-lived credentials?",
+      ko: "Short-lived Credential을 발급하는 Plugin 알려줘"
+    },
+    {
+      id: "discover-rotation",
+      en: "Which plugins can rotate credentials?",
+      ko: "Credential Rotation을 지원하는 Plugin 알려줘"
+    },
+    {
+      id: "discover-github-recommendation",
+      en: "Recommend a plugin for GitHub automation",
+      ko: "GitHub Automation에 적합한 Plugin 추천해줘"
+    },
+    {
+      id: "discover-pki",
+      en: "Show available PKI plugins",
+      ko: "사용 가능한 PKI Plugin 알려줘"
+    }
+  ],
+  understand: [
+    {
+      id: "understand-pki-compare",
+      en: "Compare Sectigo and DigiCert",
+      ko: "Sectigo와 DigiCert를 비교해줘"
+    },
+    {
+      id: "understand-github-compare",
+      en: "Compare GitHub App and GitHub PAT Rotation",
+      ko: "GitHub App과 GitHub PAT Rotation을 비교해줘"
+    },
+    {
+      id: "understand-plugin-types",
+      en: "Explain Auth, Secret engine, and Database plugin types",
+      ko: "Auth, Secret engine, Database Plugin 차이를 설명해줘"
+    },
+    {
+      id: "understand-requirements",
+      en: "What information do you need before creating a plugin?",
+      ko: "Plugin 생성 전에 어떤 정보가 필요한지 알려줘"
+    },
+    {
+      id: "understand-build-flow",
+      en: "Explain the build, test, checksum, and approval flow",
+      ko: "Build, Test, Checksum, 승인 절차를 설명해줘"
+    },
+    {
+      id: "understand-approval",
+      en: "Why is approval required before Vault apply?",
+      ko: "Vault 적용 전에 승인이 필요한 이유를 알려줘"
+    },
+    {
+      id: "understand-lifecycle",
+      en: "Explain TTL, Rotation, and Revoke",
+      ko: "TTL, Rotation, Revoke를 설명해줘"
+    },
+    {
+      id: "understand-generate-only",
+      en: "Can I generate a plugin without applying it?",
+      ko: "Vault에 적용하지 않고 Plugin만 생성할 수 있어?"
+    },
+    {
+      id: "understand-rollback",
+      en: "How does plugin rollback work?",
+      ko: "Plugin Rollback은 어떻게 동작해?"
+    },
+    {
+      id: "understand-mount-path",
+      en: "Explain the difference between a mount path and plugin name",
+      ko: "Mount Path와 Plugin 이름의 차이를 설명해줘"
+    },
+    {
+      id: "understand-security-checks",
+      en: "What security checks run before deployment?",
+      ko: "배포 전에 어떤 보안 검사를 하는지 알려줘"
+    }
+  ]
+} satisfies Record<string, FactoryChatExample[]>;
+
+const factoryChatExampleCycleLength = 660;
+const factoryChatExampleStorageKey = "vault-factory-chat-example-round";
+
+function factoryChatExamplesForRound(t: Copy, round: number): LocalizedFactoryChatExample[] {
+  const build = factoryChatExampleGroups.build;
+  const discover = factoryChatExampleGroups.discover;
+  const understand = factoryChatExampleGroups.understand;
+  const selected = [
+    build[round % build.length]!,
+    discover[(round * 3 + 1) % discover.length]!,
+    understand[(round * 5 + 2) % understand.length]!
+  ];
+  const offset = round % selected.length;
+
+  return [...selected.slice(offset), ...selected.slice(0, offset)].map((example) => ({
+    id: example.id,
+    prompt: localize(t, example.en, example.ko)
+  }));
+}
+
+function randomFactoryChatExampleRound(): number {
+  return Math.floor(Math.random() * factoryChatExampleCycleLength);
+}
+
+function nextFactoryChatExampleRound(current: number): number {
+  return (current + 1) % factoryChatExampleCycleLength;
+}
+
+function persistFactoryChatExampleRound(round: number): void {
+  try {
+    window.localStorage.setItem(factoryChatExampleStorageKey, String(round));
+  } catch {
+    // Example rotation still works in memory when browser storage is unavailable.
+  }
+}
+
+function nextPersistedFactoryChatExampleRound(): number {
+  try {
+    const stored = window.localStorage.getItem(factoryChatExampleStorageKey);
+    const previous = stored === null ? Number.NaN : Number.parseInt(stored, 10);
+    const next = Number.isInteger(previous) && previous >= 0 && previous < factoryChatExampleCycleLength
+      ? nextFactoryChatExampleRound(previous)
+      : randomFactoryChatExampleRound();
+    persistFactoryChatExampleRound(next);
+    return next;
+  } catch {
+    return randomFactoryChatExampleRound();
+  }
+}
+
 function waitForFactoryMotion(ms = factoryStepDelayMs): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
@@ -3283,6 +3518,7 @@ function PluginFactory({
   ]);
   const [factoryJob, setFactoryJob] = useState<FactoryJobState | null>(null);
   const [activeChatPrompt, setActiveChatPrompt] = useState<string | null>(null);
+  const [chatExampleRound, setChatExampleRound] = useState(0);
   const [assistantRuntime, setAssistantRuntime] = useState<
     Pick<FactoryAssistantResult, "provider" | "model" | "fallbackReason"> & { checked: boolean }
   >({ provider: "rules", checked: false });
@@ -3508,6 +3744,10 @@ function PluginFactory({
     notifyPortal(status, statusClass === "error" ? "danger" : statusClass === "warningLine" ? "warning" : "success");
   }, [status]);
 
+  useEffect(() => {
+    setChatExampleRound(nextPersistedFactoryChatExampleRound());
+  }, []);
+
   const selectedTemplate = templates.find((template) => template.id === selectedId) ?? templates[0];
   const normalizedTemplateQuery = templateQuery.trim().toLowerCase();
   const filteredTemplates = templates
@@ -3544,15 +3784,10 @@ function PluginFactory({
     community: templates.filter((template) => template.source === "community").length,
     learning: templates.filter((template) => template.source === "learning").length
   };
-  const chatExamples = [
-    localize(t, "Create a GitHub PAT Rotation plugin", "GitHub PAT Rotation Plugin 만들어줘"),
-    localize(t, "Create a GitHub App plugin", "GitHub App Plugin 만들어줘"),
-    localize(t, "Create a Sectigo PKI plugin", "Sectigo PKI Plugin 만들어줘"),
-    localize(t, "Create a ClickHouse database plugin", "ClickHouse Database Plugin 만들어줘"),
-    localize(t, "Create an OpenAI plugin and apply it to Vault", "OpenAI Plugin 만들고 Vault에 적용해줘"),
-    localize(t, "List every plugin you can make", "만들 수 있는 Plugin 전부 알려줘"),
-    localize(t, "Compare Sectigo and DigiCert", "Sectigo와 DigiCert를 비교해줘")
-  ];
+  const chatExamples = useMemo(
+    () => factoryChatExamplesForRound(t, chatExampleRound),
+    [chatExampleRound, t]
+  );
   const currentJob = factoryJobs.find((job) => job.id === activeJobId);
   const recordedMountConflictPath = currentJob ? factoryMountConflictPath(currentJob) : null;
   const activeMountConflictPath = mountConflictPath ?? recordedMountConflictPath ?? (mountInspection?.exists ? mountInspection.mountPath : null);
@@ -4415,6 +4650,11 @@ function PluginFactory({
     setChatInput("");
     setChatMessages([{ id: `welcome-${Date.now()}`, role: "assistant", content: welcomeMessage }]);
     setActiveChatPrompt(null);
+    setChatExampleRound((current) => {
+      const next = nextFactoryChatExampleRound(current);
+      persistFactoryChatExampleRound(next);
+      return next;
+    });
     setApprovalNote("");
     setScheduleAt("");
     setRollbackConfirmed(false);
@@ -5648,15 +5888,15 @@ function PluginFactory({
         {!requirementsInterview ? (
           <div className="chatExamples" aria-label={localize(t, "Example prompts", "예시 프롬프트")}>
             <span>{localize(t, "Try one", "예시")}</span>
-            {chatExamples.slice(0, 3).map((example) => (
+            {chatExamples.map((example) => (
               <button
-                key={example}
+                key={example.id}
                 type="button"
-                className={activeChatPrompt === example ? "launching" : undefined}
-                onClick={() => void submitChatPrompt(example)}
+                className={activeChatPrompt === example.prompt ? "launching" : undefined}
+                onClick={() => void submitChatPrompt(example.prompt)}
                 disabled={busy !== null}
               >
-                {example}
+                {example.prompt}
               </button>
             ))}
           </div>
