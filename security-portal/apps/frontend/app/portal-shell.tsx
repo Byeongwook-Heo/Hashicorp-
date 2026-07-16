@@ -145,6 +145,25 @@ type PortalToast = {
   message: string;
   tone: "success" | "warning" | "danger" | "info";
 };
+type PortalAssistantAction = {
+  type: "none" | "navigate";
+  view?: View;
+};
+type PortalAssistantMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  action?: PortalAssistantAction;
+  error?: boolean;
+};
+type PortalAssistantResult = {
+  reply: string;
+  action: PortalAssistantAction;
+  provider: "ollama" | "rules";
+  model?: string;
+  fallbackReason?: "disabled" | "misconfigured" | "unavailable" | "invalid-response";
+  latencyMs: number;
+};
 
 const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 const portalToastEvent = "security-portal:toast";
@@ -519,6 +538,7 @@ export default function PortalShell({ view }: { view: View }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
+  const [portalAssistantOpen, setPortalAssistantOpen] = useState(false);
   const [toast, setToast] = useState<PortalToast | null>(null);
   const vaultSyncInFlight = useRef(false);
   const t = copy[language];
@@ -668,6 +688,7 @@ export default function PortalShell({ view }: { view: View }) {
     setMobileNavOpen(false);
     setGlobalSearchOpen(false);
     setTaskCenterOpen(false);
+    setPortalAssistantOpen(false);
   }, [view]);
 
   useEffect(() => {
@@ -676,6 +697,7 @@ export default function PortalShell({ view }: { view: View }) {
         setMobileNavOpen(false);
         setGlobalSearchOpen(false);
         setTaskCenterOpen(false);
+        setPortalAssistantOpen(false);
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -867,6 +889,23 @@ export default function PortalShell({ view }: { view: View }) {
 
   const ToastIcon = toast?.tone === "success" ? CheckCircle2 : toast?.tone === "info" ? Activity : AlertTriangle;
 
+  function openPortalAssistant() {
+    setGlobalSearchOpen(false);
+    setTaskCenterOpen(false);
+    if (view === "plugins") {
+      window.requestAnimationFrame(() => {
+        const input = document.getElementById("factory-chat-input");
+        input?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          block: "center"
+        });
+        input?.focus({ preventScroll: true });
+      });
+      return;
+    }
+    setPortalAssistantOpen(true);
+  }
+
   return (
     <div className={`shell view-${view}${mobileNavOpen ? " navOpen" : ""}${sidebarCollapsed ? " sidebarCollapsed" : ""}`} data-view={view}>
       <aside className={mobileNavOpen ? "sidebar open" : "sidebar"} aria-label={localize(t, "Primary navigation", "주요 메뉴")}>
@@ -967,12 +1006,30 @@ export default function PortalShell({ view }: { view: View }) {
               <span>Vault UI</span>
             </a>
             <button
+              aria-controls={view === "plugins" ? "factory-chat-input" : "portal-ai-drawer"}
+              aria-expanded={view === "plugins" ? undefined : portalAssistantOpen}
+              aria-haspopup={view === "plugins" ? undefined : "dialog"}
+              aria-label={view === "plugins"
+                ? localize(t, "Focus the Factory AI chat", "Factory AI 채팅으로 이동")
+                : localize(t, "Open AI Assistant", "AI Assistant 열기")}
+              className="topbarAction portalAssistantTrigger"
+              onClick={openPortalAssistant}
+              title={view === "plugins"
+                ? localize(t, "Factory AI chat", "Factory AI 채팅")
+                : "AI Assistant"}
+              type="button"
+            >
+              <MessageSquare aria-hidden="true" size={17} />
+              <span>AI</span>
+            </button>
+            <button
               aria-expanded={globalSearchOpen}
               aria-haspopup="dialog"
               aria-label={localize(t, "Search systems, requests, and credentials", "시스템, 요청, Credential 통합 검색")}
               className="topbarAction globalSearchTrigger"
               onClick={() => {
                 setTaskCenterOpen(false);
+                setPortalAssistantOpen(false);
                 setGlobalSearchOpen(true);
               }}
               title={localize(t, "Global search", "통합 검색")}
@@ -989,6 +1046,7 @@ export default function PortalShell({ view }: { view: View }) {
               className="iconButton topbarAction taskCenterTrigger"
               onClick={() => {
                 setGlobalSearchOpen(false);
+                setPortalAssistantOpen(false);
                 setTaskCenterOpen(true);
               }}
               title={localize(t, "My work queue", "내 작업함")}
@@ -1046,6 +1104,17 @@ export default function PortalShell({ view }: { view: View }) {
             onClose={() => setTaskCenterOpen(false)}
             tasks={portalTasks}
             t={t}
+          />
+        ) : null}
+        {portalAssistantOpen && view !== "plugins" ? (
+          <PortalAssistantDrawer
+            key={`${language}-${view}`}
+            language={language}
+            onClose={() => setPortalAssistantOpen(false)}
+            t={t}
+            vaultStatusLabel={vaultStatusLabel}
+            vaultStatusTone={vaultStatusTone}
+            view={view}
           />
         ) : null}
 
@@ -1299,6 +1368,210 @@ function TaskCenterDrawer({
           {tasks.length === 0 ? (
             <div className="empty">{localize(t, "No action is waiting for you.", "현재 처리할 작업이 없습니다.")}</div>
           ) : null}
+        </div>
+      </aside>
+    </PortalOverlay>
+  );
+}
+
+function PortalAssistantDrawer({
+  language,
+  onClose,
+  t,
+  vaultStatusLabel,
+  vaultStatusTone,
+  view
+}: {
+  language: Language;
+  onClose: () => void;
+  t: Copy;
+  vaultStatusLabel: string;
+  vaultStatusTone: "danger" | "success" | "neutral";
+  view: View;
+}) {
+  const initialMessage = portalAssistantWelcome(view, t);
+  const [messages, setMessages] = useState<PortalAssistantMessage[]>([
+    { id: "welcome", role: "assistant", content: initialMessage }
+  ]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const examples = portalAssistantExamples(view, t);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const list = messageListRef.current;
+    if (!list) return;
+    list.scrollTo({
+      top: list.scrollHeight,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+    });
+  }, [busy, messages]);
+
+  function resetConversation() {
+    setMessages([{ id: `welcome-${Date.now()}`, role: "assistant", content: initialMessage }]);
+    setInput("");
+    setBusy(false);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  async function submitPrompt(prompt: string) {
+    const content = prompt.trim();
+    if (!content || busy) return;
+    const userMessage: PortalAssistantMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content
+    };
+    const nextMessages = [...messages, userMessage];
+    setMessages(nextMessages);
+    setInput("");
+    setBusy(true);
+    try {
+      const response = await api<{ result: PortalAssistantResult }>("/assistant/chat", {
+        method: "POST",
+        body: JSON.stringify({
+          locale: language,
+          view,
+          messages: nextMessages.slice(-20).map((message) => ({ role: message.role, content: message.content }))
+        })
+      });
+      setMessages((current) => [
+        ...current,
+        {
+          id: `assistant-${Date.now()}`,
+          role: "assistant",
+          content: response.result.reply,
+          action: response.result.action
+        }
+      ]);
+    } catch (err) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `assistant-error-${Date.now()}`,
+          role: "assistant",
+          content: err instanceof Error
+            ? localize(t, `I could not answer this request: ${err.message}`, `요청에 답변하지 못했습니다: ${err.message}`)
+            : localize(t, "I could not answer this request.", "요청에 답변하지 못했습니다."),
+          error: true
+        }
+      ]);
+    } finally {
+      setBusy(false);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitPrompt(input);
+  }
+
+  return (
+    <PortalOverlay className="assistantOverlay" onDismiss={onClose}>
+      <aside aria-label="AI Assistant" aria-modal="true" className="portalAssistantDrawer" id="portal-ai-drawer" role="dialog">
+        <header className="portalAssistantHeader">
+          <div className="portalAssistantIdentity">
+            <span className="portalAssistantMark" aria-hidden="true"><MessageSquare size={17} /></span>
+            <div>
+              <small>{t.nav[view]}</small>
+              <h2>AI Assistant</h2>
+            </div>
+          </div>
+          <div className="portalAssistantHeaderActions">
+            <span className={`assistantLiveStatus ${vaultStatusTone}`} title={vaultStatusLabel}>
+              <span aria-hidden="true" />
+              {localize(t, "Read only", "읽기 전용")}
+            </span>
+            <button
+              aria-label={localize(t, "Start a new conversation", "새 대화 시작")}
+              className="iconButton"
+              onClick={resetConversation}
+              title={localize(t, "New conversation", "새 대화")}
+              type="button"
+            >
+              <RefreshCw aria-hidden="true" size={16} />
+            </button>
+            <button
+              aria-label={localize(t, "Close AI Assistant", "AI Assistant 닫기")}
+              className="iconButton"
+              onClick={onClose}
+              title={localize(t, "Close", "닫기")}
+              type="button"
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          </div>
+        </header>
+
+        <div aria-live="polite" className="portalAssistantMessages" ref={messageListRef}>
+          {messages.map((message) => {
+            const actionItem = message.action?.type === "navigate" && message.action.view && message.action.view !== view
+              ? navItems.find((item) => item.view === message.action?.view)
+              : undefined;
+            return (
+              <article className={`portalAssistantMessage ${message.role}${message.error ? " error" : ""}`} key={message.id}>
+                <span>{message.role === "assistant" ? "AI" : localize(t, "You", "나")}</span>
+                <p>{message.content}</p>
+                {actionItem ? (
+                  <Link className="assistantNavigationAction" href={actionItem.href} onClick={onClose}>
+                    {localize(t, `Open ${t.nav[actionItem.view]}`, `${t.nav[actionItem.view]} 열기`)}
+                    <ArrowRight aria-hidden="true" size={15} />
+                  </Link>
+                ) : null}
+              </article>
+            );
+          })}
+          {busy ? (
+            <div className="portalAssistantThinking" role="status">
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+              <span aria-hidden="true" />
+              <em>{localize(t, "Reviewing this view", "현재 화면 확인 중")}</em>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="portalAssistantComposerArea">
+          {messages.length === 1 ? (
+            <div aria-label={localize(t, "Suggested questions", "추천 질문")} className="portalAssistantExamples">
+              {examples.map((example) => (
+                <button disabled={busy} key={example} onClick={() => void submitPrompt(example)} type="button">
+                  {example}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <form className="portalAssistantComposer" onSubmit={handleSubmit}>
+            <textarea
+              aria-label={localize(t, "Ask about this portal view", "현재 화면에 대해 질문")}
+              disabled={busy}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing || !input.trim()) return;
+                event.preventDefault();
+                void submitPrompt(input);
+              }}
+              placeholder={localize(t, "Ask about this view", "현재 화면에 대해 질문하세요")}
+              ref={inputRef}
+              rows={2}
+              value={input}
+            />
+            <button
+              aria-label={localize(t, "Send message", "메시지 전송")}
+              className="iconButton"
+              disabled={busy || !input.trim()}
+              title={localize(t, "Send", "전송")}
+              type="submit"
+            >
+              <Send aria-hidden="true" size={17} />
+            </button>
+          </form>
         </div>
       </aside>
     </PortalOverlay>
@@ -9591,6 +9864,76 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function portalAssistantWelcome(view: View, t: Copy): string {
+  const page = t.nav[view];
+  return localize(
+    t,
+    `I am looking at ${page} with you. Ask about the current status, items needing attention, or where to continue a task.`,
+    `현재 ${page} 화면을 함께 보고 있습니다. 현재 상태, 확인이 필요한 항목, 다음 작업 위치를 질문해주세요.`
+  );
+}
+
+function portalAssistantExamples(view: View, t: Copy): string[] {
+  const examples: Record<View, Array<[string, string]>> = {
+    dashboard: [
+      ["What needs attention first?", "지금 먼저 확인할 항목 알려줘"],
+      ["Summarize the current Vault status", "현재 Vault 상태를 요약해줘"],
+      ["How many credentials expire soon?", "만료 예정 Credential이 몇 개야?"]
+    ],
+    secrets: [
+      ["Summarize the Secret inventory", "Secret 현황을 요약해줘"],
+      ["Are there any revoke failures?", "Revoke 실패 항목이 있어?"],
+      ["Show me where to review active credentials", "활성 Credential 확인 화면으로 안내해줘"]
+    ],
+    systems: [
+      ["Summarize my connected systems", "연결된 시스템을 요약해줘"],
+      ["Are any Vault mappings unavailable?", "연결되지 않은 Vault Mapping이 있어?"],
+      ["Where can I request a Secret?", "Secret 요청은 어디에서 해?"]
+    ],
+    requests: [
+      ["Summarize my pending requests", "대기 중인 요청을 요약해줘"],
+      ["Are there any high-risk requests?", "High Risk 요청이 있어?"],
+      ["Where are requests approved?", "요청 승인은 어디에서 해?"]
+    ],
+    approvals: [
+      ["Summarize the approval backlog", "승인 대기 건을 요약해줘"],
+      ["How many high-risk requests are waiting?", "대기 중인 High Risk 요청이 몇 건이야?"],
+      ["What should I review first?", "무엇부터 검토해야 해?"]
+    ],
+    credentials: [
+      ["How many credentials are active?", "활성 Credential이 몇 개야?"],
+      ["Are any credentials expiring soon?", "곧 만료되는 Credential이 있어?"],
+      ["Are there any revoke failures?", "Revoke 실패 항목이 있어?"]
+    ],
+    audit: [
+      ["Summarize recent failures", "최근 실패 이력을 요약해줘"],
+      ["What does this Audit view contain?", "이 Audit 화면에는 무엇이 있어?"],
+      ["Where can I check Vault health?", "Vault 상태는 어디에서 확인해?"]
+    ],
+    health: [
+      ["Summarize the current Vault health", "현재 Vault 상태를 요약해줘"],
+      ["Are any mappings unreachable?", "연결되지 않은 Mapping이 있어?"],
+      ["Are there any Vault drifts?", "Vault Drift가 있어?"]
+    ],
+    plugins: [
+      ["Create a GitHub PAT Rotation plugin", "GitHub PAT Rotation Plugin 만들어줘"],
+      ["List available plugins", "만들 수 있는 Plugin을 알려줘"],
+      ["Explain the approval flow", "승인 절차를 설명해줘"]
+    ],
+    users: [
+      ["Explain the access roles", "접근 권한 Role을 설명해줘"],
+      ["Where can I review Audit events?", "Audit Event는 어디에서 확인해?"],
+      ["Summarize the current Vault status", "현재 Vault 상태를 요약해줘"]
+    ],
+    admin: [
+      ["Summarize custom plugin status", "Custom Plugin 상태를 요약해줘"],
+      ["Are there any Vault drifts?", "Vault Drift가 있어?"],
+      ["What needs attention first?", "지금 먼저 확인할 항목 알려줘"]
+    ]
+  };
+  return examples[view].map(([en, ko]) => localize(t, en, ko));
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {

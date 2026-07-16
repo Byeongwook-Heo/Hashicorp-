@@ -34,6 +34,11 @@ import {
 } from "./plugin-factory/factory-job-recovery";
 import { FactoryRequirementsInterviewer } from "./plugin-factory/factory-requirements";
 import { VaultPluginDistributor } from "./plugin-factory/plugin-distributor";
+import {
+  buildPortalAssistantSnapshot,
+  PortalAssistant,
+  portalAssistantViews
+} from "./portal-assistant";
 import { redact } from "./utils/redact";
 import { normalizeManagedMountPath, resolveManagedPluginMount } from "./vault/plugin-mount-guard";
 import { createVaultClient } from "./vault/vault-client";
@@ -181,6 +186,20 @@ const pluginChatSchema = z.object({
     .max(20),
   selectedTemplateId: z.string().max(120).optional(),
   generatedPluginName: z.string().max(120).optional()
+});
+
+const portalAssistantChatSchema = z.object({
+  locale: z.enum(["ko", "en"]),
+  view: z.enum(portalAssistantViews),
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().trim().min(1).max(2000)
+      })
+    )
+    .min(1)
+    .max(20)
 });
 
 const factoryJobStatusSchema = z.enum([
@@ -349,6 +368,13 @@ async function main(): Promise<void> {
     },
     vaultPluginTemplates
   );
+  const portalAssistant = new PortalAssistant({
+    mode: config.llmMode,
+    baseUrl: config.ollamaBaseUrl,
+    model: config.ollamaModel,
+    apiKey: config.ollamaApiKey,
+    timeoutMs: config.ollamaRequestTimeoutMs
+  });
   const requirementsInterviewer = new FactoryRequirementsInterviewer(
     {
       mode: config.llmMode,
@@ -455,6 +481,72 @@ async function main(): Promise<void> {
         ...(reconciliation ? { reconciliation } : {}),
         syncedAt: inventory?.syncedAt ?? new Date().toISOString()
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/assistant/chat", requireUser(store, config.sessionCookieName), async (req, res, next) => {
+    try {
+      const body = portalAssistantChatSchema.parse(req.body);
+      const [systems, allRequests, allCredentials, allAuditEvents, vaultHealth] = await Promise.all([
+        store.listSystems(req.user),
+        store.listRequests(),
+        store.listCredentials(),
+        store.listAuditEvents(),
+        vault.health()
+      ]);
+      const requests = visibleRequests(req.user, allRequests);
+      const credentials = visibleCredentials(req.user, allCredentials, requests);
+      const visibleTargetIds = new Set([
+        ...requests.map((request) => request.id),
+        ...credentials.map((credential) => credential.id)
+      ]);
+      const auditEvents = canViewAllWorkflows(req.user)
+        ? allAuditEvents
+        : allAuditEvents.filter((event) => event.actorId === req.user.id || visibleTargetIds.has(event.targetId));
+      const canInspectVault = req.user.roles.some((role) => role === "vault-admin" || role === "auditor");
+      const [mappingHealth, inventory, reconciliation] = await Promise.all([
+        vault.inspectMappings(systems),
+        canInspectVault ? vault.inventory(false) : Promise.resolve(undefined),
+        canInspectVault ? vault.reconcile(systems, false) : Promise.resolve(undefined)
+      ]);
+      const snapshot = buildPortalAssistantSnapshot({
+        view: body.view,
+        user: req.user,
+        systems,
+        requests,
+        credentials,
+        auditEvents,
+        vaultHealth,
+        mappingHealth,
+        inventory,
+        reconciliation,
+        syncedAt: inventory?.syncedAt ?? reconciliation?.syncedAt ?? new Date().toISOString()
+      });
+      const result = await portalAssistant.chat({
+        locale: body.locale,
+        messages: body.messages,
+        snapshot
+      });
+      await store.createAuditEvent({
+        actorId: req.user.id,
+        actorEmail: req.user.email,
+        action: "portal_assistant.chat",
+        targetType: "portal_view",
+        targetId: body.view,
+        result: "success",
+        metadata: {
+          provider: result.provider,
+          model: result.model,
+          action: result.action.type,
+          action_view: result.action.view,
+          fallback_reason: result.fallbackReason,
+          latency_ms: result.latencyMs
+        }
+      });
+      res.set("Cache-Control", "no-store");
+      res.json({ result });
     } catch (error) {
       next(error);
     }
