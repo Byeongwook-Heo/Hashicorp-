@@ -201,6 +201,9 @@ export class PortalAssistant {
 
   async chat(context: PortalAssistantContext): Promise<PortalAssistantResult> {
     const startedAt = Date.now();
+    if (requiresVerifiedFacts(latestUserMessage(context))) {
+      return this.rulesReply(context, startedAt, this.config.mode === "rules" ? "disabled" : undefined);
+    }
     if (this.config.mode !== "ollama") return this.rulesReply(context, startedAt, "disabled");
     if (!this.baseUrl || !this.config.apiKey) return this.rulesReply(context, startedAt, "misconfigured");
 
@@ -368,6 +371,15 @@ function latestUserMessage(context: PortalAssistantContext): string {
 
 function mentionsPluginCreation(prompt: string): boolean {
   return /(plugin|플러그인)/.test(prompt) && /(create|make|build|generate|만들|생성|제작)/.test(prompt);
+}
+
+function requiresVerifiedFacts(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+  return mentionsPluginCreation(normalized)
+    || /urgent|priority|attention|긴급|우선|먼저|조치/.test(normalized)
+    || /vault|볼트|health|status|상태|연결/.test(normalized)
+    || /approval|approve|승인/.test(normalized)
+    || /credential|lease|만료|폐기|revoke/.test(normalized);
 }
 
 function deterministicNavigation(prompt: string, allowedViews: PortalAssistantView[]): PortalAssistantView | undefined {

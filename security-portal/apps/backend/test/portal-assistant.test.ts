@@ -72,6 +72,21 @@ describe("PortalAssistant", () => {
     expect(result.action).toEqual({ type: "navigate", view: "plugins" });
   });
 
+  it("uses verified snapshot facts for operational questions even when Ollama is enabled", async () => {
+    const fetchMock = vi.fn();
+    const assistant = new PortalAssistant(ollamaConfig, fetchMock);
+    const result = await assistant.chat({
+      locale: "ko",
+      messages: [{ role: "user", content: "현재 Vault 상태와 연결 문제 알려줘" }],
+      snapshot
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.provider).toBe("rules");
+    expect(result.fallbackReason).toBeUndefined();
+    expect(result.reply).toContain("Mapping은 1건");
+  });
+
   it("drops model navigation to a view the user cannot access", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(
