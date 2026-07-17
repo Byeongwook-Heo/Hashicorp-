@@ -4168,3 +4168,826 @@ textarea:focus {
 .dashboardPage > .dashboardCommandCenter {
   order: -1;
 }
+
+/* Premium operational finish: quiet surfaces, precise contrast, and a single Vault accent. */
+:root {
+  --bg: #f1f3f5;
+  --panel-soft: #f7f8fa;
+  --panel-strong: #eceff2;
+  --ink: #101318;
+  --muted: #6c7580;
+  --muted-strong: #3c444e;
+  --line: #d8dde3;
+  --line-soft: #e8ebef;
+  --line-strong: #b8c0c9;
+  --graphite: #0f1216;
+  --premium-shadow: 0 1px 2px rgb(16 19 24 / 4%), 0 12px 34px rgb(16 19 24 / 5%);
+  --premium-shadow-hover: 0 1px 2px rgb(16 19 24 / 5%), 0 16px 38px rgb(16 19 24 / 8%);
+}
+
+:root[data-theme="dark"] {
+  --bg: #0c0f12;
+  --panel: #15191e;
+  --panel-soft: #1a1f25;
+  --panel-strong: #232931;
+  --ink: #f3f4f6;
+  --muted: #9ba3ad;
+  --muted-strong: #c8cdd3;
+  --line: #303740;
+  --line-soft: #252b32;
+  --line-strong: #4a545f;
+  --graphite: #080a0d;
+  --premium-shadow: 0 1px 2px rgb(0 0 0 / 18%), 0 14px 36px rgb(0 0 0 / 16%);
+  --premium-shadow-hover: 0 1px 2px rgb(0 0 0 / 22%), 0 18px 42px rgb(0 0 0 / 22%);
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  letter-spacing: 0;
+}
+
+.shell {
+  grid-template-columns: 240px minmax(0, 1fr);
+  background: var(--bg);
+}
+
+.shell::before {
+  display: none;
+}
+
+.sidebar {
+  padding: 0 12px 14px;
+  border-right: 1px solid #262b31;
+  background: var(--graphite);
+}
+
+.sidebarHeader,
+.brand {
+  min-height: 72px;
+}
+
+.brand {
+  padding-inline: 10px;
+  border-bottom-color: #252a30;
+}
+
+.brand strong {
+  font-size: 17px;
+  font-weight: 760;
+}
+
+.brand small {
+  margin-top: 2px;
+  color: #7f8792;
+  font-size: 9px;
+}
+
+.brandMark {
+  filter: drop-shadow(0 7px 12px rgb(255 207 37 / 15%));
+}
+
+.sidebar nav {
+  gap: 4px;
+  padding-top: 13px;
+}
+
+.sidebar nav a {
+  min-height: 42px;
+  padding-inline: 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #aeb5be;
+  font-size: 12px;
+  font-weight: 610;
+}
+
+.sidebar nav a:hover {
+  border-color: #272d34;
+  background: #181c21;
+  color: #f4f5f6;
+}
+
+.sidebar nav a.active {
+  border-color: #30363e;
+  background: #20252b;
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 13%);
+}
+
+.sidebar nav a::before {
+  inset-block: 10px;
+  left: -13px;
+  width: 2px;
+}
+
+.sidebar nav a.active svg {
+  color: var(--vault);
+}
+
+.sidebarFooter {
+  margin-inline: 2px;
+  padding: 15px 9px 8px;
+  border-top-color: #252a30;
+}
+
+.sidebarCollapseButton {
+  min-height: 36px;
+  margin-top: 2px;
+  border-radius: 5px;
+}
+
+.shell.sidebarCollapsed {
+  grid-template-columns: 70px minmax(0, 1fr);
+}
+
+.main {
+  padding-bottom: 64px;
+}
+
+.topbar {
+  min-height: 72px;
+  padding-block: 12px;
+  border-bottom: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 1px 0 rgb(16 19 24 / 2%);
+  backdrop-filter: blur(18px) saturate(125%);
+}
+
+.topbar h1 {
+  font-size: 18px;
+  font-weight: 780;
+}
+
+.topbar .statusIndicator {
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 620;
+}
+
+.topbar .statusIndicator::before {
+  left: 8px;
+  width: 6px;
+  height: 6px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.topbarTools {
+  gap: 5px;
+}
+
+.topbarAction,
+.themeToggle,
+.taskCenterTrigger {
+  min-height: 36px;
+  border-radius: 6px;
+}
+
+.vaultUiLink,
+.globalSearchTrigger {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.portalAssistantTrigger {
+  border-color: #1a1e23;
+  background: #171b20;
+  color: #ffffff;
+}
+
+.portalAssistantTrigger svg {
+  color: var(--vault);
+}
+
+.portalAssistantTrigger:hover:not(:disabled) {
+  border-color: #292f36;
+  background: #20252b;
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .portalAssistantTrigger {
+  border-color: #38414b;
+  background: #20252b;
+  color: #f5f6f7;
+}
+
+:root[data-theme="dark"] .portalAssistantTrigger:hover:not(:disabled) {
+  border-color: #4b5662;
+  background: #282e35;
+  color: #ffffff;
+}
+
+.globalSearchTrigger {
+  width: min(260px, 20vw);
+}
+
+.languageSwitch {
+  padding: 2px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.languageSwitch button {
+  min-height: 28px;
+  border-radius: 4px;
+}
+
+.userBadge {
+  margin-left: 3px;
+  padding-left: 10px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.userBadge:hover {
+  border-color: var(--line);
+  background: transparent;
+}
+
+.userAvatar {
+  border-color: var(--line);
+  background: var(--panel-strong);
+  color: var(--ink);
+}
+
+.pageSurface {
+  padding-top: 30px;
+}
+
+.overviewPanel {
+  min-height: 90px;
+  align-items: flex-start;
+  padding: 4px 0 22px;
+  border-bottom-color: var(--line);
+}
+
+.overviewPanel h2 {
+  margin-bottom: 7px;
+  font-size: 22px;
+  font-weight: 790;
+}
+
+.overviewPanel p {
+  max-width: 760px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.overviewAside {
+  min-width: 150px;
+  padding: 8px 0 8px 18px;
+}
+
+.dashboardCommandCenter,
+.metrics,
+.dashboardGrid,
+.tablePanel {
+  border-radius: 8px;
+  box-shadow: var(--premium-shadow);
+}
+
+.dashboardCommandCenter {
+  border-color: #1c2025;
+  background: var(--panel);
+}
+
+.dashboardCommandHeader {
+  min-height: 72px;
+  padding: 15px 18px;
+  border-bottom: 0;
+  background: #171b20;
+  color: #ffffff;
+}
+
+.dashboardCommandHeader h2 {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.dashboardCommandHeader p {
+  margin-top: 5px;
+  color: #a7afb9;
+}
+
+.attentionCount {
+  min-width: 34px;
+  height: 30px;
+  border: 1px solid #343b43;
+  background: #20252b;
+  color: #b9c0c8;
+}
+
+.attentionCount.active {
+  border-color: var(--vault);
+  background: var(--vault);
+  color: #15181c;
+}
+
+.dashboardCommandBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  min-height: 132px;
+}
+
+.attentionList {
+  align-self: stretch;
+}
+
+.attentionItem {
+  min-height: 66px;
+  padding: 11px 16px;
+}
+
+.attentionItem:hover {
+  background: color-mix(in srgb, var(--panel-soft) 88%, var(--vault-soft));
+}
+
+.attentionIcon {
+  border: 1px solid var(--line-soft);
+  background: transparent;
+}
+
+.attentionClear {
+  min-height: 132px;
+  padding-inline: 20px;
+}
+
+.attentionClear > svg {
+  padding: 5px;
+  overflow: visible;
+  border: 1px solid color-mix(in srgb, var(--green) 34%, var(--line));
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--green) 7%, var(--panel));
+}
+
+.vaultSnapshot {
+  grid-template-columns: minmax(0, 1fr);
+  border-top: 0;
+  border-left: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.vaultSnapshot > div {
+  min-height: 44px;
+  padding-inline: 16px;
+  border-right: 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.vaultSnapshot > div:last-child {
+  border-bottom: 0;
+}
+
+.metrics {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.metric {
+  position: relative;
+  min-height: 112px;
+  padding: 18px 20px;
+  background: var(--panel);
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.metric:hover {
+  background: var(--panel-soft);
+  box-shadow: inset 0 -2px 0 var(--vault);
+}
+
+.metric strong {
+  margin-top: 10px;
+  font-size: 29px;
+  font-weight: 720;
+}
+
+.metricArrow {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+  background: var(--panel-soft);
+  transition: border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.metric:hover .metricArrow {
+  border-color: color-mix(in srgb, var(--vault-deep) 35%, var(--line));
+  color: var(--vault-deep);
+  transform: translateX(2px);
+}
+
+.dashboardGrid {
+  border-color: var(--line);
+}
+
+.dashboardGrid > .insightPanel {
+  padding: 21px;
+}
+
+.insightPanel h2,
+.tablePanelHeader h2,
+.tablePanel > h2 {
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.tablePanel {
+  overflow: hidden;
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.tablePanelHeader,
+.tablePanel > h2 {
+  min-height: 52px;
+  padding-inline: 16px;
+  border-bottom-color: var(--line-soft);
+}
+
+.responsiveTable thead th {
+  height: 42px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 680;
+}
+
+.responsiveTable tbody td {
+  height: 48px;
+  border-bottom-color: var(--line-soft);
+}
+
+.responsiveTable tbody tr:hover {
+  background: color-mix(in srgb, var(--panel-soft) 90%, var(--vault-soft));
+}
+
+.empty.compact {
+  min-height: 52px;
+  align-items: center;
+  border-color: var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.card,
+.formPanel,
+.filterPanel,
+.dependencyPanel,
+.pluginCatalogPanel,
+.builderPanel {
+  border-radius: 8px;
+  box-shadow: var(--premium-shadow);
+}
+
+.view-plugins .pluginFactory {
+  grid-template-columns: minmax(0, 1fr) 326px;
+  column-gap: 0;
+}
+
+.factoryWorkspaceHeader {
+  min-height: 76px;
+  padding-bottom: 18px;
+}
+
+.factoryWorkspaceStatus {
+  gap: 12px;
+}
+
+.factoryConnectionDot {
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 0 4px color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.factoryWorkspaceStatus strong {
+  font-size: 13px;
+  font-weight: 740;
+}
+
+.factoryWorkspaceStatus small {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.view-plugins .factoryChatPanel,
+.view-plugins .factoryJobTimeline {
+  height: clamp(600px, calc(100svh - 190px), 790px);
+  min-height: 600px;
+  margin-top: 18px;
+}
+
+.view-plugins .factoryChatPanel {
+  border-color: var(--line);
+  border-radius: 8px 0 0 8px;
+  background: var(--panel);
+  box-shadow: var(--premium-shadow);
+}
+
+.factoryChatPanel {
+  gap: 18px;
+  padding: 22px 24px;
+}
+
+.factoryChatPanel .panelHeader {
+  min-height: 72px;
+  padding-bottom: 18px;
+}
+
+.factoryChatPanel .panelHeader h2 {
+  margin-bottom: 8px;
+  font-size: 23px;
+  font-weight: 760;
+}
+
+.factoryChatPanel .panelHeader p {
+  max-width: 700px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.chatBubble.assistant {
+  padding: 13px 16px 13px 52px;
+  border-left: 2px solid var(--vault);
+  background: var(--panel-soft);
+}
+
+.chatBubble.assistant::before {
+  top: 13px;
+  left: 12px;
+}
+
+.chatBubble.assistant > span {
+  color: var(--vault-deep);
+  font-weight: 760;
+}
+
+.chatBubble.user {
+  border-color: var(--line);
+  background: var(--panel);
+  box-shadow: 0 5px 16px rgb(16 19 24 / 5%);
+}
+
+.chatExamples button,
+.chatQuickActions button {
+  min-height: 34px;
+  border-color: var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.chatExamples button:hover:not(:disabled),
+.chatQuickActions button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--vault-deep) 42%, var(--line));
+  background: var(--vault-soft);
+}
+
+.chatComposer {
+  padding: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 12px 30px rgb(16 19 24 / 8%);
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.chatComposer textarea {
+  min-height: 92px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--panel-soft);
+}
+
+.chatComposer:focus-within {
+  border-color: #b58f00;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vault) 20%, transparent);
+}
+
+.chatComposer:focus-within textarea {
+  background: var(--panel-soft);
+  box-shadow: none;
+}
+
+.view-plugins .factoryJobTimeline {
+  --rail-muted: #9da6b1;
+  --rail-line: #313841;
+  padding: 18px;
+  border-color: #171b20;
+  border-radius: 0 8px 8px 0;
+  background: #15191e;
+  color: #f5f6f7;
+  box-shadow: 12px 12px 34px rgb(16 19 24 / 8%);
+}
+
+.factoryJobTimeline .factoryTimelineHeader {
+  padding-bottom: 16px;
+  border-bottom-color: var(--rail-line);
+}
+
+.factoryJobTimeline .factoryTimelineHeader span,
+.factoryJobTimeline .factoryTimelineHeader small,
+.factoryJobTimeline .workflowStep small,
+.factoryJobTimeline .factoryTimelineMeta span,
+.factoryJobTimeline .factoryApplyGate span {
+  color: var(--rail-muted);
+}
+
+.factoryJobTimeline .factoryTimelineHeader strong,
+.factoryJobTimeline .workflowStep strong,
+.factoryJobTimeline .factoryTimelineMeta strong,
+.factoryJobTimeline .factoryTimelineMeta code,
+.factoryJobTimeline .factoryApplyGate strong {
+  color: #f5f6f7;
+}
+
+.factoryJobTimeline .factoryProgressTrack {
+  height: 3px;
+  background: var(--rail-line);
+}
+
+.factoryJobTimeline .factoryProgressTrack span {
+  background: var(--vault);
+}
+
+.factoryJobTimeline .workflowStrip::before {
+  background: var(--rail-line);
+}
+
+.factoryJobTimeline .workflowStep {
+  min-height: 50px;
+  border-radius: 5px;
+}
+
+.factoryJobTimeline .workflowStep > span {
+  border-color: #47515d;
+  background: #15191e;
+  color: #b5bdc7;
+}
+
+.factoryJobTimeline .workflowStep.current {
+  background: #20252c;
+  box-shadow: inset 2px 0 0 var(--vault);
+}
+
+.factoryJobTimeline .workflowStep.current > span {
+  border-color: var(--vault);
+  background: var(--vault);
+  color: #171a1f;
+}
+
+.factoryJobTimeline .workflowStep.complete > span {
+  border-color: #42b982;
+  background: #1b3b2d;
+  color: #63d69c;
+}
+
+.factoryJobTimeline .factoryTimelineMeta {
+  border-top-color: var(--rail-line);
+}
+
+.factoryJobTimeline .factoryTimelineMeta > div {
+  border-bottom-color: var(--rail-line);
+}
+
+.factoryJobTimeline .factoryApplyGate {
+  padding: 12px;
+  border: 1px solid #353b3f;
+  border-radius: 6px;
+  background: rgb(255 207 37 / 5%);
+}
+
+.factoryJobTimeline .factoryApplyGate svg {
+  color: var(--vault);
+}
+
+.mobileToolsMenu {
+  border-radius: 8px;
+  box-shadow: 0 22px 54px rgb(16 19 24 / 22%);
+}
+
+@media (max-width: 1120px) {
+  .dashboardCommandBody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .vaultSnapshot {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--line-soft);
+    border-left: 0;
+  }
+
+  .vaultSnapshot > div {
+    min-height: 50px;
+    border-right: 1px solid var(--line-soft);
+    border-bottom: 0;
+  }
+
+  .vaultSnapshot > div:last-child {
+    border-right: 0;
+  }
+}
+
+@media (max-width: 1000px) {
+  .view-plugins .pluginFactory {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .view-plugins .factoryChatPanel,
+  .view-plugins .factoryJobTimeline {
+    height: auto;
+    min-height: 0;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+
+  .view-plugins .factoryChatPanel {
+    min-height: 600px;
+  }
+
+  .view-plugins .factoryJobTimeline {
+    border-color: #171b20;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    min-height: 58px;
+    padding-block: 8px;
+  }
+
+  .pageSurface {
+    padding-top: 20px;
+  }
+
+  .overviewPanel {
+    min-height: 0;
+    padding-top: 1px;
+    padding-bottom: 18px;
+  }
+
+  .overviewPanel h2 {
+    font-size: 20px;
+  }
+
+  .dashboardCommandHeader {
+    min-height: 62px;
+    padding-inline: 13px;
+  }
+
+  .attentionClear {
+    min-height: 96px;
+  }
+
+  .vaultSnapshot {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .vaultSnapshot > div {
+    min-height: 62px;
+    padding-inline: 9px;
+  }
+
+  .metric {
+    min-height: 100px;
+    padding: 14px 15px;
+  }
+
+  .metric strong {
+    font-size: 24px;
+  }
+
+  .factoryWorkspaceHeader {
+    min-height: 60px;
+    padding-bottom: 14px;
+  }
+
+  .view-plugins .factoryChatPanel {
+    min-height: 560px;
+  }
+
+  .factoryChatPanel {
+    padding: 17px 15px;
+  }
+
+  .factoryChatPanel .panelHeader h2 {
+    font-size: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .metric,
+  .metricArrow,
+  .dashboardCommandCenter,
+  .factoryChatPanel,
+  .factoryJobTimeline {
+    transition: none !important;
+  }
+}
