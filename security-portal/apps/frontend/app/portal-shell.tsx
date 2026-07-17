@@ -1206,6 +1206,7 @@ export default function PortalShell({ view }: { view: View }) {
         {loading ? <PortalState kind="loading" title={t.loading} /> : null}
         {!loading && !canAccessView ? (
           <PortalState
+            action={{ href: "/dashboard", label: localize(t, "Return to dashboard", "Dashboard로 이동") }}
             detail={localize(t, "Your current role does not include this workspace.", "현재 역할에는 이 업무 화면의 접근 권한이 없습니다.")}
             kind="permission"
             title={localize(t, "Access restricted", "접근 권한이 없습니다")}
@@ -1741,11 +1742,13 @@ function StatusIndicator({ label, tone }: { label: string; tone: "success" | "da
 }
 
 function PortalState({
+  action,
   compact = false,
   detail,
   kind,
   title
 }: {
+  action?: { href: string; label: string };
   compact?: boolean;
   detail?: string;
   kind: "loading" | "error" | "empty" | "permission";
@@ -1760,6 +1763,12 @@ function PortalState({
       <div>
         <strong>{title}</strong>
         {detail ? <p>{detail}</p> : null}
+        {action ? (
+          <Link className="portalStateAction" href={action.href}>
+            {action.label}
+            <ArrowRight aria-hidden="true" size={14} />
+          </Link>
+        ) : null}
       </div>
     </div>
   );
@@ -1829,6 +1838,7 @@ function Dashboard({
   const recentSecurityEvents = auditEvents
     .filter((event) => /approve|reject|revoke|expire|execute/i.test(event.action))
     .slice(0, 3);
+  const hasOperationalData = credentials.length > 0 || requests.length > 0 || recentSecurityEvents.length > 0;
   const pendingHref = canUseView(currentUser.roles, "approvals") ? "/approvals?status=pending&sort=oldest" : "/requests?status=pending&sort=oldest";
   const credentialsHref = canUseView(currentUser.roles, "credentials") ? "/credentials" : "/secrets";
   const mappingHref = canUseView(currentUser.roles, "health") ? "/health" : "/systems";
@@ -1971,7 +1981,21 @@ function Dashboard({
         <Metric href={pendingHref} label={t.dashboard.metrics.pending} value={stats.pending} detail={t.dashboard.metrics.waiting} />
         <Metric href={`${credentialsHref}?status=revoke_failed`} label={t.dashboard.metrics.failures} value={stats.failures} detail={t.dashboard.metrics.operator} tone="risk" />
       </div>
-      <div className="dashboardGrid">
+      {!hasOperationalData ? (
+        <section className="dashboardStartState">
+          <span className="dashboardStartIcon"><KeyRound aria-hidden="true" size={20} /></span>
+          <div>
+            <h2>{localize(t, "Start your first governed Secret workflow", "첫 Secret 워크플로우를 시작하세요")}</h2>
+            <p>{localize(t, "Create a request to begin approval, issuance, and lifecycle tracking in one flow.", "요청을 생성하면 승인, 발급, Lifecycle 추적을 하나의 흐름으로 시작할 수 있습니다.")}</p>
+          </div>
+          <Link className="primary dashboardStartAction" href="/requests">
+            {localize(t, "Create Secret request", "Secret 요청 생성")}
+            <ArrowRight aria-hidden="true" size={15} />
+          </Link>
+        </section>
+      ) : (
+        <>
+      <div className="dashboardGrid dashboardPrimaryGrid">
         <section className="insightPanel">
           <h2>{t.dashboard.posture}</h2>
           <div className="postureRows">
@@ -1996,6 +2020,16 @@ function Dashboard({
           )}
         </section>
       </div>
+      <details className="dashboardDetails">
+        <summary>
+          <span>
+            <strong>{localize(t, "Operational analytics and records", "운영 분석 및 상세 기록")}</strong>
+            <small>{localize(t, "Distribution, lifecycle, risk, issuance, and inventory", "분포, Lifecycle, Risk, 발급 및 Inventory")}</small>
+          </span>
+          <span className="dashboardDetailsCount">{credentials.length + requests.length + recentSecurityEvents.length}</span>
+          <ArrowRight aria-hidden="true" className="dashboardDetailsChevron" size={16} />
+        </summary>
+        <div className="dashboardDetailsContent">
       <div className="dashboardGrid">
         <section className="insightPanel">
           <h2>{t.dashboard.distribution}</h2>
@@ -2130,6 +2164,10 @@ function Dashboard({
         ])}
         emptyLabel={t.table.noData}
       />
+        </div>
+      </details>
+        </>
+      )}
     </div>
   );
 }
@@ -2910,6 +2948,35 @@ function DependencyDetail({
   );
 }
 
+function requestTypeDisplayLabel(type: RequestType): string {
+  const labels: Record<RequestType, string> = {
+    KV_READ: "KV Read",
+    KV_WRITE: "KV Write",
+    DB_CREDENTIAL: "Database Credential",
+    PKI_CERTIFICATE: "PKI Certificate",
+    SSH_CERTIFICATE: "SSH Certificate",
+    APPROLE_SECRET_ID: "AppRole SecretID",
+    CUSTOM_GITLAB_TOKEN: "GitLab Token",
+    CUSTOM_JENKINS_TOKEN: "Jenkins Token",
+    CUSTOM_ARTIFACTORY_TOKEN: "Artifactory Token",
+    CUSTOM_KAFKA_ACCESS: "Kafka Access",
+    CUSTOM_LEGACY_API_TOKEN: "Legacy API Token",
+    NETWORK_DEVICE_ROTATION: "Network Device Rotation"
+  };
+  return labels[type];
+}
+
+function localizedSystemDescription(t: Copy, system: SystemSummary): string {
+  if (t !== copy.ko) return system.description;
+  const descriptions: Record<string, string> = {
+    "system-tango-ec": "고객 주문 워크플로우를 처리하는 Enterprise Commerce 애플리케이션입니다.",
+    "system-tap-td": "내부 Platform 팀을 위한 Telemetry 및 Data Transformation 서비스입니다.",
+    "system-data-platform": "공용 Analytics 및 Reporting Platform입니다.",
+    "system-payment-api": "단기 Credential과 Certificate를 사용하는 Payment Processing API입니다."
+  };
+  return descriptions[system.id] ?? system.description;
+}
+
 function Systems({ t, systems, mappingHealth }: { t: Copy; systems: SystemSummary[]; mappingHealth: VaultMappingHealth[] }) {
   const { filters, replace, reset, update } = usePortalFilters({ q: "", environment: "all", sort: "name" });
   const mappingCounts = useMemo(() => {
@@ -2977,7 +3044,7 @@ function Systems({ t, systems, mappingHealth }: { t: Copy; systems: SystemSummar
           <div className="cardHeader">
             <div>
               <h2>{system.name}</h2>
-              <p>{system.description}</p>
+              <p>{localizedSystemDescription(t, system)}</p>
             </div>
             <span className={`pill ${system.environment}`}>{system.environment}</span>
           </div>
@@ -2985,7 +3052,11 @@ function Systems({ t, systems, mappingHealth }: { t: Copy; systems: SystemSummar
             <dt>{t.systems.owner}</dt>
             <dd>{system.ownerGroup}</dd>
             <dt>{t.systems.allowed}</dt>
-            <dd>{system.allowedRequestTypes.join(", ")}</dd>
+            <dd>
+              <div className="systemTypeChips">
+                {system.allowedRequestTypes.map((type) => <span key={type}>{requestTypeDisplayLabel(type)}</span>)}
+              </div>
+            </dd>
             <dt>{localize(t, "Vault live state", "Vault Live 상태")}</dt>
             <dd>
               <span className={`inlineLiveStatus ${liveMappings === totalMappings && totalMappings > 0 ? "live" : "missing"}`}>
@@ -3486,6 +3557,7 @@ function Approvals({
   const [ttlOverrides, setTtlOverrides] = useState<Record<string, string>>({});
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
   const [conditionNotes, setConditionNotes] = useState<Record<string, string>>({});
+  const [decisionModes, setDecisionModes] = useState<Record<string, "approve" | "conditional" | "reject">>({});
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null);
   const { filters, replace, reset, update } = usePortalFilters({ q: "", status: "pending", risk: "all", sort: "oldest" });
@@ -3588,9 +3660,17 @@ function Approvals({
       ) : null}
       {actionError ? <div className="error">{actionError}</div> : null}
       {filteredRequests.length === 0 ? (
-        <div className="empty emptyWithAction">
-          <span>{t.approvals.empty}</span>
-          <button onClick={reset} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+        <div className="empty emptyWithAction emptyContextual">
+          <span className="emptyContextualIcon"><Inbox aria-hidden="true" size={18} /></span>
+          <div>
+            <strong>{requests.length === 0 ? localize(t, "No requests have been submitted yet", "아직 등록된 요청이 없습니다") : t.approvals.empty}</strong>
+            <small>{requests.length === 0 ? localize(t, "Create a Secret request to begin the approval workflow.", "Secret 요청을 생성하면 승인 워크플로우가 시작됩니다.") : localize(t, "Change or reset the filters to see other requests.", "필터를 변경하거나 초기화해 다른 요청을 확인하세요.")}</small>
+          </div>
+          {requests.length === 0 ? (
+            <Link href="/requests">{localize(t, "Go to Secret requests", "Secret 요청으로 이동")}<ArrowRight aria-hidden="true" size={14} /></Link>
+          ) : (
+            <button onClick={reset} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+          )}
         </div>
       ) : null}
       {filteredRequests.map((request) => (
@@ -3615,53 +3695,86 @@ function Approvals({
                 {request.requesterEmail} / {request.requestType} / {request.ttl}
               </small>
             </div>
-            <div className="approvalControls">
-              <label>
-                {localize(t, "Approve TTL", "승인 TTL")}
-                <select
-                  disabled={!canReview || request.status !== "pending"}
-                  value={ttlOverrides[request.id] ?? request.ttl}
-                  onChange={(event) =>
-                    setTtlOverrides((current) => ({ ...current, [request.id]: event.target.value }))
-                  }
-                >
-                  <option value={request.ttl}>{request.ttl}</option>
-                  <option value="30m">30m</option>
-                  <option value="1h">1h</option>
-                  <option value="4h">4h</option>
-                  <option value="8h">8h</option>
-                </select>
-              </label>
-              <label>
-                {localize(t, "Conditional approval note", "조건부 승인 메모")}
-                <textarea
-                  disabled={!canReview || request.status !== "pending"}
-                  value={conditionNotes[request.id] ?? ""}
-                  placeholder={localize(t, "Example: approve only for release window", "예: 릴리스 시간대에만 승인")}
-                  onChange={(event) =>
-                    setConditionNotes((current) => ({ ...current, [request.id]: event.target.value }))
-                  }
-                />
-              </label>
-              <label>
-                {localize(t, "Reject reason", "반려 사유")}
-                <textarea
-                  disabled={!canReview || request.status !== "pending"}
-                  value={rejectReasons[request.id] ?? ""}
-                  placeholder={localize(t, "Enter at least 3 characters", "3자 이상의 반려 사유를 입력하세요")}
-                  onChange={(event) =>
-                    setRejectReasons((current) => ({ ...current, [request.id]: event.target.value }))
-                  }
-                />
-              </label>
-            </div>
+            {request.status === "pending" ? (
+              <div className="approvalControls">
+                <div aria-label={localize(t, "Approval decision", "승인 결정")} className="approvalDecisionSwitch" role="group">
+                  {(["approve", "conditional", "reject"] as const).map((mode) => {
+                    const labels = {
+                      approve: localize(t, "Approve", "승인"),
+                      conditional: localize(t, "Conditional", "조건부 승인"),
+                      reject: localize(t, "Reject", "반려")
+                    };
+                    const active = (decisionModes[request.id] ?? "approve") === mode;
+                    return (
+                      <button
+                        aria-pressed={active}
+                        className={active ? `active ${mode}` : mode}
+                        disabled={!canReview}
+                        key={mode}
+                        onClick={() => setDecisionModes((current) => ({ ...current, [request.id]: mode }))}
+                        type="button"
+                      >
+                        {labels[mode]}
+                      </button>
+                    );
+                  })}
+                </div>
+                {(decisionModes[request.id] ?? "approve") !== "reject" ? (
+                  <label>
+                    {localize(t, "Approved TTL", "승인 TTL")}
+                    <select
+                      disabled={!canReview}
+                      value={ttlOverrides[request.id] ?? request.ttl}
+                      onChange={(event) =>
+                        setTtlOverrides((current) => ({ ...current, [request.id]: event.target.value }))
+                      }
+                    >
+                      <option value={request.ttl}>{request.ttl}</option>
+                      <option value="30m">30m</option>
+                      <option value="1h">1h</option>
+                      <option value="4h">4h</option>
+                      <option value="8h">8h</option>
+                    </select>
+                  </label>
+                ) : null}
+                {(decisionModes[request.id] ?? "approve") === "conditional" ? (
+                  <label>
+                    {localize(t, "Approval condition", "승인 조건")}
+                    <textarea
+                      disabled={!canReview}
+                      value={conditionNotes[request.id] ?? ""}
+                      placeholder={localize(t, "Example: only during the release window", "예: Release Window에만 허용")}
+                      onChange={(event) =>
+                        setConditionNotes((current) => ({ ...current, [request.id]: event.target.value }))
+                      }
+                    />
+                  </label>
+                ) : null}
+                {(decisionModes[request.id] ?? "approve") === "reject" ? (
+                  <label>
+                    {localize(t, "Reject reason", "반려 사유")}
+                    <textarea
+                      disabled={!canReview}
+                      value={rejectReasons[request.id] ?? ""}
+                      placeholder={localize(t, "Enter at least 3 characters", "3자 이상의 반려 사유를 입력하세요")}
+                      onChange={(event) =>
+                        setRejectReasons((current) => ({ ...current, [request.id]: event.target.value }))
+                      }
+                    />
+                  </label>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <div className="approvalFooter">
-            <div>
-              <strong>{localize(t, "Approval history", "승인 히스토리")}</strong>
+            <details className="approvalHistory">
+              <summary>
+                <History aria-hidden="true" size={15} />
+                {localize(t, "Approval history", "승인 히스토리")}
+              </summary>
               <LifecycleTimeline steps={requestLifecycleSteps(t, request, auditEvents)} compact />
-            </div>
-            <details>
+            </details>
+            <details className="approvalPayload">
               <summary>{t.approvals.advanced}</summary>
               <pre>
                 {JSON.stringify(
@@ -3678,46 +3791,42 @@ function Approvals({
             </details>
           </div>
           <div className="actions">
-            <button
-              disabled={!canReview || request.status !== "pending" || busyRequestId === request.id}
-              onClick={() => void act(request.id, "approve")}
-            >
-              {t.approvals.approve}
-            </button>
-            <button
-              className="primaryGhost"
-              disabled={
-                !canReview ||
-                request.status !== "pending" ||
-                busyRequestId === request.id ||
-                !conditionNotes[request.id]?.trim()
-              }
-              onClick={() => void act(request.id, "approve", true)}
-            >
-              {localize(t, "Conditional approve", "조건부 승인")}
-            </button>
-            <button
-              disabled={
-                !canReview ||
-                request.status !== "pending" ||
-                busyRequestId === request.id ||
-                (rejectReasons[request.id]?.trim().length ?? 0) < 3
-              }
-              onClick={() => void act(request.id, "reject")}
-            >
-              {t.approvals.reject}
-            </button>
-            <button
-              className="primary"
-              disabled={
-                request.status !== "approved" ||
-                busyRequestId === request.id ||
-                (!canReview && request.requesterId !== currentUser?.id)
-              }
-              onClick={() => void act(request.id, "execute")}
-            >
-              {t.approvals.execute}
-            </button>
+            {request.status === "pending" && (decisionModes[request.id] ?? "approve") === "approve" ? (
+              <button className="primary" disabled={!canReview || busyRequestId === request.id} onClick={() => void act(request.id, "approve")}>
+                <CheckCircle2 aria-hidden="true" size={15} />
+                {t.approvals.approve}
+              </button>
+            ) : null}
+            {request.status === "pending" && (decisionModes[request.id] ?? "approve") === "conditional" ? (
+              <button
+                className="primary"
+                disabled={!canReview || busyRequestId === request.id || (conditionNotes[request.id]?.trim().length ?? 0) < 3}
+                onClick={() => void act(request.id, "approve", true)}
+              >
+                <ShieldCheck aria-hidden="true" size={15} />
+                {localize(t, "Apply conditional approval", "조건부 승인 적용")}
+              </button>
+            ) : null}
+            {request.status === "pending" && (decisionModes[request.id] ?? "approve") === "reject" ? (
+              <button
+                className="dangerButton"
+                disabled={!canReview || busyRequestId === request.id || (rejectReasons[request.id]?.trim().length ?? 0) < 3}
+                onClick={() => void act(request.id, "reject")}
+              >
+                <X aria-hidden="true" size={15} />
+                {t.approvals.reject}
+              </button>
+            ) : null}
+            {request.status === "approved" ? (
+              <button
+                className="primary"
+                disabled={busyRequestId === request.id || (!canReview && request.requesterId !== currentUser?.id)}
+                onClick={() => void act(request.id, "execute")}
+              >
+                <Rocket aria-hidden="true" size={15} />
+                {t.approvals.execute}
+              </button>
+            ) : null}
           </div>
         </article>
       ))}
@@ -3869,9 +3978,17 @@ function Credentials({
       {actionError ? <div className="error">{actionError}</div> : null}
       {actionMessage ? <div className="noticePanel compact">{actionMessage}</div> : null}
       {filteredCredentials.length === 0 ? (
-        <div className="empty emptyWithAction">
-          <span>{t.credentials.empty}</span>
-          <button onClick={reset} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+        <div className="empty emptyWithAction emptyContextual">
+          <span className="emptyContextualIcon"><KeyRound aria-hidden="true" size={18} /></span>
+          <div>
+            <strong>{credentials.length === 0 ? localize(t, "No credentials have been issued yet", "아직 발급된 Credential이 없습니다") : t.credentials.empty}</strong>
+            <small>{credentials.length === 0 ? localize(t, "Submit a Secret request and complete approval to issue a credential.", "Secret 요청과 승인을 완료하면 Credential이 발급됩니다.") : localize(t, "Change or reset the filters to see other credentials.", "필터를 변경하거나 초기화해 다른 Credential을 확인하세요.")}</small>
+          </div>
+          {credentials.length === 0 ? (
+            <Link href="/requests">{localize(t, "Create Secret request", "Secret 요청 생성")}<ArrowRight aria-hidden="true" size={14} /></Link>
+          ) : (
+            <button onClick={reset} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+          )}
         </div>
       ) : null}
       {filteredCredentials.map((credential) => {
@@ -3970,6 +4087,40 @@ function Credentials({
   );
 }
 
+function auditActionLabel(t: Copy, action: string): string {
+  const labels: Record<string, [string, string]> = {
+    "request.created": ["Request created", "요청 생성"],
+    "request.approved": ["Request approved", "요청 승인"],
+    "request.rejected": ["Request rejected", "요청 반려"],
+    "request.executed": ["Request executed", "요청 실행"],
+    "credential.revoked": ["Credential revoked", "Credential 폐기"],
+    "credential.revoke_failed": ["Credential revoke failed", "Credential 폐기 실패"],
+    "portal_assistant.chat": ["AI assistant conversation", "AI Assistant 대화"],
+    "user.access.updated": ["User access updated", "사용자 접근 정책 변경"],
+    "user.password.reset_issued": ["Temporary password issued", "임시 비밀번호 발급"],
+    "vault_plugin.requirements.started": ["Plugin interview started", "Plugin 요구사항 인터뷰 시작"],
+    "vault_plugin.requirements.confirmed": ["Plugin specification confirmed", "Plugin 생성 명세 확정"],
+    "vault_plugin.job.created": ["Plugin job created", "Plugin 작업 생성"],
+    "vault_plugin.job.updated": ["Plugin job updated", "Plugin 작업 수정"],
+    "vault_plugin.job.deleted": ["Plugin job deleted", "Plugin 작업 삭제"],
+    "vault_plugin.generated": ["Plugin generated", "Plugin 생성"],
+    "vault_plugin.build.started": ["Plugin build started", "Plugin Build 시작"],
+    "vault_plugin.build.completed": ["Plugin build completed", "Plugin Build 완료"],
+    "vault_plugin.applied": ["Plugin applied", "Plugin 적용"],
+    "vault_plugin.apply_failed": ["Plugin apply failed", "Plugin 적용 실패"],
+    "vault_plugin.rolled_back": ["Plugin rolled back", "Plugin Rollback"],
+    "vault_plugin.mount_removed": ["Plugin Mount removed", "Plugin Mount 해제"],
+    "vault_plugin.mount_remove_failed": ["Plugin Mount removal failed", "Plugin Mount 해제 실패"]
+  };
+  const label = labels[action];
+  if (label) return localize(t, label[0], label[1]);
+  return action
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function Audit({ t, events }: { t: Copy; events: AuditEvent[] }) {
   const { filters, replace, reset, update } = usePortalFilters({ actor: "", target: "", action: "", from: "", to: "", sort: "newest" });
   const filteredEvents = events.filter((event) => {
@@ -3987,7 +4138,7 @@ function Audit({ t, events }: { t: Copy; events: AuditEvent[] }) {
   const rows = filteredEvents.map((event) => [
     new Date(event.createdAt).toLocaleString(),
     event.actorEmail,
-    event.action,
+    auditActionLabel(t, event.action),
     `${event.targetType}:${event.targetId.slice(0, 8)}`,
     event.result
   ]);
@@ -4002,7 +4153,7 @@ function Audit({ t, events }: { t: Copy; events: AuditEvent[] }) {
           <h2>{t.audit.title}</h2>
           <p>{localize(t, "Filter workflow audit events and export the current report.", "워크플로우 감사 이벤트를 필터링하고 현재 리포트를 내보냅니다.")}</p>
         </div>
-        <div className="filterGrid">
+        <div className="filterGrid auditPrimaryFilters">
           <label>
             {localize(t, "From", "시작일")}
             <input type="date" value={filters.from} onChange={(event) => update("from", event.target.value)} />
@@ -4012,18 +4163,6 @@ function Audit({ t, events }: { t: Copy; events: AuditEvent[] }) {
             <input type="date" value={filters.to} onChange={(event) => update("to", event.target.value)} />
           </label>
           <label>
-            {t.table.actor}
-            <input value={filters.actor} onChange={(event) => update("actor", event.target.value)} placeholder="user@example.com" />
-          </label>
-          <label>
-            {t.table.target}
-            <input value={filters.target} onChange={(event) => update("target", event.target.value)} placeholder="request / credential" />
-          </label>
-          <label>
-            {t.table.action}
-            <input value={filters.action} onChange={(event) => update("action", event.target.value)} placeholder="approve / revoke" />
-          </label>
-          <label>
             {localize(t, "Sort", "정렬")}
             <select onChange={(event) => update("sort", event.target.value)} value={filters.sort}>
               <option value="newest">{localize(t, "Newest first", "최신 순")}</option>
@@ -4031,6 +4170,27 @@ function Audit({ t, events }: { t: Copy; events: AuditEvent[] }) {
             </select>
           </label>
         </div>
+        <details className="auditAdvancedFilters">
+          <summary>
+            <Search aria-hidden="true" size={15} />
+            <span>{localize(t, "Advanced filters", "상세 필터")}</span>
+            {(filters.actor || filters.target || filters.action) ? <em>{localize(t, "Applied", "적용됨")}</em> : null}
+          </summary>
+          <div className="filterGrid">
+            <label>
+              {t.table.actor}
+              <input value={filters.actor} onChange={(event) => update("actor", event.target.value)} placeholder="user@example.com" />
+            </label>
+            <label>
+              {t.table.target}
+              <input value={filters.target} onChange={(event) => update("target", event.target.value)} placeholder="request / credential" />
+            </label>
+            <label>
+              {t.table.action}
+              <input value={filters.action} onChange={(event) => update("action", event.target.value)} placeholder="approve / revoke" />
+            </label>
+          </div>
+        </details>
         <div className="filterPanelFooter">
           <SavedViewControls filters={filters} labels={savedViewLabels(t)} onApply={(saved) => replace({ ...filters, ...saved })} onReset={reset} scope="audit" />
           <div className="actions">
@@ -7966,6 +8126,7 @@ function UserManagement({
   const [draftPasswordResetRequired, setDraftPasswordResetRequired] = useState(false);
   const [temporaryPassword, setTemporaryPassword] = useState("");
   const [revealPassword, setRevealPassword] = useState(false);
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [userAction, setUserAction] = useState<"save" | "reset" | null>(null);
   const [policyReviewOpen, setPolicyReviewOpen] = useState(false);
@@ -8148,7 +8309,7 @@ function UserManagement({
         </div>
       )}
 
-      <div className="userManagementGrid">
+      <div className={`userManagementGrid${mobileDetailOpen ? " mobileDetailOpen" : ""}`}>
         <section className="tablePanel userDirectory">
           <div className="panelHeader">
             <div>
@@ -8180,7 +8341,10 @@ function UserManagement({
               <button
                 key={user.id}
                 className={`userRow ${selectedUser?.id === user.id ? "selected" : ""}`}
-                onClick={() => setSelectedUserId(user.id)}
+                onClick={() => {
+                  setSelectedUserId(user.id);
+                  setMobileDetailOpen(true);
+                }}
                 type="button"
               >
                 <span className={`avatarMark ${user.status}`}>{user.displayName.slice(0, 1)}</span>
@@ -8197,6 +8361,10 @@ function UserManagement({
         <section className="tablePanel userDetailPanel">
           {selectedUser ? (
             <>
+              <button className="mobileUserBack" onClick={() => setMobileDetailOpen(false)} type="button">
+                <ArrowLeft aria-hidden="true" size={16} />
+                {localize(t, "Back to users", "사용자 목록")}
+              </button>
               <div className="detailTopline">
                 <span className={`statusBadge ${selectedUser.status}`}>{selectedUser.status}</span>
                 <span className="nodeKind">{selectedUser.authMode}</span>
@@ -8366,7 +8534,7 @@ function UserManagement({
         rows={userAuditEvents.map((event) => [
           formatDate(event.createdAt),
           event.actorEmail,
-          event.action,
+          auditActionLabel(t, event.action),
           `${event.targetType}:${event.targetId.slice(0, 8)}`,
           event.result
         ])}
@@ -8450,10 +8618,33 @@ function VaultInventoryWarnings({ t, warnings }: { t: Copy; warnings: string[] }
       <AlertTriangle aria-hidden="true" size={17} />
       <div>
         <strong>{localize(t, "Vault inventory needs review", "Vault 인벤토리 확인 필요")}</strong>
-        {warnings.map((warning) => <span key={warning}>{warning}</span>)}
+        {warnings.map((warning) => <span key={warning}>{vaultWarningLabel(t, warning)}</span>)}
       </div>
     </div>
   );
+}
+
+function vaultWarningLabel(t: Copy, warning: string): string {
+  const labels: Record<string, [string, string]> = {
+    mock_inventory_unavailable: [
+      "Mock Vault mode does not provide live Mount or Plugin Catalog inventory.",
+      "Mock Vault 모드에서는 실제 Mount 및 Plugin Catalog 인벤토리를 제공하지 않습니다."
+    ],
+    "Mock Vault mode has no live mount or plugin catalog inventory": [
+      "Mock Vault mode does not provide live Mount or Plugin Catalog inventory.",
+      "Mock Vault 모드에서는 실제 Mount 및 Plugin Catalog 인벤토리를 제공하지 않습니다."
+    ],
+    mock_reconciliation_limited: [
+      "Mock Vault mode cannot inspect live Role or runtime capabilities.",
+      "Mock Vault 모드에서는 실제 Role 및 Runtime 권한을 검증할 수 없습니다."
+    ],
+    "Mock Vault mode does not perform live role or capability inspection": [
+      "Mock Vault mode cannot inspect live Role or runtime capabilities.",
+      "Mock Vault 모드에서는 실제 Role 및 Runtime 권한을 검증할 수 없습니다."
+    ]
+  };
+  const label = labels[warning];
+  return label ? localize(t, label[0], label[1]) : warning;
 }
 
 function PlatformHealth({
@@ -8803,6 +8994,8 @@ function checkDetailCopy(detail: string, t: Copy): string {
 }
 
 function reconciliationWarningCopy(warning: string, t: Copy): string {
+  const knownWarning = vaultWarningLabel(t, warning);
+  if (knownWarning !== warning) return knownWarning;
   if (t !== copy.ko) return warning;
   if (warning.startsWith("Detected ") && warning.includes("mounted external plugin")) {
     return warning.replace("Detected ", "감지: ").replace(" mounted external plugin", "개의 Mount된 외부 Plugin").replace(" without a catalog entry", "에 Catalog 등록 정보가 없습니다");
@@ -8822,6 +9015,8 @@ type ManagedVaultMountTarget = {
   pluginType: VaultPluginType;
   mountPath: string;
 };
+
+type AdminSection = "overview" | "reconciliation" | "plugins" | "mappings" | "notifications";
 
 function Admin({
   t,
@@ -8856,6 +9051,14 @@ function Admin({
   const [unmountConfirmation, setUnmountConfirmation] = useState("");
   const [unmountOperation, setUnmountOperation] = useState<"inspect" | "remove" | null>(null);
   const [unmountError, setUnmountError] = useState<string | null>(null);
+  const [adminSection, setAdminSection] = useState<AdminSection>("overview");
+  const adminSections: Array<{ id: AdminSection; label: string; icon: LucideIcon }> = [
+    { id: "overview", label: localize(t, "Overview", "개요"), icon: Activity },
+    { id: "reconciliation", label: localize(t, "Reconciliation", "상태 조정"), icon: GitCompare },
+    { id: "plugins", label: localize(t, "Plugins and Mounts", "Plugin 및 Mount"), icon: PlugZap },
+    { id: "mappings", label: localize(t, "Mappings", "Mapping"), icon: Workflow },
+    { id: "notifications", label: localize(t, "Notifications", "Notification"), icon: Bell }
+  ];
   const unmountConfirmationMatches = Boolean(
     unmountTarget && normalizeFactoryMountPath(unmountConfirmation) === unmountTarget.mountPath
   );
@@ -8938,6 +9141,28 @@ function Admin({
         onRefresh={onRefresh}
       />
       <VaultInventoryWarnings t={t} warnings={inventory?.warnings ?? []} />
+      <nav aria-label={localize(t, "Admin sections", "Admin 메뉴")} className="adminSectionTabs" role="tablist">
+        {adminSections.map((section) => {
+          const Icon = section.icon;
+          return (
+            <button
+              aria-controls={`admin-panel-${section.id}`}
+              aria-selected={adminSection === section.id}
+              className={adminSection === section.id ? "active" : ""}
+              id={`admin-tab-${section.id}`}
+              key={section.id}
+              onClick={() => setAdminSection(section.id)}
+              role="tab"
+              type="button"
+            >
+              <Icon aria-hidden="true" size={16} />
+              <span>{section.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+      {adminSection === "overview" ? (
+        <div aria-labelledby="admin-tab-overview" className="adminSectionPanel" id="admin-panel-overview" role="tabpanel">
       <Table
         title={t.admin.health}
         columns={[t.table.mode, t.table.healthy, t.table.version, t.table.cluster]}
@@ -8961,7 +9186,15 @@ function Admin({
           tone={catalogMismatchCount > 0 ? "risk" : "default"}
         />
       </section>
-      <VaultReconciliationCenter report={reconciliation} t={t} />
+        </div>
+      ) : null}
+      {adminSection === "reconciliation" ? (
+        <div aria-labelledby="admin-tab-reconciliation" className="adminSectionPanel" id="admin-panel-reconciliation" role="tabpanel">
+          <VaultReconciliationCenter report={reconciliation} t={t} />
+        </div>
+      ) : null}
+      {adminSection === "plugins" ? (
+        <div aria-labelledby="admin-tab-plugins" className="adminSectionPanel" id="admin-panel-plugins" role="tabpanel">
       <Table
         title={localize(t, "Actual Vault plugin catalog", "실제 Vault Plugin 카탈로그")}
         columns={[
@@ -9023,6 +9256,10 @@ function Admin({
         })}
         emptyLabel={localize(t, "No live Vault mount data.", "실제 Vault Mount 데이터가 없습니다.")}
       />
+        </div>
+      ) : null}
+      {adminSection === "notifications" ? (
+        <div aria-labelledby="admin-tab-notifications" className="adminSectionPanel" id="admin-panel-notifications" role="tabpanel">
       <section className="tablePanel">
         <h2>{localize(t, "Notification integrations", "Notification 연동")}</h2>
         <div className="notificationGrid">
@@ -9035,6 +9272,10 @@ function Admin({
           ))}
         </div>
       </section>
+        </div>
+      ) : null}
+      {adminSection === "mappings" ? (
+        <div aria-labelledby="admin-tab-mappings" className="adminSectionPanel" id="admin-panel-mappings" role="tabpanel">
       <Table
         title={t.admin.mappings}
         columns={[t.table.system, t.table.namespace, t.table.mount, t.table.role, localize(t, "Policy", "Policy")]}
@@ -9074,6 +9315,8 @@ function Admin({
         ])}
         emptyLabel={t.table.noData}
       />
+        </div>
+      ) : null}
       {unmountTarget ? (
         <PortalOverlay onDismiss={closeUnmountDialog}>
           <section

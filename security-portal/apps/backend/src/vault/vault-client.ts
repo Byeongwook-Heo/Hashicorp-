@@ -78,7 +78,7 @@ class MockVaultClient implements VaultClient {
         registeredOnlyCustomPlugins: 0,
         unregisteredMountedPlugins: 0
       },
-      warnings: ["Mock Vault mode has no live mount or plugin catalog inventory"]
+      warnings: ["mock_inventory_unavailable"]
     };
   }
 
@@ -128,7 +128,7 @@ class MockVaultClient implements VaultClient {
     return reconciliationReport("mock", items, {
       mode: "system",
       desiredNamespaces: desiredNamespaces(systems)
-    }, ["Mock Vault mode does not perform live role or capability inspection"]);
+    }, ["mock_reconciliation_limited"]);
   }
 
   async issueCredential(request: AccessRequest, system: SystemSummary): Promise<VaultIssueResult> {

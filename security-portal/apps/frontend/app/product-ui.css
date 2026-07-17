@@ -6054,3 +6054,549 @@ textarea {
     transition: none !important;
   }
 }
+
+/* Portal workflow usability pass */
+.portalState > div {
+  min-width: 0;
+}
+
+.portalStateAction {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 680;
+  text-decoration: none;
+}
+
+.portalStateAction:hover {
+  border-color: color-mix(in srgb, var(--vault-deep) 40%, var(--line));
+  background: var(--vault-soft);
+}
+
+.dashboardPage > .metrics {
+  order: 0;
+}
+
+.dashboardPage > .dashboardGrid,
+.dashboardStartState {
+  order: 1;
+}
+
+.dashboardPage > .dashboardGrid.dashboardPrimaryGrid {
+  order: 1;
+}
+
+.dashboardStartState {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 118px;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--vault);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--premium-shadow);
+}
+
+.dashboardStartIcon,
+.emptyContextualIcon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--vault-deep) 28%, var(--line));
+  border-radius: 7px;
+  background: var(--vault-soft);
+  color: var(--vault-deep);
+}
+
+.dashboardStartState h2,
+.dashboardStartState p {
+  margin: 0;
+}
+
+.dashboardStartState h2 {
+  font-size: 14px;
+}
+
+.dashboardStartState p {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.dashboardStartAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.dashboardDetails {
+  order: 2;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--premium-shadow);
+}
+
+.dashboardDetails > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 62px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.dashboardDetails > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dashboardDetails > summary > span:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.dashboardDetails > summary strong {
+  font-size: 12px;
+}
+
+.dashboardDetails > summary small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.dashboardDetailsCount {
+  display: grid;
+  min-width: 28px;
+  height: 24px;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dashboardDetailsChevron {
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.dashboardDetails[open] .dashboardDetailsChevron {
+  transform: rotate(90deg);
+}
+
+.dashboardDetails[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboardDetailsContent {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  background: var(--panel-soft);
+}
+
+.dashboardDetails:not([open]) > .dashboardDetailsContent {
+  display: none;
+}
+
+.dashboardDetailsContent > .dashboardGrid,
+.dashboardDetailsContent > .tablePanel {
+  box-shadow: none;
+}
+
+.systemTypeChips {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.systemTypeChips span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.emptyContextual {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-height: 104px;
+  align-items: center;
+  gap: 13px;
+  padding: 16px;
+  border-left: 3px solid var(--vault);
+  background: var(--panel);
+}
+
+.emptyContextual > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.emptyContextual strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.emptyContextual small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.emptyContextual > a,
+.emptyContextual > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.approvalCard {
+  gap: 14px;
+}
+
+.approvalControls {
+  align-content: start;
+  padding-left: 16px;
+  border-left: 1px solid var(--line-soft);
+}
+
+.approvalDecisionSwitch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.approvalDecisionSwitch button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 7px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.approvalDecisionSwitch button.active {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgb(16 19 24 / 10%);
+}
+
+.approvalDecisionSwitch button.active.reject {
+  color: var(--red);
+}
+
+.approvalControls label {
+  font-size: 10px;
+  font-weight: 680;
+}
+
+.approvalControls select,
+.approvalControls textarea {
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.approvalControls textarea {
+  min-height: 82px;
+}
+
+.approvalFooter {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.approvalHistory,
+.approvalPayload {
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.approvalHistory > summary,
+.approvalPayload > summary {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 680;
+}
+
+.approvalHistory[open] > summary,
+.approvalPayload[open] > summary {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.approvalHistory .lifecycleTimeline,
+.approvalPayload pre {
+  margin: 0;
+  padding: 12px;
+}
+
+.approvalHistory:not([open]) > .lifecycleTimeline,
+.approvalPayload:not([open]) > pre {
+  display: none;
+}
+
+.approvalCard > .actions {
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.approvalCard > .actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.auditPrimaryFilters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.auditAdvancedFilters {
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.auditAdvancedFilters > summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 680;
+}
+
+.auditAdvancedFilters > summary em {
+  margin-left: auto;
+  color: var(--vault-deep);
+  font-size: 9px;
+  font-style: normal;
+}
+
+.auditAdvancedFilters > .filterGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 12px;
+  border-top: 1px solid var(--line-soft);
+  background: var(--panel);
+}
+
+.auditAdvancedFilters:not([open]) > .filterGrid {
+  display: none;
+}
+
+.mobileUserBack {
+  display: none;
+}
+
+.adminSectionTabs {
+  display: flex;
+  min-width: 0;
+  gap: 3px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  scrollbar-width: thin;
+}
+
+.adminSectionTabs button {
+  display: inline-flex;
+  min-width: max-content;
+  min-height: 38px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.adminSectionTabs button.active {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgb(16 19 24 / 9%);
+}
+
+.adminSectionTabs button.active svg {
+  color: var(--vault-deep);
+}
+
+.adminSectionPanel {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+  animation: productEnter 180ms ease both;
+}
+
+.view-admin .notificationGrid {
+  padding: 14px;
+}
+
+.view-admin .notificationCard {
+  min-height: 96px;
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+@media (max-width: 900px) {
+  .approvalMain {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .approvalControls {
+    padding-top: 14px;
+    padding-left: 0;
+    border-top: 1px solid var(--line-soft);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboardStartState {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dashboardStartAction {
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+
+  .dashboardDetails > summary {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding-inline: 13px;
+  }
+
+  .dashboardDetailsContent {
+    padding: 10px;
+  }
+
+  .dashboardDetailsContent > .dashboardGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboardDetailsContent > .dashboardGrid .insightPanel + .insightPanel {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .emptyContextual {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .emptyContextual > a,
+  .emptyContextual > button {
+    grid-column: 1 / -1;
+    justify-content: center;
+    width: 100%;
+  }
+
+  .approvalFooter,
+  .auditPrimaryFilters,
+  .auditAdvancedFilters > .filterGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .approvalDecisionSwitch button {
+    min-height: 34px;
+    white-space: normal;
+  }
+
+  .userManagementGrid .userDetailPanel {
+    display: none;
+  }
+
+  .userManagementGrid.mobileDetailOpen .userDirectory {
+    display: none;
+  }
+
+  .userManagementGrid.mobileDetailOpen .userDetailPanel {
+    display: grid;
+  }
+
+  .mobileUserBack {
+    display: inline-flex;
+    width: max-content;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 2px;
+  }
+
+  .adminSectionTabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+    padding: 4px;
+  }
+
+  .adminSectionTabs button {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    justify-content: center;
+    padding-inline: 8px;
+    white-space: normal;
+  }
+
+  .adminSectionTabs button:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .view-admin .notificationGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboardDetailsChevron,
+  .adminSectionPanel {
+    transition: none;
+    animation: none;
+  }
+}
