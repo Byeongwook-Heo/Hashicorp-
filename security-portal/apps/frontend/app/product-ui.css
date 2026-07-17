@@ -4991,3 +4991,1066 @@ textarea {
     transition: none !important;
   }
 }
+
+/* Vault Dependency Explorer */
+.dependencyStack {
+  gap: 20px;
+}
+
+.dependencyExplorerIntro {
+  min-height: 90px;
+  align-items: flex-start;
+  padding: 4px 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dependencyExplorerIntro h2 {
+  margin: 0 0 7px;
+  font-size: 22px;
+  font-weight: 790;
+}
+
+.dependencyExplorerIntro p {
+  max-width: 760px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.dependencySummary {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgb(16 19 24 / 3%);
+}
+
+.dependencySummary > span {
+  display: grid;
+  min-width: 88px;
+  align-content: center;
+  gap: 2px;
+  padding: 10px 13px;
+  border-right: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.dependencySummary > span:last-child {
+  border-right: 0;
+}
+
+.dependencySummary strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 760;
+  font-variant-numeric: tabular-nums;
+}
+
+.dependencyExplorer {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--premium-shadow);
+}
+
+.dependencyExplorerToolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  min-height: 66px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.dependencySearch {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.dependencySearch > svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 11px;
+  color: var(--muted);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.dependencySearch input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 12px 0 36px;
+  border-color: var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+  font-size: 11px;
+}
+
+.dependencySearch input:focus {
+  background: var(--panel);
+}
+
+.dependencyFilters {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.dependencyFilters label {
+  display: grid;
+  gap: 4px;
+}
+
+.dependencyFilters label > span {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 680;
+}
+
+.dependencyFilters select {
+  min-width: 92px;
+  min-height: 38px;
+  padding-inline: 9px 28px;
+  border-color: var(--line);
+  border-radius: 6px;
+  background-color: var(--panel);
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.dependencyToolbarActions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.dependencyViewSwitch,
+.dependencyZoomControls {
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.dependencyViewSwitch button {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.dependencyViewSwitch button.active {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgb(16 19 24 / 8%);
+}
+
+.dependencyZoomControls {
+  gap: 1px;
+}
+
+.dependencyZoomControls button,
+.dependencyInspectorToggle,
+.dependencyInspectorHeader > button {
+  display: grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-strong);
+}
+
+.dependencyZoomControls button:hover:not(:disabled),
+.dependencyInspectorToggle:hover:not(:disabled),
+.dependencyInspectorHeader > button:hover:not(:disabled) {
+  border: 0;
+  background: var(--panel-strong);
+  color: var(--ink);
+}
+
+.dependencyZoomControls > span {
+  min-width: 38px;
+  color: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.dependencyInspectorToggle {
+  width: 36px;
+  min-width: 36px;
+  height: 38px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.dependencyInspectorToggle:hover:not(:disabled) {
+  border: 1px solid var(--line-strong);
+}
+
+.dependencyExplorerBody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 720px;
+}
+
+.dependencyExplorerBody.inspectorOpen {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.dependencyWorkspace {
+  min-width: 0;
+  background: var(--panel-soft);
+}
+
+.dependencyMapViewport {
+  position: relative;
+  min-height: 720px;
+  overflow: hidden;
+  background-color: var(--panel-soft);
+  background-image:
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 48px 48px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.dependencyMapViewport.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.dependencyCanvasStage {
+  position: absolute;
+  inset: 0 0 44px;
+  transform-origin: center center;
+  transition: transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: transform;
+}
+
+.dependencyMapViewport.dragging .dependencyCanvasStage {
+  transition: none;
+}
+
+.dependencyLines {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.dependencyLine {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 0.22;
+  opacity: 0.72;
+  filter: none;
+  vector-effect: non-scaling-stroke;
+  transition: opacity 160ms ease, stroke 160ms ease, stroke-width 160ms ease;
+}
+
+.dependencyLine.vault.active {
+  stroke: #c39a00;
+}
+
+.dependencyLine.namespace.active {
+  stroke: #64717f;
+}
+
+.dependencyLine.system.active {
+  stroke: #39434e;
+}
+
+.dependencyLine.lease.active {
+  stroke: var(--green);
+}
+
+.dependencyLine.active {
+  stroke-width: 0.32;
+  opacity: 0.92;
+}
+
+.dependencyLine.dimmed {
+  opacity: 0.1;
+}
+
+.dependencyLanes {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 18fr 16fr 15fr 28fr 23fr;
+  pointer-events: none;
+}
+
+.dependencyLanes span {
+  display: flex;
+  align-items: flex-start;
+  padding: 9px 11px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--line-strong) 55%, transparent);
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  font-size: 9px;
+  font-weight: 720;
+  text-transform: none;
+}
+
+.dependencyLanes span:last-child {
+  border-bottom: 0;
+}
+
+.dependencyNode {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 7px;
+  width: 166px;
+  min-height: 52px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 4px 12px rgb(16 19 24 / 6%);
+  backdrop-filter: none;
+  transform-origin: center;
+  transition: opacity 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dependencyNode:hover:not(:disabled) {
+  transform: translate(-50%, -50%) scale(1.02);
+  border-color: #aa8700;
+  background: var(--panel);
+  box-shadow: 0 8px 20px rgb(16 19 24 / 10%);
+}
+
+.dependencyNode:active:not(:disabled) {
+  transform: translate(-50%, -50%) scale(0.995);
+}
+
+.dependencyNode.vault {
+  width: 150px;
+  min-height: 56px;
+  border-color: #252b31;
+  background: #171b20;
+  color: #ffffff;
+}
+
+.dependencyNode.vault:hover:not(:disabled) {
+  border-color: #3c454f;
+  background: #20252b;
+  color: #ffffff;
+}
+
+.dependencyNode.namespace,
+.dependencyNode.system,
+.dependencyNode.surface,
+.dependencyNode.credential {
+  border-color: var(--line-strong);
+}
+
+.dependencyNode.selected,
+.dependencyNode.selected:hover:not(:disabled) {
+  transform: translate(-50%, -50%);
+  border-color: #a88400;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--vault) 38%, transparent), 0 10px 24px rgb(16 19 24 / 12%);
+}
+
+.dependencyNode.dimmed {
+  opacity: 0.24;
+}
+
+.dependencyNode.related {
+  opacity: 1;
+}
+
+.dependencyNodeIcon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--panel-strong);
+  color: var(--muted-strong);
+}
+
+.dependencyNode.vault .dependencyNodeIcon {
+  background: rgb(255 207 37 / 10%);
+  color: var(--vault);
+}
+
+.dependencyNodeCopy {
+  display: block;
+  min-width: 0;
+  text-align: left;
+}
+
+.dependencyNodeCopy strong,
+.dependencyNodeCopy small {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dependencyNodeCopy strong {
+  color: inherit;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.dependencyNodeCopy small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 520;
+}
+
+.dependencyNode.vault .dependencyNodeCopy small {
+  color: #aeb6c0;
+}
+
+.dependencyNodeState,
+.legendState {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+
+.dependencyNodeState.live,
+.legendState.live {
+  background: var(--green);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 10%, transparent);
+}
+
+.dependencyNodeState.issue,
+.legendState.issue {
+  background: var(--red);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 10%, transparent);
+}
+
+.dependencyMapFooter {
+  position: absolute;
+  z-index: 4;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 13px;
+  padding: 0 13px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.dependencyMapFooter > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+
+.legendLine {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--line-strong);
+}
+
+.legendLine.vault {
+  background: #c39a00;
+}
+
+.legendLine.namespace {
+  background: #64717f;
+}
+
+.legendLine.system {
+  background: #39434e;
+}
+
+.legendLine.lease {
+  background: var(--green);
+}
+
+.dependencyEmpty {
+  display: grid;
+  min-height: 400px;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.dependencyEmpty strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.dependencyEmpty button {
+  margin-top: 3px;
+}
+
+.dependencyTreeView {
+  display: grid;
+  min-height: 720px;
+  align-content: start;
+  background: var(--panel);
+}
+
+.dependencyTreeView > section {
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.dependencyTreeView > section:last-child {
+  border-bottom: 0;
+}
+
+.dependencyTreeView > section > header {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 14px;
+  border-right: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.dependencyTreeView h3 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.dependencyTreeView > section > header span {
+  color: var(--muted);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dependencyTreeView > section > div {
+  min-width: 0;
+}
+
+.dependencyTreeView section button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 7px 16px;
+  width: 100%;
+  min-height: 54px;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--ink);
+  text-align: left;
+}
+
+.dependencyTreeView section button:last-child {
+  border-bottom: 0;
+}
+
+.dependencyTreeView section button:hover:not(:disabled) {
+  border-color: var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.dependencyTreeView section button.selected {
+  background: var(--vault-soft);
+  box-shadow: inset 2px 0 0 #b99100;
+}
+
+.dependencyTreeView section button > span:nth-child(2) {
+  min-width: 0;
+}
+
+.dependencyTreeView section button strong,
+.dependencyTreeView section button small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dependencyTreeView section button strong {
+  font-size: 10px;
+}
+
+.dependencyTreeView section button small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.dependencyTreeView section button > svg {
+  color: var(--muted);
+}
+
+.dependencyDetailPanel {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  max-height: 720px;
+  align-self: stretch;
+  padding: 18px;
+  overflow: auto;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.dependencyDetailPanel p,
+.dependencyDetailPanel dt,
+.dependencyDetailPanel small {
+  color: var(--muted);
+}
+
+.dependencyDetailPanel code {
+  border-color: var(--line);
+  background: var(--panel-soft);
+  color: var(--ink);
+}
+
+.dependencyInspectorHeader {
+  display: flex;
+  min-height: 30px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dependencyInspectorHeader .detailTopline {
+  margin: 0;
+}
+
+.dependencyDetailPanel > h2 {
+  margin: 12px 0 4px;
+  font-size: 18px;
+  font-weight: 760;
+}
+
+.dependencyDetailPanel > p {
+  margin: 0;
+  font-size: 10px;
+}
+
+.nodeKind {
+  min-height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.dependencyBreadcrumb {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+  margin: 14px 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--panel-soft);
+}
+
+.dependencyBreadcrumb > span {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  color: var(--muted);
+}
+
+.dependencyBreadcrumb strong {
+  max-width: 120px;
+  overflow: hidden;
+  color: var(--muted-strong);
+  font-size: 8px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dependencyDetailPanel .detailStats {
+  gap: 0;
+  overflow: hidden;
+  margin: 14px 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.dependencyDetailPanel .detailStats .miniStat {
+  min-height: 62px;
+  border: 0;
+  border-right: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: var(--panel);
+}
+
+.dependencyDetailPanel .detailStats .miniStat:last-child {
+  border-right: 0;
+}
+
+.dependencyDetailPanel .compactDl {
+  gap: 8px 10px;
+  margin-block: 14px;
+}
+
+.dependencyDetailPanel .compactDl dd {
+  overflow-wrap: anywhere;
+}
+
+.dependencyDetailPanel .selectedCredential {
+  border-top-color: var(--line);
+}
+
+.dependencyDetailPanel .riskExplanation {
+  border-color: color-mix(in srgb, var(--vault-deep) 35%, var(--line));
+  background: var(--vault-soft);
+  color: var(--ink);
+}
+
+.dependencySupport {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--premium-shadow);
+}
+
+.dependencySupport > summary {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 16px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.dependencySupport > summary::marker {
+  color: var(--muted);
+}
+
+.dependencySupport > summary span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.dependencySupport > summary small {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.dependencySupport[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.dependencySupport .dependencyPanels {
+  gap: 0;
+}
+
+.dependencySupport .dependencyPanel {
+  border: 0;
+  border-right: 1px solid var(--line-soft);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.dependencySupport .dependencyPanel:nth-child(3) {
+  border-right: 0;
+}
+
+.dependencySupport .dependencyPanel.wide {
+  border-top: 1px solid var(--line-soft);
+  border-right: 0;
+}
+
+.dependencySupport .dependencyChipCloud span {
+  border-color: var(--line);
+  border-radius: 4px;
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+}
+
+@media (max-width: 1280px) {
+  .dependencyExplorerToolbar {
+    grid-template-columns: minmax(220px, 1fr) auto;
+  }
+
+  .dependencyToolbarActions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .dependencyExplorerBody.inspectorOpen {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dependencyDetailPanel {
+    max-height: none;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 1000px) {
+  .dependencyExplorerIntro {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dependencySummary {
+    width: max-content;
+    max-width: 100%;
+  }
+
+  .dependencyExplorerToolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dependencyFilters {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .dependencyToolbarActions {
+    grid-column: auto;
+    justify-content: space-between;
+  }
+
+  .dependencyExplorerBody.inspectorOpen {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dependencyMapViewport,
+  .dependencyTreeView,
+  .dependencyExplorerBody {
+    min-height: 660px;
+  }
+
+  .dependencySupport .dependencyPanels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dependencySupport .dependencyPanel,
+  .dependencySupport .dependencyPanel:nth-child(3) {
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .dependencySupport .dependencyPanel.wide {
+    border-top: 0;
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .dependencyStack {
+    gap: 14px;
+  }
+
+  .dependencyExplorerIntro {
+    min-height: 0;
+    padding-bottom: 18px;
+  }
+
+  .dependencyExplorerIntro h2 {
+    font-size: 20px;
+  }
+
+  .dependencySummary {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dependencySummary > span {
+    min-width: 0;
+    padding: 9px 7px;
+  }
+
+  .dependencySummary strong {
+    font-size: 15px;
+  }
+
+  .dependencyExplorerToolbar {
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .dependencyFilters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .dependencyFilters select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dependencyToolbarActions {
+    align-items: stretch;
+  }
+
+  .dependencyViewSwitch {
+    flex: 1;
+  }
+
+  .dependencyViewSwitch button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .dependencyZoomControls {
+    display: none;
+  }
+
+  .dependencyMapViewport,
+  .dependencyTreeView,
+  .dependencyExplorerBody {
+    min-height: 560px;
+  }
+
+  .dependencyMapViewport {
+    min-height: 680px;
+    background-size: 38px 38px;
+  }
+
+  .dependencyCanvasStage {
+    width: 760px;
+    right: auto;
+  }
+
+  .dependencyNode {
+    width: 138px;
+    grid-template-columns: 24px minmax(0, 1fr) 6px;
+    gap: 6px;
+    padding-inline: 7px;
+  }
+
+  .dependencyNode.vault {
+    width: 130px;
+  }
+
+  .dependencyNodeIcon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .dependencyMapFooter {
+    justify-content: flex-start;
+    gap: 10px;
+    overflow-x: auto;
+  }
+
+  .dependencyTreeView > section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dependencyTreeView > section > header {
+    min-height: 42px;
+    padding: 9px 11px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .dependencyTreeView section button {
+    min-height: 56px;
+  }
+
+  .dependencyDetailPanel {
+    padding: 15px;
+  }
+
+  .dependencyDetailPanel .detailStats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dependencyDetailPanel .detailStats .miniStat {
+    min-height: 68px;
+    padding: 10px;
+  }
+
+  .dependencyBreadcrumb {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .dependencyBreadcrumb strong {
+    max-width: 100px;
+  }
+
+  .dependencySupport > summary {
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+    padding-block: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dependencyCanvasStage,
+  .dependencyLine,
+  .dependencyNode {
+    transition: none !important;
+  }
+}

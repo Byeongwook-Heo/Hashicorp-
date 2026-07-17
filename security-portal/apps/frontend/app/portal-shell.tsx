@@ -37,7 +37,7 @@ import {
   type VaultReconciliationReport
 } from "@security-portal/shared";
 import Link from "next/link";
-import { type FormEvent, type ReactNode, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Activity,
@@ -77,6 +77,8 @@ import {
   PackageSearch,
   PanelLeftClose,
   PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
   PencilLine,
   PlugZap,
   RefreshCw,
@@ -98,6 +100,8 @@ import {
   Workflow,
   Wrench,
   X,
+  ZoomIn,
+  ZoomOut,
   type LucideIcon
 } from "lucide-react";
 import { SavedViewControls, usePortalFilters } from "./portal-list-tools";
@@ -254,8 +258,8 @@ const copy = {
       surfaces: "Vault-backed secret surfaces"
     },
     secrets: {
-      title: "Vault dependency map",
-      description: "Click the dependency map to inspect systems, namespaces, mounts, roles, policies, and issued Vault leases.",
+      title: "Vault Dependency Explorer",
+      description: "Trace Vault relationships across namespaces, systems, mounts, roles, policies, and issued leases.",
       issued: "Issued",
       active: "Active",
       mapped: "Mapped",
@@ -274,7 +278,7 @@ const copy = {
       mounts: "Mounts",
       systems: "Systems",
       vaultCore: "Vault core",
-      topology: "Dependency map",
+      topology: "Dependency explorer",
       namespacePlane: "Namespace plane",
       leaseOrbit: "Lease orbit",
       pathFocus: "Primary dependency paths"
@@ -403,8 +407,8 @@ const copy = {
       surfaces: "Vault 기반 Secret Surface"
     },
     secrets: {
-      title: "Vault 디펜던시 맵",
-      description: "디펜던시 맵을 클릭해 시스템, Namespace, Mount, Role, Policy, 발급 Lease 관계를 확인합니다.",
+      title: "Vault Dependency Explorer",
+      description: "Namespace, 시스템, Mount, Role, Policy, 발급 Lease의 Vault 의존 관계를 탐색합니다.",
       issued: "전체 발급",
       active: "활성",
       mapped: "매핑",
@@ -423,7 +427,7 @@ const copy = {
       mounts: "Mount",
       systems: "시스템",
       vaultCore: "Vault Core",
-      topology: "디펜던시 맵",
+      topology: "Dependency Explorer",
       namespacePlane: "Namespace Plane",
       leaseOrbit: "Lease Orbit",
       pathFocus: "주요 의존 경로"
@@ -2152,8 +2156,86 @@ function SecretInventory({
     [credentials, secretSurfaces, systems]
   );
   const [selectedNodeId, setSelectedNodeId] = useState("vault");
+  const [dependencyQuery, setDependencyQuery] = useState("");
+  const [dependencyEnvironment, setDependencyEnvironment] = useState("all");
+  const [dependencyKind, setDependencyKind] = useState("all");
+  const [dependencyStatus, setDependencyStatus] = useState("all");
+  const [dependencyRisk, setDependencyRisk] = useState("all");
+  const [dependencyView, setDependencyView] = useState<"graph" | "tree">("graph");
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [mapScale, setMapScale] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const [mapDragging, setMapDragging] = useState(false);
+  const mapDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+  const mountGroups = secretSurfaces.reduce<Record<string, number>>((acc, surface) => {
+    acc[surface.mountPath] = (acc[surface.mountPath] ?? 0) + 1;
+    return acc;
+  }, {});
+  const liveMappings = mappingHealth.filter((mapping) => mapping.reachable).length;
+  const mountHealth = useMemo(
+    () => new Map(mappingHealth.map((mapping) => [normalizePortalMount(mapping.mountPath), mapping.reachable])),
+    [mappingHealth]
+  );
+  const highRiskSurfaceIds = useMemo(() => new Set(
+    secretSurfaces.filter((surface) => {
+      const credential = credentials.find(
+        (item) => item.systemName === surface.systemName && item.requestType === surface.requestType
+      );
+      const request = credential
+        ? requests.find((item) => item.id === credential.requestId)
+        : requests.find(
+            (item) => item.systemName === surface.systemName && item.requestType === surface.requestType
+          );
+      return scoreRisk({
+        requestType: surface.requestType,
+        environment: surface.environment,
+        ttl: credential?.ttl ?? request?.ttl ?? "1h",
+        scope: `${surface.roleName} ${surface.displayName}`,
+        riskLevel: request?.riskLevel
+      }).level === "high";
+    }).map((surface) => surface.id)
+  ), [credentials, requests, secretSurfaces]);
+  const nodeStates = useMemo(() => new Map(
+    mapModel.nodes.map((node) => [
+      node.id,
+      dependencyNodeState(node, secretSurfaces, credentials, mountHealth)
+    ])
+  ), [credentials, mapModel.nodes, mountHealth, secretSurfaces]);
+  const highRiskNodeIds = useMemo(() => new Set(
+    mapModel.nodes
+      .filter((node) => getRelatedSurfaces(node, secretSurfaces).some((surface) => highRiskSurfaceIds.has(surface.id)))
+      .map((node) => node.id)
+  ), [highRiskSurfaceIds, mapModel.nodes, secretSurfaces]);
+  const directlyMatchingNodeIds = useMemo(() => {
+    const query = dependencyQuery.trim().toLowerCase();
+    return new Set(mapModel.nodes.filter((node) => {
+      const relatedSurfaces = getRelatedSurfaces(node, secretSurfaces);
+      const matchesQuery = !query || `${node.label} ${node.sublabel} ${node.kind}`.toLowerCase().includes(query);
+      const matchesEnvironment = dependencyEnvironment === "all" || relatedSurfaces.some(
+        (surface) => surface.environment === dependencyEnvironment
+      );
+      const matchesKind = dependencyKind === "all" || node.kind === dependencyKind;
+      const state = nodeStates.get(node.id) ?? "neutral";
+      const matchesStatus = dependencyStatus === "all" || state === dependencyStatus;
+      const matchesRisk = dependencyRisk === "all" || highRiskNodeIds.has(node.id);
+      return matchesQuery && matchesEnvironment && matchesKind && matchesStatus && matchesRisk;
+    }).map((node) => node.id));
+  }, [dependencyEnvironment, dependencyKind, dependencyQuery, dependencyRisk, dependencyStatus, highRiskNodeIds, mapModel.nodes, nodeStates, secretSurfaces]);
+  const visibleNodeIds = useMemo(
+    () => dependencyNodesWithAncestors(mapModel, directlyMatchingNodeIds),
+    [directlyMatchingNodeIds, mapModel]
+  );
+  const visibleNodes = mapModel.nodes.filter((node) => visibleNodeIds.has(node.id));
+  const firstVisibleNodeId = visibleNodes[0]?.id ?? "vault";
+  const visibleEdges = mapModel.edges.filter((edge) => visibleNodeIds.has(edge.from) && visibleNodeIds.has(edge.to));
   const selectedNode =
-    mapModel.nodes.find((node) => node.id === selectedNodeId) ?? {
+    mapModel.nodes.find((node) => node.id === selectedNodeId) ?? mapModel.nodes[0] ?? {
       id: "vault",
       kind: "vault" as const,
       label: "Vault",
@@ -2161,134 +2243,400 @@ function SecretInventory({
       x: 50,
       y: 10
     };
-  const mountGroups = secretSurfaces.reduce<Record<string, number>>((acc, surface) => {
-    acc[surface.mountPath] = (acc[surface.mountPath] ?? 0) + 1;
-    return acc;
-  }, {});
-  const liveMappings = mappingHealth.filter((mapping) => mapping.reachable).length;
-  const mountHealth = new Map(
-    mappingHealth.map((mapping) => [normalizePortalMount(mapping.mountPath), mapping.reachable])
+  const selectedBranch = useMemo(
+    () => dependencySelectedBranch(mapModel, selectedNode.id),
+    [mapModel, selectedNode.id]
   );
+  const selectedPath = useMemo(
+    () => dependencyPathToNode(mapModel, selectedNode.id),
+    [mapModel, selectedNode.id]
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 700px)");
+    const useMobileView = () => {
+      if (media.matches) {
+        setDependencyView("tree");
+        setInspectorOpen(false);
+      }
+    };
+    useMobileView();
+    media.addEventListener("change", useMobileView);
+    return () => media.removeEventListener("change", useMobileView);
+  }, []);
+
+  useEffect(() => {
+    if (visibleNodeIds.has(selectedNodeId)) return;
+    setSelectedNodeId(firstVisibleNodeId);
+  }, [firstVisibleNodeId, selectedNodeId, visibleNodeIds]);
+
+  function selectDependencyNode(nodeId: string) {
+    setSelectedNodeId(nodeId);
+    setInspectorOpen(true);
+  }
+
+  function resetDependencyViewport() {
+    setMapScale(1);
+    setMapPan({ x: 0, y: 0 });
+  }
+
+  function resetDependencyFilters() {
+    setDependencyQuery("");
+    setDependencyEnvironment("all");
+    setDependencyKind("all");
+    setDependencyStatus("all");
+    setDependencyRisk("all");
+  }
+
+  function handleMapPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("button, a, input, select, textarea, [role='button']")) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    mapDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: mapPan.x,
+      originY: mapPan.y
+    };
+    setMapDragging(true);
+  }
+
+  function handleMapPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = mapDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setMapPan({
+      x: drag.originX + event.clientX - drag.startX,
+      y: drag.originY + event.clientY - drag.startY
+    });
+  }
+
+  function finishMapDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (mapDragRef.current?.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    mapDragRef.current = null;
+    setMapDragging(false);
+  }
 
   return (
     <div className="dependencyStack">
-      <section className="dependencyIntro">
+      <section className="dependencyIntro dependencyExplorerIntro">
         <div>
           <h2>{t.secrets.title}</h2>
           <p>{t.secrets.description}</p>
         </div>
-        <div className="dependencyVitals">
-          <MiniStat label={t.secrets.nodes} value={mapModel.nodes.length} />
-          <MiniStat label={t.secrets.edges} value={mapModel.edges.length} />
-          <MiniStat label={t.secrets.leases} value={credentials.length} />
-          <MiniStat label={localize(t, "Live mounts", "Live Mount")} value={liveMappings} tone="good" />
+        <div className="dependencySummary" aria-label={localize(t, "Dependency summary", "의존 관계 요약")}>
+          <span><strong>{mapModel.nodes.length}</strong>{t.secrets.nodes}</span>
+          <span><strong>{mapModel.edges.length}</strong>{t.secrets.edges}</span>
+          <span><strong>{liveMappings}</strong>{localize(t, "Live mounts", "Live Mount")}</span>
+          <span><strong>{credentials.length}</strong>{t.secrets.leases}</span>
         </div>
       </section>
 
-      <section className="dependencyMapSurface" aria-label={t.secrets.topology}>
-        <div className="dependencyMapGrid">
-          <div className="dependencyMapCanvas" data-testid="vault-dependency-map">
-            <svg className="dependencyLines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              {mapModel.edges.map((edge) => {
-                const from = mapModel.nodes.find((node) => node.id === edge.from);
-                const to = mapModel.nodes.find((node) => node.id === edge.to);
-                if (!from || !to) return null;
-                const midY = (from.y + to.y) / 2;
-                return (
-                  <path
-                    key={`${edge.from}-${edge.to}`}
-                    className={`dependencyLine ${edge.tone}`}
-                    d={`M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`}
-                  />
-                );
-              })}
-            </svg>
-            <div className="dependencyLanes" aria-hidden="true">
-              <span>{t.secrets.vaultCore}</span>
-              <span>{t.secrets.namespaces}</span>
-              <span>{t.secrets.systems}</span>
-              <span>{t.secrets.mounts}</span>
-              <span>{t.secrets.leases}</span>
-            </div>
-            {mapModel.nodes.map((node) => (
+      <section className="dependencyExplorer" aria-label={t.secrets.topology}>
+        <header className="dependencyExplorerToolbar">
+          <label className="dependencySearch">
+            <Search aria-hidden="true" size={17} />
+            <input
+              aria-label={localize(t, "Search dependency nodes", "의존 관계 노드 검색")}
+              onChange={(event) => setDependencyQuery(event.target.value)}
+              placeholder={localize(t, "Search node, mount, role", "노드, Mount, Role 검색")}
+              value={dependencyQuery}
+            />
+          </label>
+          <div className="dependencyFilters">
+            <label>
+              <span>{localize(t, "Environment", "환경")}</span>
+              <select onChange={(event) => setDependencyEnvironment(event.target.value)} value={dependencyEnvironment}>
+                <option value="all">{localize(t, "All", "전체")}</option>
+                <option value="dev">dev</option>
+                <option value="staging">staging</option>
+                <option value="prod">prod</option>
+              </select>
+            </label>
+            <label>
+              <span>{localize(t, "Type", "유형")}</span>
+              <select onChange={(event) => setDependencyKind(event.target.value)} value={dependencyKind}>
+                <option value="all">{localize(t, "All", "전체")}</option>
+                <option value="namespace">Namespace</option>
+                <option value="system">{localize(t, "System", "시스템")}</option>
+                <option value="surface">Mount / Role</option>
+                <option value="credential">Credential</option>
+              </select>
+            </label>
+            <label>
+              <span>{localize(t, "Status", "상태")}</span>
+              <select onChange={(event) => setDependencyStatus(event.target.value)} value={dependencyStatus}>
+                <option value="all">{localize(t, "All", "전체")}</option>
+                <option value="live">Live</option>
+                <option value="issue">{localize(t, "Issue", "문제")}</option>
+              </select>
+            </label>
+            <label>
+              <span>{localize(t, "Risk", "위험도")}</span>
+              <select onChange={(event) => setDependencyRisk(event.target.value)} value={dependencyRisk}>
+                <option value="all">{localize(t, "All", "전체")}</option>
+                <option value="high">High</option>
+              </select>
+            </label>
+          </div>
+          <div className="dependencyToolbarActions">
+            <div className="dependencyViewSwitch" aria-label={localize(t, "Explorer view", "Explorer 보기")} role="group">
               <button
-                key={node.id}
-                className={`dependencyNode ${node.kind} ${node.id === selectedNode.id ? "selected" : ""}`}
-                style={{ left: `${node.x}%`, top: `${node.y}%` }}
-                onClick={() => setSelectedNodeId(node.id)}
+                aria-pressed={dependencyView === "graph"}
+                className={dependencyView === "graph" ? "active" : ""}
+                onClick={() => setDependencyView("graph")}
                 type="button"
               >
-                <span>{node.label}</span>
-                <small>{node.sublabel}</small>
+                <Workflow aria-hidden="true" size={15} />
+                Graph
               </button>
-            ))}
+              <button
+                aria-pressed={dependencyView === "tree"}
+                className={dependencyView === "tree" ? "active" : ""}
+                onClick={() => setDependencyView("tree")}
+                type="button"
+              >
+                <ListChecks aria-hidden="true" size={15} />
+                Tree
+              </button>
+            </div>
+            {dependencyView === "graph" ? (
+              <div className="dependencyZoomControls">
+                <button
+                  aria-label={localize(t, "Zoom out", "축소")}
+                  disabled={mapScale <= 0.8}
+                  onClick={() => setMapScale((current) => Math.max(0.8, Number((current - 0.1).toFixed(1))))}
+                  title={localize(t, "Zoom out", "축소")}
+                  type="button"
+                >
+                  <ZoomOut aria-hidden="true" size={16} />
+                </button>
+                <span>{Math.round(mapScale * 100)}%</span>
+                <button
+                  aria-label={localize(t, "Zoom in", "확대")}
+                  disabled={mapScale >= 1.4}
+                  onClick={() => setMapScale((current) => Math.min(1.4, Number((current + 0.1).toFixed(1))))}
+                  title={localize(t, "Zoom in", "확대")}
+                  type="button"
+                >
+                  <ZoomIn aria-hidden="true" size={16} />
+                </button>
+                <button
+                  aria-label={localize(t, "Fit graph", "전체 보기")}
+                  onClick={resetDependencyViewport}
+                  title={localize(t, "Fit graph", "전체 보기")}
+                  type="button"
+                >
+                  <Maximize2 aria-hidden="true" size={16} />
+                </button>
+              </div>
+            ) : null}
+            <button
+              aria-label={localize(t, inspectorOpen ? "Close inspector" : "Open inspector", inspectorOpen ? "Inspector 닫기" : "Inspector 열기")}
+              aria-pressed={inspectorOpen}
+              className="dependencyInspectorToggle"
+              onClick={() => setInspectorOpen((current) => !current)}
+              title={localize(t, inspectorOpen ? "Close inspector" : "Open inspector", inspectorOpen ? "Inspector 닫기" : "Inspector 열기")}
+              type="button"
+            >
+              {inspectorOpen ? <PanelRightClose aria-hidden="true" size={17} /> : <PanelRightOpen aria-hidden="true" size={17} />}
+            </button>
           </div>
-          <DependencyDetail
-            t={t}
-            node={selectedNode}
-            surfaces={secretSurfaces}
-            requests={requests}
-            credentials={credentials}
-          />
-        </div>
-        <div className="mapOverlay mapOverlayTop">
-          <span>{t.secrets.vaultCore}</span>
-          <strong>{t.secrets.topology}</strong>
-        </div>
-        <div className="mapLegend" aria-label="Map legend">
-          <span><i className="legendDot vault" />{t.secrets.vaultCore}</span>
-          <span><i className="legendDot namespace" />{t.secrets.namespaces}</span>
-          <span><i className="legendDot system" />{t.secrets.systems}</span>
-          <span><i className="legendDot lease" />{t.secrets.leases}</span>
+        </header>
+
+        <div className={`dependencyExplorerBody${inspectorOpen ? " inspectorOpen" : ""}`}>
+          <div className="dependencyWorkspace">
+            {dependencyView === "graph" ? (
+              <div
+                className={`dependencyMapViewport${mapDragging ? " dragging" : ""}`}
+                data-testid="vault-dependency-map"
+                onPointerCancel={finishMapDrag}
+                onPointerDown={handleMapPointerDown}
+                onPointerMove={handleMapPointerMove}
+                onPointerUp={finishMapDrag}
+              >
+                {visibleNodes.length ? (
+                  <div
+                    className="dependencyCanvasStage"
+                    style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapScale})` }}
+                  >
+                    <svg className="dependencyLines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                      {visibleEdges.map((edge) => {
+                        const from = mapModel.nodes.find((node) => node.id === edge.from);
+                        const to = mapModel.nodes.find((node) => node.id === edge.to);
+                        if (!from || !to) return null;
+                        const midY = (from.y + to.y) / 2;
+                        const edgeKey = `${edge.from}-${edge.to}`;
+                        return (
+                          <path
+                            key={edgeKey}
+                            className={`dependencyLine ${edge.tone}${selectedBranch.edgeKeys.has(edgeKey) ? " active" : " dimmed"}`}
+                            d={`M ${from.x} ${from.y} C ${from.x} ${midY}, ${to.x} ${midY}, ${to.x} ${to.y}`}
+                          />
+                        );
+                      })}
+                    </svg>
+                    <div className="dependencyLanes" aria-hidden="true">
+                      <span>{t.secrets.vaultCore}</span>
+                      <span>{t.secrets.namespaces}</span>
+                      <span>{t.secrets.systems}</span>
+                      <span>{t.secrets.mounts} / Role</span>
+                      <span>{t.secrets.leases}</span>
+                    </div>
+                    {visibleNodes.map((node) => {
+                      const Icon = dependencyNodeIcon(node.kind);
+                      const state = nodeStates.get(node.id) ?? "neutral";
+                      const pathState = selectedBranch.nodeIds.has(node.id) ? "related" : "dimmed";
+                      return (
+                        <button
+                          aria-pressed={node.id === selectedNode.id}
+                          className={`dependencyNode ${node.kind} ${state} ${pathState}${node.id === selectedNode.id ? " selected" : ""}`}
+                          key={node.id}
+                          onClick={() => selectDependencyNode(node.id)}
+                          style={{ left: `${node.x}%`, top: `${node.y}%` }}
+                          title={`${node.label} — ${node.sublabel}`}
+                          type="button"
+                        >
+                          <span className="dependencyNodeIcon"><Icon aria-hidden="true" size={16} /></span>
+                          <span className="dependencyNodeCopy">
+                            <strong>{node.label}</strong>
+                            <small>{node.sublabel}</small>
+                          </span>
+                          <i className={`dependencyNodeState ${state}`} aria-hidden="true" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="dependencyEmpty">
+                    <PackageSearch aria-hidden="true" size={22} />
+                    <strong>{localize(t, "No matching dependency", "일치하는 의존 관계가 없습니다")}</strong>
+                    <button onClick={resetDependencyFilters} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+                  </div>
+                )}
+                <footer className="dependencyMapFooter" aria-label={localize(t, "Map legend", "Map 범례")}>
+                  <span><i className="legendLine vault" />{t.secrets.vaultCore}</span>
+                  <span><i className="legendLine namespace" />Namespace</span>
+                  <span><i className="legendLine system" />Mount / Role</span>
+                  <span><i className="legendLine lease" />Lease</span>
+                  <span><i className="legendState live" />Live</span>
+                  <span><i className="legendState issue" />{localize(t, "Issue", "문제")}</span>
+                </footer>
+              </div>
+            ) : (
+              <div className="dependencyTreeView" data-testid="vault-dependency-tree">
+                {visibleNodes.length ? dependencyNodeKinds.map((kind) => {
+                  const nodes = visibleNodes.filter((node) => node.kind === kind);
+                  if (!nodes.length) return null;
+                  return (
+                    <section key={kind}>
+                      <header>
+                        <h3>{dependencyKindLabel(t, kind)}</h3>
+                        <span>{nodes.length}</span>
+                      </header>
+                      <div>
+                        {nodes.map((node) => {
+                          const Icon = dependencyNodeIcon(node.kind);
+                          const state = nodeStates.get(node.id) ?? "neutral";
+                          return (
+                            <button
+                              aria-pressed={node.id === selectedNode.id}
+                              className={`${state}${node.id === selectedNode.id ? " selected" : ""}`}
+                              key={node.id}
+                              onClick={() => selectDependencyNode(node.id)}
+                              type="button"
+                            >
+                              <span className="dependencyNodeIcon"><Icon aria-hidden="true" size={16} /></span>
+                              <span>
+                                <strong>{node.label}</strong>
+                                <small>{node.sublabel}</small>
+                              </span>
+                              <i className={`dependencyNodeState ${state}`} aria-hidden="true" />
+                              <ArrowRight aria-hidden="true" size={15} />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                }) : (
+                  <div className="dependencyEmpty">
+                    <PackageSearch aria-hidden="true" size={22} />
+                    <strong>{localize(t, "No matching dependency", "일치하는 의존 관계가 없습니다")}</strong>
+                    <button onClick={resetDependencyFilters} type="button">{localize(t, "Reset filters", "필터 초기화")}</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {inspectorOpen ? (
+            <DependencyDetail
+              credentials={credentials}
+              node={selectedNode}
+              onClose={() => setInspectorOpen(false)}
+              path={selectedPath}
+              requests={requests}
+              surfaces={secretSurfaces}
+              t={t}
+            />
+          ) : null}
         </div>
       </section>
 
-      <div className="dependencyPanels">
-        <section className="dependencyPanel">
-          <h2>{t.secrets.namespacePlane}</h2>
-          <div className="dependencyChipCloud">
-            {namespaces.map((namespace) => (
-              <span key={namespace}>{namespace}</span>
-            ))}
-          </div>
-        </section>
-        <section className="dependencyPanel">
-          <h2>{t.secrets.mounts}</h2>
-          <div className="dependencyChipCloud">
-            {Object.entries(mountGroups).map(([mount, count]) => {
-              const live = mountHealth.get(normalizePortalMount(mount));
-              return (
-                <span className={live === undefined ? "" : live ? "live" : "missing"} key={mount}>
-                  {mount} · {count} · {live === undefined ? localize(t, "Checking", "확인 중") : live ? "Live" : localize(t, "Not mounted", "Mount 없음")}
-                </span>
-              );
-            })}
-          </div>
-        </section>
-        <section className="dependencyPanel">
-          <h2>{t.secrets.leaseOrbit}</h2>
-          <div className="dependencyOrbitStats">
-            <MiniStat label={t.secrets.active} value={active.length} tone="good" />
-            <MiniStat label={t.secrets.pending} value={pending.length} />
-            <MiniStat
-              label={t.secrets.failed}
-              value={credentials.filter((credential) => credential.status === "revoke_failed").length}
-              tone="risk"
-            />
-          </div>
-        </section>
-        <section className="dependencyPanel wide">
-          <h2>{t.secrets.pathFocus}</h2>
-          <div className="dependencyPathList">
-            {secretSurfaces.slice(0, 6).map((surface) => (
-              <div key={`${surface.systemName}-${surface.mountPath}-${surface.roleName}`}>
-                <strong>{surface.systemName}</strong>
-                <span>{surface.namespace} / {surface.mountPath} / {surface.roleName}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
+      <details className="dependencySupport">
+        <summary>
+          <span>{localize(t, "Vault inventory details", "Vault 인벤토리 상세")}</span>
+          <small>{namespaces.length} Namespace · {Object.keys(mountGroups).length} Mount · {active.length} Active</small>
+        </summary>
+        <div className="dependencyPanels">
+          <section className="dependencyPanel">
+            <h2>{t.secrets.namespacePlane}</h2>
+            <div className="dependencyChipCloud">
+              {namespaces.map((namespace) => (
+                <span key={namespace}>{namespace}</span>
+              ))}
+            </div>
+          </section>
+          <section className="dependencyPanel">
+            <h2>{t.secrets.mounts}</h2>
+            <div className="dependencyChipCloud">
+              {Object.entries(mountGroups).map(([mount, count]) => {
+                const live = mountHealth.get(normalizePortalMount(mount));
+                return (
+                  <span className={live === undefined ? "" : live ? "live" : "missing"} key={mount}>
+                    {mount} · {count} · {live === undefined ? localize(t, "Checking", "확인 중") : live ? "Live" : localize(t, "Not mounted", "Mount 없음")}
+                  </span>
+                );
+              })}
+            </div>
+          </section>
+          <section className="dependencyPanel">
+            <h2>{t.secrets.leaseOrbit}</h2>
+            <div className="dependencyOrbitStats">
+              <MiniStat label={t.secrets.active} value={active.length} tone="good" />
+              <MiniStat label={t.secrets.pending} value={pending.length} />
+              <MiniStat
+                label={t.secrets.failed}
+                value={credentials.filter((credential) => credential.status === "revoke_failed").length}
+                tone="risk"
+              />
+            </div>
+          </section>
+          <section className="dependencyPanel wide">
+            <h2>{t.secrets.pathFocus}</h2>
+            <div className="dependencyPathList">
+              {secretSurfaces.slice(0, 6).map((surface) => (
+                <div key={`${surface.systemName}-${surface.mountPath}-${surface.roleName}`}>
+                  <strong>{surface.systemName}</strong>
+                  <span>{surface.namespace} / {surface.mountPath} / {surface.roleName}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </details>
     </div>
   );
 }
@@ -2327,15 +2675,122 @@ type DependencyEdge = {
   tone: "vault" | "namespace" | "system" | "lease";
 };
 
+type DependencyNodeState = "live" | "issue" | "neutral";
+
+const dependencyNodeKinds: DependencyNode["kind"][] = ["vault", "namespace", "system", "surface", "credential"];
+
+function dependencyNodeIcon(kind: DependencyNode["kind"]): LucideIcon {
+  if (kind === "vault") return Shield;
+  if (kind === "namespace") return Boxes;
+  if (kind === "system") return Database;
+  if (kind === "surface") return KeyRound;
+  return BadgeCheck;
+}
+
+function dependencyKindLabel(t: Copy, kind: DependencyNode["kind"]): string {
+  if (kind === "vault") return t.secrets.vaultCore;
+  if (kind === "namespace") return t.secrets.namespaces;
+  if (kind === "system") return t.secrets.systems;
+  if (kind === "surface") return `${t.secrets.mounts} / Role`;
+  return t.secrets.leases;
+}
+
+function dependencyNodeState(
+  node: DependencyNode,
+  surfaces: SecretSurface[],
+  credentials: IssuedCredential[],
+  mountHealth: Map<string, boolean>
+): DependencyNodeState {
+  if (node.credential) {
+    if (node.credential.status === "revoke_failed") return "issue";
+    if (node.credential.status === "active") return "live";
+  }
+  const relatedSurfaces = getRelatedSurfaces(node, surfaces);
+  const mountStates = relatedSurfaces
+    .map((surface) => mountHealth.get(normalizePortalMount(surface.mountPath)))
+    .filter((state): state is boolean => state !== undefined);
+  if (mountStates.some((state) => !state)) return "issue";
+  if (mountStates.some(Boolean)) return "live";
+  if (getRelatedCredentials(node, surfaces, credentials).some((credential) => credential.status === "revoke_failed")) {
+    return "issue";
+  }
+  return "neutral";
+}
+
+function dependencyNodesWithAncestors(
+  model: { nodes: DependencyNode[]; edges: DependencyEdge[] },
+  matchingNodeIds: ReadonlySet<string>
+): Set<string> {
+  const visible = new Set(matchingNodeIds);
+  const visitParent = (nodeId: string) => {
+    for (const edge of model.edges) {
+      if (edge.to !== nodeId || visible.has(edge.from)) continue;
+      visible.add(edge.from);
+      visitParent(edge.from);
+    }
+  };
+  for (const nodeId of matchingNodeIds) visitParent(nodeId);
+  return visible;
+}
+
+function dependencySelectedBranch(
+  model: { nodes: DependencyNode[]; edges: DependencyEdge[] },
+  selectedNodeId: string
+): { nodeIds: Set<string>; edgeKeys: Set<string> } {
+  const nodeIds = new Set<string>([selectedNodeId]);
+  const edgeKeys = new Set<string>();
+  const visitParents = (nodeId: string) => {
+    for (const edge of model.edges) {
+      if (edge.to !== nodeId) continue;
+      edgeKeys.add(`${edge.from}-${edge.to}`);
+      if (nodeIds.has(edge.from)) continue;
+      nodeIds.add(edge.from);
+      visitParents(edge.from);
+    }
+  };
+  const visitChildren = (nodeId: string) => {
+    for (const edge of model.edges) {
+      if (edge.from !== nodeId) continue;
+      edgeKeys.add(`${edge.from}-${edge.to}`);
+      if (nodeIds.has(edge.to)) continue;
+      nodeIds.add(edge.to);
+      visitChildren(edge.to);
+    }
+  };
+  visitParents(selectedNodeId);
+  visitChildren(selectedNodeId);
+  return { nodeIds, edgeKeys };
+}
+
+function dependencyPathToNode(
+  model: { nodes: DependencyNode[]; edges: DependencyEdge[] },
+  selectedNodeId: string
+): DependencyNode[] {
+  const path: DependencyNode[] = [];
+  const visited = new Set<string>();
+  let currentId: string | undefined = selectedNodeId;
+  while (currentId && !visited.has(currentId)) {
+    visited.add(currentId);
+    const node = model.nodes.find((item) => item.id === currentId);
+    if (node) path.unshift(node);
+    currentId = model.edges.find((edge) => edge.to === currentId)?.from;
+  }
+  return path;
+}
+
 function DependencyDetail({
   t,
   node,
+  path,
+  onClose,
   surfaces,
   requests,
   credentials
 }: {
   t: Copy;
   node: DependencyNode;
+  path: DependencyNode[];
+  onClose: () => void;
   surfaces: SecretSurface[];
   requests: AccessRequest[];
   credentials: IssuedCredential[];
@@ -2363,13 +2818,32 @@ function DependencyDetail({
     : null;
 
   return (
-    <aside className="dependencyDetailPanel">
-      <div className="detailTopline">
-        <span className={`nodeKind ${node.kind}`}>{node.kind}</span>
-        {risk ? <RiskBadge risk={risk} /> : null}
-      </div>
+    <aside className="dependencyDetailPanel" aria-label={localize(t, "Dependency inspector", "의존 관계 Inspector")}>
+      <header className="dependencyInspectorHeader">
+        <div className="detailTopline">
+          <span className={`nodeKind ${node.kind}`}>{dependencyKindLabel(t, node.kind)}</span>
+          {risk ? <RiskBadge risk={risk} /> : null}
+        </div>
+        <button
+          aria-label={localize(t, "Close inspector", "Inspector 닫기")}
+          onClick={onClose}
+          title={localize(t, "Close inspector", "Inspector 닫기")}
+          type="button"
+        >
+          <X aria-hidden="true" size={17} />
+        </button>
+      </header>
       <h2>{node.label}</h2>
       <p>{node.sublabel}</p>
+
+      <nav className="dependencyBreadcrumb" aria-label={localize(t, "Selected dependency path", "선택된 의존 경로")}>
+        {path.map((pathNode, index) => (
+          <span key={pathNode.id}>
+            {index ? <ArrowRight aria-hidden="true" size={12} /> : null}
+            <strong>{pathNode.label}</strong>
+          </span>
+        ))}
+      </nav>
 
       <div className="detailStats">
         <MiniStat label={localize(t, "Mapped roles", "매핑 Role")} value={relatedSurfaces.length} />

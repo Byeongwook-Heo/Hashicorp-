@@ -3621,10 +3621,10 @@ textarea {
     display: none;
   }
 
-  .dependencyNode,
-  .dependencyNode.vault,
-  .dependencyNode.surface,
-  .dependencyNode.credential {
+  .dependencyMapCanvas .dependencyNode,
+  .dependencyMapCanvas .dependencyNode.vault,
+  .dependencyMapCanvas .dependencyNode.surface,
+  .dependencyMapCanvas .dependencyNode.credential {
     position: relative;
     inset: auto !important;
     width: 100%;
@@ -3632,10 +3632,10 @@ textarea {
     transform: none;
   }
 
-  .dependencyNode:hover:not(:disabled),
-  .dependencyNode:active:not(:disabled),
-  .dependencyNode.selected,
-  .dependencyNode.selected:hover:not(:disabled) {
+  .dependencyMapCanvas .dependencyNode:hover:not(:disabled),
+  .dependencyMapCanvas .dependencyNode:active:not(:disabled),
+  .dependencyMapCanvas .dependencyNode.selected,
+  .dependencyMapCanvas .dependencyNode.selected:hover:not(:disabled) {
     transform: none;
   }
 
