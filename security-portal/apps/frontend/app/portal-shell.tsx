@@ -17,6 +17,8 @@ import {
   type SystemSummary,
   type VaultPluginApplyResult,
   type VaultPluginAutoRepairResult,
+  type VaultPluginCatalogRepairInspection,
+  type VaultPluginCatalogRepairResult,
   type VaultPluginFactoryJob,
   type VaultPluginGenerateResult,
   type VaultPluginGeneratedFile,
@@ -4110,7 +4112,9 @@ function auditActionLabel(t: Copy, action: string): string {
     "vault_plugin.apply_failed": ["Plugin apply failed", "Plugin 적용 실패"],
     "vault_plugin.rolled_back": ["Plugin rolled back", "Plugin Rollback"],
     "vault_plugin.mount_removed": ["Plugin Mount removed", "Plugin Mount 해제"],
-    "vault_plugin.mount_remove_failed": ["Plugin Mount removal failed", "Plugin Mount 해제 실패"]
+    "vault_plugin.mount_remove_failed": ["Plugin Mount removal failed", "Plugin Mount 해제 실패"],
+    "vault_plugin.catalog_repaired": ["Plugin Catalog repaired", "Plugin Catalog 복구"],
+    "vault_plugin.catalog_repair_failed": ["Plugin Catalog repair failed", "Plugin Catalog 복구 실패"]
   };
   const label = labels[action];
   if (label) return localize(t, label[0], label[1]);
@@ -8812,10 +8816,12 @@ function VaultReconciliationHealthStrip({
 
 function VaultReconciliationCenter({
   report,
-  t
+  t,
+  onResolvePlugin
 }: {
   report: VaultReconciliationReport | null;
   t: Copy;
+  onResolvePlugin?: (item: VaultReconciliationItem) => void;
 }) {
   const [filter, setFilter] = useState<"all" | VaultReconciliationItem["status"]>("all");
   const items = report?.items.filter((item) => filter === "all" || item.status === filter) ?? [];
@@ -8884,14 +8890,22 @@ function VaultReconciliationCenter({
         ) : items.length === 0 ? (
           <div className="reconciliationEmpty"><CheckCircle2 aria-hidden="true" size={18} />{localize(t, "No targets match this filter.", "이 조건에 해당하는 대상이 없습니다.")}</div>
         ) : items.map((item) => (
-          <VaultReconciliationRow item={item} key={item.id} t={t} />
+          <VaultReconciliationRow item={item} key={item.id} onResolvePlugin={onResolvePlugin} t={t} />
         ))}
       </div>
     </section>
   );
 }
 
-function VaultReconciliationRow({ item, t }: { item: VaultReconciliationItem; t: Copy }) {
+function VaultReconciliationRow({
+  item,
+  t,
+  onResolvePlugin
+}: {
+  item: VaultReconciliationItem;
+  t: Copy;
+  onResolvePlugin?: (item: VaultReconciliationItem) => void;
+}) {
   const statusLabel = item.status === "drift"
     ? localize(t, "Drift", "불일치")
     : item.status === "unknown"
@@ -8926,12 +8940,20 @@ function VaultReconciliationRow({ item, t }: { item: VaultReconciliationItem; t:
         </div>
         <div className="reconciliationRemediation">
           <span><ShieldCheck aria-hidden="true" size={17} /></span>
-          <div>
+          <div className="reconciliationRemediationCopy">
             <strong>{actionLabel}</strong>
             <p>{checkDetailCopy(item.remediation.detail, t)}</p>
           </div>
           {item.remediation.requiresApproval ? <span className="reconciliationApproval">{localize(t, "Approval required", "승인 필요")}</span> : null}
-          {actionHref ? <Link href={actionHref}>{actionLabel}<ArrowRight aria-hidden="true" size={14} /></Link> : null}
+          <div className="reconciliationRemediationActions">
+            {item.status === "drift" && item.targetType === "plugin" && item.pluginType && onResolvePlugin ? (
+              <button className="reconciliationResolveButton" onClick={() => onResolvePlugin(item)} type="button">
+                <Wrench aria-hidden="true" size={14} />
+                {localize(t, "Resolve mismatch", "불일치 해결")}
+              </button>
+            ) : null}
+            {actionHref ? <Link href={actionHref}>{actionLabel}<ArrowRight aria-hidden="true" size={14} /></Link> : null}
+          </div>
         </div>
       </div>
     </details>
@@ -9016,6 +9038,11 @@ type ManagedVaultMountTarget = {
   mountPath: string;
 };
 
+type PluginCatalogRepairTarget = {
+  pluginName: string;
+  pluginType: VaultPluginType;
+};
+
 type AdminSection = "overview" | "reconciliation" | "plugins" | "mappings" | "notifications";
 
 function Admin({
@@ -9051,6 +9078,11 @@ function Admin({
   const [unmountConfirmation, setUnmountConfirmation] = useState("");
   const [unmountOperation, setUnmountOperation] = useState<"inspect" | "remove" | null>(null);
   const [unmountError, setUnmountError] = useState<string | null>(null);
+  const [catalogRepairTarget, setCatalogRepairTarget] = useState<PluginCatalogRepairTarget | null>(null);
+  const [catalogRepairInspection, setCatalogRepairInspection] = useState<VaultPluginCatalogRepairInspection | null>(null);
+  const [catalogRepairResult, setCatalogRepairResult] = useState<VaultPluginCatalogRepairResult | null>(null);
+  const [catalogRepairOperation, setCatalogRepairOperation] = useState<"inspect" | "repair" | null>(null);
+  const [catalogRepairError, setCatalogRepairError] = useState<string | null>(null);
   const [adminSection, setAdminSection] = useState<AdminSection>("overview");
   const adminSections: Array<{ id: AdminSection; label: string; icon: LucideIcon }> = [
     { id: "overview", label: localize(t, "Overview", "개요"), icon: Activity },
@@ -9096,6 +9128,90 @@ function Admin({
     setUnmountTarget(normalizedTarget);
     setUnmountConfirmation("");
     void inspectManagedMount(normalizedTarget);
+  }
+
+  function closeCatalogRepairDialog() {
+    if (catalogRepairOperation) return;
+    setCatalogRepairTarget(null);
+    setCatalogRepairInspection(null);
+    setCatalogRepairResult(null);
+    setCatalogRepairError(null);
+  }
+
+  async function inspectPluginCatalogRepair(target: PluginCatalogRepairTarget) {
+    setCatalogRepairOperation("inspect");
+    setCatalogRepairInspection(null);
+    setCatalogRepairResult(null);
+    setCatalogRepairError(null);
+    try {
+      const response = await api<{ inspection: VaultPluginCatalogRepairInspection }>(
+        "/vault/reconciliation/plugin-catalog/inspect",
+        {
+          method: "POST",
+          body: JSON.stringify(target)
+        }
+      );
+      setCatalogRepairInspection(response.inspection);
+      if (response.inspection.status === "resolved") onRefresh();
+    } catch (error) {
+      setCatalogRepairError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCatalogRepairOperation(null);
+    }
+  }
+
+  function openCatalogRepairDialog(item: VaultReconciliationItem) {
+    if (!item.pluginName || !item.pluginType) return;
+    const target = { pluginName: item.pluginName, pluginType: item.pluginType };
+    setCatalogRepairTarget(target);
+    setCatalogRepairInspection(null);
+    setCatalogRepairResult(null);
+    setCatalogRepairError(null);
+    void inspectPluginCatalogRepair(target);
+  }
+
+  async function repairPluginCatalog() {
+    const candidate = catalogRepairInspection?.candidate;
+    if (!catalogRepairTarget || catalogRepairInspection?.status !== "repairable" || !candidate) return;
+    setCatalogRepairOperation("repair");
+    setCatalogRepairError(null);
+    try {
+      const response = await api<{ result: VaultPluginCatalogRepairResult; jobId: string }>(
+        "/vault/reconciliation/plugin-catalog/repair",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...catalogRepairTarget,
+            jobId: candidate.jobId,
+            artifactFingerprint: candidate.artifactFingerprint
+          })
+        }
+      );
+      setCatalogRepairResult(response.result);
+      notifyPortal(
+        localize(
+          t,
+          `${response.result.pluginName} Catalog registration was repaired and verified.`,
+          `${response.result.pluginName} Catalog 등록을 복구하고 재검증했습니다.`
+        ),
+        "success"
+      );
+      onRefresh();
+    } catch (error) {
+      setCatalogRepairError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCatalogRepairOperation(null);
+    }
+  }
+
+  function moveCatalogRepairToUnmount(mountPath: string) {
+    if (!catalogRepairTarget || catalogRepairOperation) return;
+    const target = { ...catalogRepairTarget, mountPath };
+    setCatalogRepairTarget(null);
+    setCatalogRepairInspection(null);
+    setCatalogRepairResult(null);
+    setCatalogRepairError(null);
+    openUnmountDialog(target);
   }
 
   async function removeManagedMount() {
@@ -9190,7 +9306,7 @@ function Admin({
       ) : null}
       {adminSection === "reconciliation" ? (
         <div aria-labelledby="admin-tab-reconciliation" className="adminSectionPanel" id="admin-panel-reconciliation" role="tabpanel">
-          <VaultReconciliationCenter report={reconciliation} t={t} />
+          <VaultReconciliationCenter onResolvePlugin={openCatalogRepairDialog} report={reconciliation} t={t} />
         </div>
       ) : null}
       {adminSection === "plugins" ? (
@@ -9316,6 +9432,182 @@ function Admin({
         emptyLabel={t.table.noData}
       />
         </div>
+      ) : null}
+      {catalogRepairTarget ? (
+        <PortalOverlay onDismiss={closeCatalogRepairDialog}>
+          <section
+            aria-busy={catalogRepairOperation !== null}
+            aria-label={localize(t, "Resolve Vault mismatch", "Vault 불일치 해결")}
+            aria-modal="true"
+            className="impactDialog catalogRepairDialog"
+            role="dialog"
+          >
+            <header>
+              <div>
+                <span>{localize(t, "Vault reconciliation", "Vault 상태 조정")}</span>
+                <h2>{localize(t, "Resolve plugin mismatch", "Plugin 불일치 해결")}</h2>
+              </div>
+              <button
+                aria-label={localize(t, "Close mismatch resolution", "불일치 해결 창 닫기")}
+                className="iconButton"
+                disabled={catalogRepairOperation !== null}
+                onClick={closeCatalogRepairDialog}
+                title={localize(t, "Close", "닫기")}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </header>
+
+            <div className="catalogRepairDialogBody">
+              <div className="catalogRepairTarget">
+                <span><Wrench aria-hidden="true" size={18} /></span>
+                <div>
+                  <strong>{catalogRepairTarget.pluginName}</strong>
+                  <small>{catalogRepairTarget.pluginType} Plugin · Plugin Catalog</small>
+                </div>
+              </div>
+
+              {catalogRepairOperation === "inspect" && !catalogRepairInspection ? (
+                <div className="catalogRepairLoading" role="status">
+                  <LoaderCircle aria-hidden="true" className="spinning" size={19} />
+                  {localize(t, "Checking the live Catalog and approved artifacts", "실제 Catalog와 승인된 Artifact를 확인하는 중")}
+                </div>
+              ) : null}
+
+              {catalogRepairResult ? (
+                <section className="catalogRepairSuccess" role="status">
+                  <header>
+                    <CheckCircle2 aria-hidden="true" size={20} />
+                    <div>
+                      <strong>{localize(t, "Catalog mismatch resolved", "Catalog 불일치 해결 완료")}</strong>
+                      <small>{localize(t, "Live Vault evidence was refreshed after registration.", "등록 후 실제 Vault 상태를 다시 동기화했습니다.")}</small>
+                    </div>
+                  </header>
+                  <div className="catalogRepairSteps">
+                    {catalogRepairResult.steps.map((step) => (
+                      <div key={`${step.label}-${step.detail}`}>
+                        <CheckCircle2 aria-hidden="true" size={16} />
+                        <span>
+                          <strong>{factoryResultStepLabel(step.label, t)}</strong>
+                          <small>{factoryResultStepDetail(step.detail, t)}</small>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {catalogRepairInspection?.status === "repairable" && catalogRepairInspection.candidate && !catalogRepairResult ? (
+                <section className="catalogRepairPlan">
+                  <header>
+                    <span><BadgeCheck aria-hidden="true" size={18} /></span>
+                    <div>
+                      <strong>{localize(t, "Re-register with approved artifact", "승인된 Artifact로 Catalog 재등록")}</strong>
+                      <small>{localize(t, "Recommended · Existing Mount remains active", "권장 · 기존 Mount는 그대로 유지")}</small>
+                    </div>
+                  </header>
+                  <dl>
+                    <dt>Mount</dt>
+                    <dd>{catalogRepairInspection.mountedPaths.map((path) => `${path}/`).join(", ")}</dd>
+                    <dt>{localize(t, "Version", "버전")}</dt>
+                    <dd>{catalogRepairInspection.candidate.version}</dd>
+                    <dt>Command</dt>
+                    <dd>{catalogRepairInspection.candidate.command}</dd>
+                    <dt>SHA-256</dt>
+                    <dd title={catalogRepairInspection.candidate.artifactSha256}>{shortId(catalogRepairInspection.candidate.artifactSha256)}</dd>
+                    <dt>Factory Job</dt>
+                    <dd title={catalogRepairInspection.candidate.jobId}>{shortId(catalogRepairInspection.candidate.jobId)}</dd>
+                    <dt>{localize(t, "Approved", "승인 시점")}</dt>
+                    <dd>{formatDate(catalogRepairInspection.candidate.updatedAt)}</dd>
+                  </dl>
+                  <div className="catalogRepairSafety">
+                    <ShieldCheck aria-hidden="true" size={17} />
+                    <p>{localize(
+                      t,
+                      "The server rechecks the approval fingerprint, stored binary SHA-256, live Mount, and post-registration Catalog before completion.",
+                      "서버가 승인 Fingerprint, 저장된 Binary SHA-256, 실제 Mount와 등록 후 Catalog를 다시 검증한 뒤 완료합니다."
+                    )}</p>
+                  </div>
+                </section>
+              ) : null}
+
+              {catalogRepairInspection?.status === "artifact-required" && !catalogRepairResult ? (
+                <section className="catalogRepairUnavailable">
+                  <AlertTriangle aria-hidden="true" size={20} />
+                  <div>
+                    <strong>{localize(t, "Approved artifact required", "승인된 Artifact가 필요합니다")}</strong>
+                    <p>{localize(
+                      t,
+                      "No verified Factory artifact matches this Plugin, version, and live Mount. Build and approve it before Catalog registration.",
+                      "이 Plugin, 버전과 실제 Mount에 일치하는 검증된 Factory Artifact가 없습니다. Build와 승인을 완료한 뒤 Catalog를 등록할 수 있습니다."
+                    )}</p>
+                    <Link href={`/plugins?plugin=${encodeURIComponent(catalogRepairTarget.pluginName)}&repair=catalog`}>
+                      <Sparkles aria-hidden="true" size={15} />
+                      {localize(t, "Prepare artifact in Plugin Factory", "Plugin Factory에서 Artifact 준비")}
+                    </Link>
+                  </div>
+                </section>
+              ) : null}
+
+              {catalogRepairInspection?.status === "resolved" && !catalogRepairResult ? (
+                <section className="catalogRepairResolved" role="status">
+                  <CheckCircle2 aria-hidden="true" size={20} />
+                  <div>
+                    <strong>{localize(t, "Already synchronized", "이미 동기화되었습니다")}</strong>
+                    <p>{localize(t, "The live Plugin Catalog no longer has this mismatch.", "실제 Plugin Catalog에서 해당 불일치가 더 이상 확인되지 않습니다.")}</p>
+                  </div>
+                </section>
+              ) : null}
+
+              {catalogRepairInspection && catalogRepairInspection.status !== "resolved" && !catalogRepairResult && catalogRepairInspection.mountedPaths.length > 0 ? (
+                <section className="catalogRepairAlternative">
+                  <div>
+                    <strong>{localize(t, "Unused plugin", "사용하지 않는 Plugin인가요?")}</strong>
+                    <p>{localize(t, "Unmount instead of restoring the Catalog. Access through that path stops immediately.", "Catalog를 복구하지 않고 Mount를 해제할 수 있습니다. 해당 경로를 통한 접근은 즉시 중단됩니다.")}</p>
+                  </div>
+                  <div>
+                    {catalogRepairInspection.mountedPaths.map((mountPath) => (
+                      <button key={mountPath} onClick={() => moveCatalogRepairToUnmount(mountPath)} type="button">
+                        <CircleStop aria-hidden="true" size={15} />
+                        {mountPath}/ {localize(t, "Unmount", "Mount 해제")}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
+              {catalogRepairError ? <div className="error" role="alert">{catalogRepairError}</div> : null}
+            </div>
+
+            <footer className="actions catalogRepairActions">
+              <button disabled={catalogRepairOperation !== null} onClick={closeCatalogRepairDialog} type="button">
+                {catalogRepairResult ? localize(t, "Close", "닫기") : localize(t, "Cancel", "취소")}
+              </button>
+              {!catalogRepairResult ? (
+                <button
+                  disabled={catalogRepairOperation !== null}
+                  onClick={() => void inspectPluginCatalogRepair(catalogRepairTarget)}
+                  type="button"
+                >
+                  {catalogRepairOperation === "inspect" ? <LoaderCircle aria-hidden="true" className="spinning" size={16} /> : <RefreshCw aria-hidden="true" size={16} />}
+                  {localize(t, "Inspect again", "다시 확인")}
+                </button>
+              ) : null}
+              {catalogRepairInspection?.status === "repairable" && catalogRepairInspection.candidate && !catalogRepairResult ? (
+                <button
+                  className="primary"
+                  disabled={catalogRepairOperation !== null}
+                  onClick={() => void repairPluginCatalog()}
+                  type="button"
+                >
+                  {catalogRepairOperation === "repair" ? <LoaderCircle aria-hidden="true" className="spinning" size={16} /> : <Wrench aria-hidden="true" size={16} />}
+                  {localize(t, "Repair Catalog", "Catalog 복구")}
+                </button>
+              ) : null}
+            </footer>
+          </section>
+        </PortalOverlay>
       ) : null}
       {unmountTarget ? (
         <PortalOverlay onDismiss={closeUnmountDialog}>
@@ -9979,6 +10271,7 @@ function factoryDryRunActionLabel(action: string, t: Copy): string {
 function factoryResultStepLabel(label: string, t: Copy): string {
   const labels: Record<string, string> = {
     "Catalog registration": "Catalog 등록",
+    "Catalog verification": "Catalog 검증",
     "Disable mount": "Mount 비활성화",
     "Disable existing mount": "기존 Mount 비활성화",
     "Enable mount": "Mount 활성화",
@@ -9992,6 +10285,11 @@ function factoryResultStepLabel(label: string, t: Copy): string {
 
 function factoryResultStepDetail(detail: string, t: Copy): string {
   if (t !== copy.ko) return detail;
+  if (detail === "Verified the registered command and SHA-256") return "등록된 Command와 SHA-256을 확인했습니다.";
+  if (detail === "Verified the existing command and SHA-256") return "기존 Command와 SHA-256이 승인된 Artifact와 일치합니다.";
+  if (detail.endsWith("already matches the approved artifact")) {
+    return detail.replace("already matches the approved artifact", "항목이 승인된 Artifact와 이미 일치합니다");
+  }
   const mockRegistered = detail.match(/^Mock registered (.+) as (.+)$/);
   if (mockRegistered) return `Mock 등록: ${mockRegistered[1]} (${mockRegistered[2]})`;
   const mockEnabled = detail.match(/^Mock enabled (.+)$/);

@@ -256,6 +256,7 @@ export interface VaultReconciliationItem {
   systemName?: string;
   requestType?: RequestType;
   pluginName?: string;
+  pluginType?: VaultPluginType;
   checks: VaultReconciliationCheck[];
   remediation: {
     action: "review-system" | "open-plugin-factory" | "accept-drift" | "none";
@@ -561,6 +562,49 @@ export interface VaultPluginMountRemovalResult extends VaultPluginMountTarget {
   steps: Array<{
     label: string;
     status: "success";
+    detail: string;
+  }>;
+  detail: Record<string, unknown>;
+}
+
+export interface VaultPluginCatalogRepairRequest {
+  pluginName: string;
+  pluginType: VaultPluginType;
+  version: string;
+  command: string;
+  artifactSha256: string;
+}
+
+export interface VaultPluginCatalogRepairCandidate {
+  jobId: string;
+  version: string;
+  command: string;
+  artifactSha256: string;
+  artifactFingerprint: string;
+  mountPath: string;
+  updatedAt: string;
+}
+
+export interface VaultPluginCatalogRepairInspection {
+  mode: "mock" | "real";
+  status: "repairable" | "artifact-required" | "resolved";
+  pluginName: string;
+  pluginType: VaultPluginType;
+  mountedPaths: string[];
+  version?: string;
+  candidate?: VaultPluginCatalogRepairCandidate;
+  detail: string;
+}
+
+export interface VaultPluginCatalogRepairResult {
+  mode: "mock" | "real";
+  repaired: boolean;
+  pluginName: string;
+  pluginType: VaultPluginType;
+  version: string;
+  steps: Array<{
+    label: string;
+    status: "skipped" | "success";
     detail: string;
   }>;
   detail: Record<string, unknown>;

@@ -10,6 +10,8 @@ import {
   type IssuedCredential,
   type PortalUser,
   type VaultPluginAutoRepairResult,
+  type VaultInventory,
+  type VaultPluginCatalogRepairInspection,
   type VaultPluginFactoryJob,
   type VaultPluginFactoryJobEvent,
   type VaultPluginMountTarget,
@@ -171,6 +173,16 @@ const managedPluginMountTargetSchema = z.object({
 const managedPluginMountRemovalSchema = managedPluginMountTargetSchema.extend({
   confirmation: z.string().min(1).max(120),
   expectedFingerprint: z.string().regex(/^[a-f0-9]{64}$/i)
+});
+
+const pluginCatalogRepairTargetSchema = z.object({
+  pluginName: z.string().trim().min(1).max(120),
+  pluginType: z.enum(["auth", "secret", "database"])
+});
+
+const pluginCatalogRepairSchema = pluginCatalogRepairTargetSchema.extend({
+  jobId: z.string().uuid(),
+  artifactFingerprint: z.string().regex(/^[a-f0-9]{64}$/i)
 });
 
 const pluginChatSchema = z.object({
@@ -628,6 +640,148 @@ async function main(): Promise<void> {
           } catch (auditError) {
             console.error(
               "failed to audit managed Vault mount removal",
+              redact({ message: auditError instanceof Error ? auditError.message : String(auditError) })
+            );
+          }
+        }
+        next(error);
+      }
+    }
+  );
+
+  app.post(
+    "/vault/reconciliation/plugin-catalog/inspect",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["vault-admin"]),
+    async (req, res, next) => {
+      try {
+        const target = pluginCatalogRepairTargetSchema.parse(req.body);
+        const context = await inspectPluginCatalogRepair(
+          store,
+          await vault.inventory(true),
+          target,
+          config.vaultMode === "real"
+        );
+        res.set("Cache-Control", "no-store");
+        res.json({ inspection: context.inspection });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  app.post(
+    "/vault/reconciliation/plugin-catalog/repair",
+    requireUser(store, config.sessionCookieName),
+    requireAnyRole(["vault-admin"]),
+    async (req, res, next) => {
+      let attemptedTarget: z.infer<typeof pluginCatalogRepairTargetSchema> | undefined;
+      try {
+        const body = pluginCatalogRepairSchema.parse(req.body);
+        attemptedTarget = body;
+        const context = await inspectPluginCatalogRepair(
+          store,
+          await vault.inventory(true),
+          body,
+          config.vaultMode === "real"
+        );
+        if (context.inspection.status !== "repairable" || !context.job || !context.evidence) {
+          res.status(409).json({
+            error: context.inspection.status === "resolved"
+              ? "The live Plugin Catalog is already aligned"
+              : "A matching approved Factory artifact is required for Catalog repair"
+          });
+          return;
+        }
+        if (
+          context.job.id !== body.jobId ||
+          context.inspection.candidate?.artifactFingerprint !== body.artifactFingerprint
+        ) {
+          res.status(409).json({ error: "The Catalog repair plan changed; inspect it again" });
+          return;
+        }
+
+        const evidence = context.evidence;
+        if (!evidence.version || !evidence.command || !evidence.artifactSha256) {
+          throw new Error("The approved Factory artifact is missing Catalog registration metadata");
+        }
+        let distribution: Awaited<ReturnType<typeof pluginDistributor.distribute>> | undefined;
+        if (config.vaultMode === "real") {
+          if (!evidence.artifactBucket || !evidence.artifactKey) {
+            throw new Error("A stored build artifact is required for real Vault Catalog repair");
+          }
+          distribution = await pluginDistributor.distribute({
+            bucket: evidence.artifactBucket,
+            key: evidence.artifactKey,
+            sha256: evidence.artifactSha256,
+            architecture: "arm64",
+            command: evidence.command,
+            builtAt: new Date().toISOString()
+          });
+        }
+
+        const result = await vault.repairPluginCatalog({
+          pluginName: body.pluginName,
+          pluginType: body.pluginType,
+          version: evidence.version,
+          command: evidence.command,
+          artifactSha256: evidence.artifactSha256
+        });
+        if (distribution) result.detail = { ...result.detail, distribution };
+        const latest = (await store.getFactoryJob(context.job.id)) ?? context.job;
+        await store.updateFactoryJob(latest.id, {
+          status: "complete",
+          stage: "complete",
+          progress: 100,
+          deployment: { ...latest.deployment, rollbackReady: true },
+          events: [
+            ...latest.events,
+            {
+              id: crypto.randomUUID(),
+              label: "catalog-repaired",
+              detail: `${body.pluginName} (${result.mode})`,
+              status: "success" as const,
+              createdAt: new Date().toISOString()
+            }
+          ].slice(-100)
+        });
+        await store.createAuditEvent({
+          actorId: req.user.id,
+          actorEmail: req.user.email,
+          action: "vault_plugin.catalog_repaired",
+          targetType: "vault_plugin",
+          targetId: body.pluginName,
+          result: "success",
+          metadata: redact({
+            plugin_type: body.pluginType,
+            mounted_paths: context.inspection.mountedPaths,
+            factory_job_id: context.job.id,
+            artifact_sha256: evidence.artifactSha256,
+            repaired: result.repaired,
+            steps: result.steps,
+            detail: result.detail
+          })
+        });
+        res.set("Cache-Control", "no-store");
+        res.json({ result, jobId: context.job.id });
+      } catch (error) {
+        if (attemptedTarget) {
+          try {
+            await store.createAuditEvent({
+              actorId: req.user.id,
+              actorEmail: req.user.email,
+              action: "vault_plugin.catalog_repair_failed",
+              targetType: "vault_plugin",
+              targetId: attemptedTarget.pluginName,
+              result: "failure",
+              metadata: redact({
+                plugin_type: attemptedTarget.pluginType,
+                error: error instanceof Error ? error.message : String(error)
+              })
+            });
+          } catch (auditError) {
+            console.error(
+              "failed to audit Vault Catalog repair",
               redact({ message: auditError instanceof Error ? auditError.message : String(auditError) })
             );
           }
@@ -1999,6 +2153,104 @@ function factoryPluginMountTarget(job: VaultPluginFactoryJob): VaultPluginMountT
   const pluginType = z.enum(["auth", "secret", "database"]).parse(evidence.pluginType);
   const mountPath = normalizeFactoryMount(z.string().min(1).max(120).parse(evidence.mountPath));
   return { pluginType, mountPath };
+}
+
+type PluginCatalogRepairContext = {
+  inspection: VaultPluginCatalogRepairInspection;
+  job?: VaultPluginFactoryJob;
+  evidence?: ReturnType<typeof factoryArtifactEvidence>;
+};
+
+async function inspectPluginCatalogRepair(
+  store: PortalStore,
+  inventory: VaultInventory,
+  target: z.infer<typeof pluginCatalogRepairTargetSchema>,
+  requireStoredArtifact: boolean
+): Promise<PluginCatalogRepairContext> {
+  const pluginName = normalizeFactoryMount(target.pluginName);
+  const plugin = inventory.plugins.find(
+    (entry) => entry.name === pluginName && entry.pluginType === target.pluginType
+  );
+  if (!plugin || plugin.status !== "orphaned") {
+    return {
+      inspection: {
+        mode: inventory.mode,
+        status: "resolved",
+        pluginName,
+        pluginType: target.pluginType,
+        mountedPaths: plugin?.mountedPaths ?? [],
+        version: plugin?.version,
+        detail: "The live Plugin Catalog is already aligned."
+      }
+    };
+  }
+
+  const mountedPaths = plugin.mountedPaths.map(normalizeFactoryMount);
+  const jobs = await store.listFactoryJobs();
+  const candidates = (
+    await Promise.all(
+      jobs.map(async (job) => {
+        const evidence = factoryArtifactEvidence(job);
+        if (
+          evidence.pluginName !== pluginName ||
+          evidence.pluginType !== target.pluginType ||
+          !evidence.mountPath ||
+          !mountedPaths.includes(normalizeFactoryMount(evidence.mountPath)) ||
+          !evidence.version ||
+          (plugin.version && plugin.version !== evidence.version) ||
+          !evidence.command ||
+          !evidence.artifactSha256 ||
+          !hasVerifiedFactoryArtifact(job, requireStoredArtifact) ||
+          job.approval.status !== "approved" ||
+          !job.approval.artifactFingerprint
+        ) {
+          return undefined;
+        }
+        const artifactFingerprint = await factoryArtifactFingerprint(job);
+        if (artifactFingerprint !== job.approval.artifactFingerprint) return undefined;
+        return { job, evidence, artifactFingerprint };
+      })
+    )
+  )
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
+    .sort((left, right) => Date.parse(right.job.updatedAt) - Date.parse(left.job.updatedAt));
+  const candidate = candidates[0];
+  if (!candidate) {
+    return {
+      inspection: {
+        mode: inventory.mode,
+        status: "artifact-required",
+        pluginName,
+        pluginType: target.pluginType,
+        mountedPaths,
+        version: plugin.version,
+        detail: "No matching approved Factory artifact was found for the live Mount."
+      }
+    };
+  }
+
+  return {
+    job: candidate.job,
+    evidence: candidate.evidence,
+    inspection: {
+      mode: inventory.mode,
+      status: "repairable",
+      pluginName,
+      pluginType: target.pluginType,
+      mountedPaths,
+      version: plugin.version,
+      candidate: {
+        jobId: candidate.job.id,
+        version: candidate.evidence.version ?? "",
+        command: candidate.evidence.command ?? "",
+        artifactSha256: candidate.evidence.artifactSha256 ?? "",
+        artifactFingerprint: candidate.artifactFingerprint,
+        mountPath: candidate.evidence.mountPath ?? "",
+        updatedAt: candidate.job.updatedAt
+      },
+      detail: "A matching approved Factory artifact is ready for Catalog registration."
+    }
+  };
 }
 
 function requireUser(store: PortalStore, cookieName: string) {

@@ -4,6 +4,8 @@ import type {
   SystemSummary,
   VaultPluginApplyRequest,
   VaultPluginApplyResult,
+  VaultPluginCatalogRepairRequest,
+  VaultPluginCatalogRepairResult,
   VaultPluginMountInspectionResult,
   VaultPluginMountRemovalRequest,
   VaultPluginMountRemovalResult,
@@ -41,6 +43,7 @@ export interface VaultClient {
   revokeLease(leaseId: string): Promise<{ revoked: boolean; detail: Record<string, unknown> }>;
   inspectPluginMount(request: VaultPluginMountTarget): Promise<VaultPluginMountInspectionResult>;
   removePluginMount(request: VaultPluginMountRemovalRequest): Promise<VaultPluginMountRemovalResult>;
+  repairPluginCatalog(request: VaultPluginCatalogRepairRequest): Promise<VaultPluginCatalogRepairResult>;
   applyPlugin(request: VaultPluginApplyRequest): Promise<VaultPluginApplyResult>;
   rollbackPlugin(request: VaultPluginRollbackRequest): Promise<VaultPluginRollbackResult>;
 }
@@ -172,6 +175,29 @@ class MockVaultClient implements VaultClient {
 
   async removePluginMount(request: VaultPluginMountRemovalRequest): Promise<VaultPluginMountRemovalResult> {
     throw new Error(`Vault mount ${normalizeMount(request.mountPath)} was not found`);
+  }
+
+  async repairPluginCatalog(request: VaultPluginCatalogRepairRequest): Promise<VaultPluginCatalogRepairResult> {
+    return {
+      mode: "mock",
+      repaired: true,
+      pluginName: normalizeMount(request.pluginName),
+      pluginType: request.pluginType,
+      version: request.version,
+      steps: [
+        {
+          label: "Catalog registration",
+          status: "success",
+          detail: `Mock registered ${request.pluginName} with the approved artifact`
+        },
+        {
+          label: "Catalog verification",
+          status: "success",
+          detail: "Mock Catalog entry matches the approved command and SHA-256"
+        }
+      ],
+      detail: { note: "Mock Vault mode does not mutate a Vault server" }
+    };
   }
 
   async applyPlugin(request: VaultPluginApplyRequest): Promise<VaultPluginApplyResult> {
@@ -603,6 +629,111 @@ class RealVaultClient implements VaultClient {
       ],
       detail: redact({ disable_status: disable.status, previous_mount_type: inspected.mountType })
     };
+  }
+
+  async repairPluginCatalog(request: VaultPluginCatalogRepairRequest): Promise<VaultPluginCatalogRepairResult> {
+    if (!/^[a-f0-9]{64}$/i.test(request.artifactSha256)) {
+      throw new Error("Catalog repair requires the compiled plugin binary SHA256");
+    }
+
+    const pluginName = normalizeMount(request.pluginName);
+    const catalogPath = `sys/plugins/catalog/${request.pluginType}/${pluginName}`;
+    const catalogBefore = await this.vaultRequest("GET", catalogPath, {
+      namespace: this.config.vaultNamespace,
+      credentialScope: "plugin",
+      tolerateStatus: [200, 404]
+    });
+    const existing = catalogBefore.status === 200 ? catalogBefore.body.data ?? {} : undefined;
+    if (existing) {
+      const matchesArtifact =
+        String(existing.sha256 ?? "").toLowerCase() === request.artifactSha256.toLowerCase() &&
+        String(existing.command ?? "") === request.command;
+      if (!matchesArtifact) {
+        throw new Error(`Vault plugin catalog entry ${pluginName} does not match the approved artifact`);
+      }
+      this.invalidateInventoryCache();
+      return {
+        mode: "real",
+        repaired: false,
+        pluginName,
+        pluginType: request.pluginType,
+        version: request.version,
+        steps: [
+          {
+            label: "Catalog registration",
+            status: "skipped",
+            detail: `${catalogPath} already matches the approved artifact`
+          },
+          {
+            label: "Catalog verification",
+            status: "success",
+            detail: "Verified the existing command and SHA-256"
+          }
+        ],
+        detail: redact({ catalog_status: catalogBefore.status, catalog_reused: true })
+      };
+    }
+
+    let catalogCreated = false;
+    try {
+      const register = await this.vaultRequest("POST", catalogPath, {
+        namespace: this.config.vaultNamespace,
+        credentialScope: "plugin",
+        body: {
+          sha256: request.artifactSha256,
+          command: request.command,
+          version: request.version
+        }
+      });
+      catalogCreated = true;
+      const verify = await this.vaultRequest("GET", catalogPath, {
+        namespace: this.config.vaultNamespace,
+        credentialScope: "plugin",
+        tolerateStatus: [200]
+      });
+      const registered = verify.body.data ?? {};
+      if (
+        String(registered.sha256 ?? "").toLowerCase() !== request.artifactSha256.toLowerCase() ||
+        String(registered.command ?? "") !== request.command
+      ) {
+        throw new Error(`Vault plugin catalog entry ${pluginName} failed post-registration verification`);
+      }
+      this.invalidateInventoryCache();
+      return {
+        mode: "real",
+        repaired: true,
+        pluginName,
+        pluginType: request.pluginType,
+        version: request.version,
+        steps: [
+          {
+            label: "Catalog registration",
+            status: "success",
+            detail: `${catalogPath} returned ${register.status}`
+          },
+          {
+            label: "Catalog verification",
+            status: "success",
+            detail: "Verified the registered command and SHA-256"
+          }
+        ],
+        detail: redact({ register_status: register.status, verify_status: verify.status })
+      };
+    } catch (error) {
+      let cleanup = "no Catalog entry was created";
+      if (catalogCreated) {
+        const removed = await this.vaultRequest("DELETE", catalogPath, {
+          namespace: this.config.vaultNamespace,
+          credentialScope: "plugin",
+          tolerateStatus: [200, 204, 404]
+        }).catch((cleanupError) => {
+          cleanup = `Catalog rollback failed: ${errorMessage(cleanupError)}`;
+          return undefined;
+        });
+        if (removed) cleanup = `Catalog rollback returned ${removed.status}`;
+      }
+      throw new Error(`Vault plugin Catalog repair failed: ${errorMessage(error)}. ${cleanup}`);
+    }
   }
 
   async applyPlugin(request: VaultPluginApplyRequest): Promise<VaultPluginApplyResult> {
@@ -1221,7 +1352,7 @@ type RoleInspection = CapabilityInspection;
 
 type ReconciliationItemInput = Pick<
   VaultReconciliationItem,
-  "id" | "targetType" | "title" | "systemId" | "systemName" | "requestType" | "pluginName" | "checks"
+  "id" | "targetType" | "title" | "systemId" | "systemName" | "requestType" | "pluginName" | "pluginType" | "checks"
 >;
 
 function reconciliationCheck(
@@ -1282,6 +1413,7 @@ function pluginReconciliationItem(plugin: VaultPluginCatalogEntry): VaultReconci
     targetType: "plugin",
     title: plugin.name,
     pluginName: plugin.name,
+    pluginType: plugin.pluginType,
     checks: [
       reconciliationCheck(
         "catalog",

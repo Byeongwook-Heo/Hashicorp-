@@ -876,7 +876,7 @@ button:hover:not(:disabled),
   color: var(--vault-strong);
 }
 
-.reconciliationRemediation > div {
+.reconciliationRemediationCopy {
   display: grid;
   min-width: 0;
   gap: 2px;
@@ -911,7 +911,15 @@ button:hover:not(:disabled),
   white-space: nowrap;
 }
 
-.reconciliationRemediation > a {
+.reconciliationRemediationActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.reconciliationRemediationActions > a,
+.reconciliationRemediationActions > button {
   display: inline-flex;
   min-height: 30px;
   align-items: center;
@@ -927,9 +935,20 @@ button:hover:not(:disabled),
   white-space: nowrap;
 }
 
-.reconciliationRemediation > a:hover {
+.reconciliationRemediationActions > button {
+  background: transparent;
+}
+
+.reconciliationRemediationActions > a:hover,
+.reconciliationRemediationActions > button:hover:not(:disabled) {
   border-color: var(--vault-strong);
   background: color-mix(in srgb, var(--vault) 8%, var(--panel));
+}
+
+.reconciliationRemediationActions > .reconciliationResolveButton {
+  border-color: color-mix(in srgb, var(--vault-strong) 62%, var(--line));
+  background: color-mix(in srgb, var(--vault) 9%, var(--panel));
+  color: var(--vault-strong);
 }
 
 .reconciliationEmpty {
@@ -1254,6 +1273,275 @@ tbody tr:hover {
 }
 
 .vaultUnmountActions {
+  justify-content: flex-end;
+}
+
+.catalogRepairDialog {
+  width: min(800px, 100%);
+}
+
+.catalogRepairDialogBody {
+  display: grid;
+  max-height: calc(100dvh - 220px);
+  gap: 14px;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.catalogRepairTarget {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.catalogRepairTarget > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--vault-strong) 40%, var(--line));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--vault) 8%, var(--panel));
+  color: var(--vault-strong);
+}
+
+.catalogRepairTarget strong,
+.catalogRepairTarget small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.catalogRepairTarget strong {
+  font-size: 13px;
+}
+
+.catalogRepairTarget small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.catalogRepairLoading {
+  display: flex;
+  min-height: 110px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.catalogRepairPlan,
+.catalogRepairSuccess,
+.catalogRepairUnavailable,
+.catalogRepairResolved,
+.catalogRepairAlternative {
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+}
+
+.catalogRepairPlan > header,
+.catalogRepairSuccess > header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+}
+
+.catalogRepairPlan > header > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--green);
+}
+
+.catalogRepairPlan > header strong,
+.catalogRepairPlan > header small,
+.catalogRepairSuccess > header strong,
+.catalogRepairSuccess > header small {
+  display: block;
+}
+
+.catalogRepairPlan > header strong,
+.catalogRepairSuccess > header strong {
+  font-size: 12px;
+}
+
+.catalogRepairPlan > header small,
+.catalogRepairSuccess > header small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.catalogRepairPlan dl {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 7px 12px;
+  margin: 14px 0 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.catalogRepairPlan dt,
+.catalogRepairPlan dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+}
+
+.catalogRepairPlan dt {
+  color: var(--muted);
+}
+
+.catalogRepairPlan dd {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.catalogRepairSafety {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  margin-top: 12px;
+  color: var(--green);
+}
+
+.catalogRepairSafety p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.catalogRepairUnavailable,
+.catalogRepairResolved {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.catalogRepairUnavailable {
+  border-left: 3px solid var(--vault-strong);
+}
+
+.catalogRepairUnavailable > svg {
+  color: var(--vault-strong);
+}
+
+.catalogRepairResolved,
+.catalogRepairSuccess {
+  border-left: 3px solid var(--green);
+}
+
+.catalogRepairResolved > svg,
+.catalogRepairSuccess > header > svg {
+  color: var(--green);
+}
+
+.catalogRepairUnavailable strong,
+.catalogRepairResolved strong,
+.catalogRepairAlternative strong {
+  font-size: 12px;
+}
+
+.catalogRepairUnavailable p,
+.catalogRepairResolved p,
+.catalogRepairAlternative p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.catalogRepairUnavailable a {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 11px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.catalogRepairSteps {
+  display: grid;
+  gap: 8px;
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.catalogRepairSteps > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: var(--green);
+}
+
+.catalogRepairSteps strong,
+.catalogRepairSteps small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.catalogRepairSteps strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.catalogRepairSteps small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.catalogRepairAlternative {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border-left: 3px solid var(--red);
+}
+
+.catalogRepairAlternative > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.catalogRepairAlternative button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  border-color: color-mix(in srgb, var(--red) 48%, var(--line));
+  background: transparent;
+  color: var(--red);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.catalogRepairActions {
   justify-content: flex-end;
 }
 
@@ -4145,9 +4433,34 @@ textarea:focus {
   }
 
   .reconciliationApproval,
-  .reconciliationRemediation > a {
+  .reconciliationRemediationActions {
     grid-column: 2;
-    width: max-content;
+  }
+
+  .reconciliationRemediationActions {
+    justify-content: flex-start;
+  }
+
+  .catalogRepairDialogBody {
+    max-height: calc(100dvh - 208px);
+    padding: 12px;
+  }
+
+  .catalogRepairPlan dl {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .catalogRepairAlternative {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .catalogRepairAlternative > div:last-child {
+    justify-content: flex-start;
+  }
+
+  .catalogRepairAlternative button {
+    max-width: 100%;
+    white-space: normal;
   }
 }
 

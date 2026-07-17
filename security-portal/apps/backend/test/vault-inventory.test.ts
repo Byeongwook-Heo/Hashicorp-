@@ -285,6 +285,80 @@ describe("Vault live inventory", () => {
     expect(missing?.checks.find((check) => check.kind === "mount")?.status).toBe("fail");
   });
 
+  it("repairs a missing plugin catalog entry without mutating the live mount", async () => {
+    let registered = false;
+    let registerBody: Record<string, unknown> | undefined;
+    const mountMutations: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/v1/sys/plugins/catalog/secret/vault-plugin-secrets-github")) {
+        if (init?.method === "POST") {
+          registered = true;
+          registerBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+          return new Response(JSON.stringify({}), { status: 200 });
+        }
+        return registered
+          ? new Response(JSON.stringify({
+              data: {
+                command: "vault-plugin-secrets-github",
+                sha256: "a".repeat(64),
+                version: "v0.1.0"
+              }
+            }), { status: 200 })
+          : new Response(JSON.stringify({ errors: ["not found"] }), { status: 404 });
+      }
+      if (url.includes("/v1/sys/mounts") || url.includes("/v1/sys/auth")) {
+        if (init?.method === "POST" || init?.method === "DELETE") mountMutations.push(`${init.method} ${url}`);
+      }
+      return new Response(JSON.stringify({ errors: ["not found"] }), { status: 404 });
+    });
+    const client = createVaultClient(config);
+
+    const result = await client.repairPluginCatalog({
+      pluginName: "vault-plugin-secrets-github",
+      pluginType: "secret",
+      version: "v0.1.0",
+      command: "vault-plugin-secrets-github",
+      artifactSha256: "a".repeat(64)
+    });
+
+    expect(result).toMatchObject({ repaired: true, pluginName: "vault-plugin-secrets-github" });
+    expect(registerBody).toEqual({
+      sha256: "a".repeat(64),
+      command: "vault-plugin-secrets-github",
+      version: "v0.1.0"
+    });
+    expect(mountMutations).toEqual([]);
+  });
+
+  it("refuses to overwrite a plugin catalog entry that differs from the approved artifact", async () => {
+    let postCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/v1/sys/plugins/catalog/secret/vault-plugin-secrets-github")) {
+        if (init?.method === "POST") postCalls += 1;
+        return new Response(JSON.stringify({
+          data: {
+            command: "different-command",
+            sha256: "b".repeat(64),
+            version: "v0.1.0"
+          }
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ errors: ["not found"] }), { status: 404 });
+    });
+    const client = createVaultClient(config);
+
+    await expect(client.repairPluginCatalog({
+      pluginName: "vault-plugin-secrets-github",
+      pluginType: "secret",
+      version: "v0.1.0",
+      command: "vault-plugin-secrets-github",
+      artifactSha256: "a".repeat(64)
+    })).rejects.toThrow("does not match the approved artifact");
+    expect(postCalls).toBe(0);
+  });
+
   it("requires the inspected fingerprint before disabling a plugin mount", async () => {
     let mounted = true;
     let deleteCalls = 0;
