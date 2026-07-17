@@ -4159,3 +4159,12 @@ textarea:focus {
     animation: none;
   }
 }
+
+/* Keep the dashboard heading and action summary ahead of product-specific sections. */
+.dashboardPage > .overviewPanel {
+  order: -2;
+}
+
+.dashboardPage > .dashboardCommandCenter {
+  order: -1;
+}

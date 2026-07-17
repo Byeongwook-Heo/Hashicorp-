@@ -9014,3 +9014,1016 @@ tbody tr:hover {
     animation: none !important;
   }
 }
+
+/* Operational interface refinement v3 */
+:root {
+  --bg: #f5f6f8;
+  --panel-soft: #f8f9fb;
+  --panel-strong: #eef1f4;
+  --line: #dde2e8;
+  --line-soft: #e9edf2;
+  --line-strong: #c3cad3;
+  --page-gutter: clamp(22px, 2.6vw, 40px);
+}
+
+:root[data-theme="dark"] {
+  --bg: #111318;
+  --panel: #191c21;
+  --panel-soft: #1e2228;
+  --panel-strong: #252a31;
+  --line: #343a43;
+  --line-soft: #292e35;
+  --line-strong: #505864;
+}
+
+.shell {
+  grid-template-columns: 232px minmax(0, 1fr);
+}
+
+.sidebar {
+  padding: 16px 11px 13px;
+  background: #14171c;
+}
+
+.sidebar nav {
+  gap: 3px;
+}
+
+.sidebar nav a {
+  min-height: 40px;
+  border-radius: 4px;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.sidebar nav a:hover {
+  background: #20242a;
+}
+
+.sidebar nav a.active {
+  background: #282d34;
+}
+
+.sidebar nav a::before {
+  inset-block: 8px;
+  width: 2px;
+}
+
+.sidebarCollapseButton {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #9299a5;
+  font-size: 11px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.sidebarCollapseButton:hover:not(:disabled) {
+  border: 0;
+  background: #20242a;
+  color: #ffffff;
+}
+
+.shell.sidebarCollapsed {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+
+.sidebarCollapsed .sidebar {
+  padding-inline: 9px;
+}
+
+.sidebarCollapsed .brand {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.sidebarCollapsed .brand > div,
+.sidebarCollapsed .sidebar nav a span,
+.sidebarCollapsed .sidebarFooter > div,
+.sidebarCollapsed .sidebarCollapseButton span {
+  display: none;
+}
+
+.sidebarCollapsed .sidebar nav a {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.sidebarCollapsed .sidebar nav a::before {
+  left: -9px;
+}
+
+.sidebarCollapsed .sidebarFooter {
+  display: flex;
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.sidebarCollapsed .sidebarCollapseButton {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.main {
+  padding-bottom: 56px;
+}
+
+.topbar {
+  min-height: 68px;
+  padding-block: 10px;
+  background: color-mix(in srgb, var(--bg) 90%, transparent);
+  backdrop-filter: blur(14px) saturate(130%);
+}
+
+.topbarTitle {
+  min-width: 0;
+}
+
+.topbar h1 {
+  font-size: 19px;
+  font-weight: 780;
+}
+
+.topbarTools {
+  align-items: center;
+  gap: 6px;
+}
+
+.topbarAction,
+.themeToggle,
+.userBadge {
+  border-color: transparent;
+  background: transparent;
+}
+
+.topbarAction:hover:not(:disabled),
+.themeToggle:hover:not(:disabled),
+.userBadge:hover {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.vaultUiLink {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.portalAssistantTrigger {
+  border-color: color-mix(in srgb, var(--vault) 68%, var(--line));
+  background: color-mix(in srgb, var(--vault-soft) 62%, var(--panel));
+}
+
+.globalSearchTrigger {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.pageSurface {
+  padding-top: 26px;
+}
+
+.stack {
+  gap: 16px;
+}
+
+.overviewPanel {
+  min-height: 78px;
+  padding: 2px 0 18px;
+}
+
+.dashboardPage > .overviewPanel {
+  order: -2;
+}
+
+.dashboardPage > .dashboardCommandCenter {
+  order: -1;
+}
+
+.overviewPanel h2 {
+  font-size: 19px;
+  font-weight: 790;
+}
+
+.overviewAside {
+  min-width: 140px;
+  padding: 7px 0 7px 14px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.overviewAside::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--green);
+}
+
+.overviewAside span {
+  display: inline;
+}
+
+.overviewAside strong {
+  margin-top: 5px;
+  font-size: 13px;
+}
+
+.dashboardCommandCenter {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.dashboardCommandHeader {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.dashboardCommandHeader h2,
+.dashboardCommandHeader p {
+  margin: 0;
+}
+
+.dashboardCommandHeader h2 {
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.dashboardCommandHeader p {
+  margin-top: 3px;
+  font-size: 11px;
+}
+
+.attentionCount {
+  display: grid;
+  min-width: 30px;
+  height: 26px;
+  place-items: center;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+}
+
+.attentionCount.active {
+  background: color-mix(in srgb, var(--red) 11%, var(--panel));
+  color: var(--red);
+}
+
+.dashboardCommandBody {
+  display: block;
+}
+
+.attentionList {
+  min-width: 0;
+}
+
+.attentionItem {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto 18px;
+  gap: 10px;
+  align-items: center;
+  min-height: 62px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background-color 160ms ease;
+}
+
+.attentionItem:last-child {
+  border-bottom: 0;
+}
+
+.attentionItem:hover {
+  background: var(--panel-soft);
+}
+
+.attentionIcon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--panel-soft);
+  color: var(--muted-strong);
+}
+
+.attentionItem.critical .attentionIcon {
+  background: color-mix(in srgb, var(--red) 10%, var(--panel));
+  color: var(--red);
+}
+
+.attentionItem.warning .attentionIcon {
+  background: var(--vault-soft);
+  color: var(--vault-deep);
+}
+
+.attentionItem.notice .attentionIcon {
+  background: color-mix(in srgb, var(--cyan) 10%, var(--panel));
+  color: var(--cyan);
+}
+
+.attentionItem strong,
+.attentionItem small {
+  display: block;
+}
+
+.attentionItem strong {
+  font-size: 12px;
+}
+
+.attentionItem small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.attentionItem em {
+  color: var(--ink);
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 820;
+  font-variant-numeric: tabular-nums;
+}
+
+.attentionItem > svg {
+  color: var(--muted);
+}
+
+.attentionClear {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 66px;
+  padding: 14px 16px;
+  color: var(--green);
+}
+
+.attentionClear strong,
+.attentionClear small {
+  display: block;
+}
+
+.attentionClear strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.attentionClear small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.vaultSnapshot {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: start;
+  border-top: 1px solid var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.vaultSnapshot > div {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 14px;
+  border-right: 1px solid var(--line-soft);
+}
+
+.vaultSnapshot > div:last-child {
+  border-right: 0;
+}
+
+.vaultSnapshot span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.vaultSnapshot strong {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.vaultSnapshot strong.healthy {
+  color: var(--green);
+}
+
+.vaultSnapshot strong.unhealthy {
+  color: var(--red);
+}
+
+.metrics {
+  border-color: var(--line-soft);
+}
+
+.metric {
+  min-height: 104px;
+  padding: 15px 17px;
+  border-color: var(--line-soft);
+}
+
+.metric strong {
+  margin-top: 9px;
+  font-size: 26px;
+}
+
+.dashboardGrid {
+  overflow: hidden;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.dashboardGrid > .insightPanel,
+.dashboardGrid > .tablePanel {
+  border: 0;
+  border-radius: 0;
+}
+
+.dashboardGrid > :not(:first-child) {
+  border-left: 1px solid var(--line-soft);
+}
+
+.insightPanel,
+.card,
+.formPanel,
+.filterPanel,
+.dependencyPanel,
+.pluginCatalogPanel,
+.builderPanel {
+  border-color: var(--line-soft);
+}
+
+.tablePanel {
+  border-color: var(--line);
+}
+
+.tablePanelHeader,
+.tablePanel > h2 {
+  background: var(--panel);
+}
+
+.tableScroll {
+  max-height: 560px;
+  overflow: auto;
+}
+
+.responsiveTable {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.responsiveTable thead th {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+}
+
+.responsiveTable tbody tr {
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.responsiveTable tbody tr:hover {
+  background: var(--panel-soft);
+  box-shadow: inset 2px 0 0 var(--vault);
+}
+
+.responsiveTable td {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.responsiveTable td:first-child {
+  font-weight: 680;
+}
+
+.responsiveTable .numericCell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.responsiveTable .statusCell {
+  overflow: visible;
+}
+
+.statusBadge.success,
+.statusBadge.healthy,
+.statusBadge.complete {
+  border-color: color-mix(in srgb, var(--green) 28%, var(--line));
+  background: color-mix(in srgb, var(--green) 8%, var(--panel));
+  color: var(--green);
+}
+
+.statusBadge.failure,
+.statusBadge.failed {
+  border-color: color-mix(in srgb, var(--red) 28%, var(--line));
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+  color: var(--red);
+}
+
+.statusBadge.warning {
+  border-color: color-mix(in srgb, var(--vault-deep) 30%, var(--line));
+  background: var(--vault-soft);
+  color: var(--vault-deep);
+}
+
+.factoryWorkspaceHeader {
+  min-height: 68px;
+  padding: 0 0 15px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.factoryWorkspaceStatus {
+  padding-left: 2px;
+}
+
+.factoryWorkspaceStatus strong {
+  font-size: 13px;
+}
+
+.factoryWorkspaceStatus small {
+  font-size: 10px;
+}
+
+.view-plugins .pluginFactory {
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.52fr);
+  gap: 12px;
+}
+
+.factoryChatPanel {
+  min-height: 610px;
+  padding: 18px 20px;
+  border-color: var(--line);
+}
+
+.factoryChatPanel .panelHeader {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.factoryChatPanel .panelHeader h2 {
+  font-size: 20px;
+}
+
+.chatMessages {
+  max-height: 360px;
+  padding-block: 10px;
+}
+
+.chatBubble.assistant {
+  border-color: transparent;
+  border-left: 2px solid var(--vault);
+  border-radius: 0;
+  background: transparent;
+}
+
+.chatBubble.user {
+  border-color: var(--line);
+  background: var(--panel-soft);
+}
+
+.chatComposer {
+  position: sticky;
+  z-index: 4;
+  bottom: 0;
+  padding: 12px 0 0;
+  background: var(--panel);
+}
+
+.chatComposer textarea {
+  min-height: 88px;
+  border-color: var(--line-strong);
+  background: var(--panel);
+}
+
+.chatComposer:focus-within textarea {
+  border-color: #c39b00;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--vault) 20%, transparent);
+}
+
+.factoryJobTimeline {
+  gap: 10px;
+  padding: 14px;
+  border-color: var(--line);
+}
+
+.factoryTimelineHeader {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.factoryJobTimeline .workflowStrip {
+  gap: 1px;
+}
+
+.factoryJobTimeline .workflowStrip::before {
+  left: 15px;
+}
+
+.factoryJobTimeline .workflowStep {
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  min-height: 44px;
+  padding: 5px 6px;
+}
+
+.factoryJobTimeline .workflowStep.current {
+  background: color-mix(in srgb, var(--vault-soft) 72%, var(--panel));
+}
+
+.factoryViewLauncher {
+  padding: 13px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.factoryAdvancedToggle {
+  border-color: transparent;
+  background: transparent;
+}
+
+.factoryAdvancedToggle:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.mobileTools {
+  position: relative;
+  display: none;
+}
+
+.mobileToolsBackdrop {
+  position: fixed;
+  z-index: 49;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: rgba(17, 19, 24, 0.42);
+}
+
+.mobileToolsBackdrop:hover:not(:disabled) {
+  border: 0;
+  background: rgba(17, 19, 24, 0.42);
+}
+
+.mobileToolsMenu {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  width: min(292px, calc(100vw - 24px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 18px 44px rgba(17, 19, 24, 0.2);
+}
+
+.mobileToolsIdentity {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.mobileToolsIdentity > span:last-child,
+.mobileToolsIdentity strong,
+.mobileToolsIdentity small {
+  display: block;
+  min-width: 0;
+}
+
+.mobileToolsIdentity strong,
+.mobileToolsIdentity small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobileToolsIdentity strong {
+  font-size: 12px;
+}
+
+.mobileToolsIdentity small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.mobileToolsMenu > a,
+.mobileToolsMenu > button {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 680;
+  text-align: left;
+  text-decoration: none;
+}
+
+.mobileToolsMenu > a:hover,
+.mobileToolsMenu > button:hover:not(:disabled) {
+  border-color: var(--line-soft);
+  background: var(--panel-soft);
+}
+
+.mobileToolsMenu > button em {
+  display: grid;
+  min-width: 22px;
+  height: 20px;
+  place-items: center;
+  border-radius: 4px;
+  background: var(--panel-strong);
+  color: var(--muted-strong);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.mobileToolsLanguage {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.mobileToolsLanguage button {
+  min-height: 32px;
+  border-color: transparent;
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.mobileToolsLanguage button.active {
+  background: var(--ink);
+  color: var(--panel);
+}
+
+.mobileToolsMenu > .mobileLogout {
+  border-bottom: 0;
+  color: var(--red);
+}
+
+.pageSurface > .stack > section,
+.pageSurface > .stack > .metrics,
+.pageSurface > .stack > .dashboardGrid {
+  animation: operationalReveal 240ms ease-out both;
+}
+
+@keyframes operationalReveal {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 900px) {
+  .shell,
+  .shell.sidebarCollapsed {
+    display: block;
+  }
+
+  .vaultSnapshot {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .vaultSnapshot > div {
+    display: grid;
+  }
+
+  .dashboardGrid > :not(:first-child) {
+    border-top: 1px solid var(--line-soft);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .main {
+    padding-inline: 12px;
+    --page-gutter: 12px;
+  }
+
+  .topbar {
+    min-height: 58px;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding-block: 8px;
+  }
+
+  .topbarTitle {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .topbarTitle > div {
+    min-width: 0;
+  }
+
+  .topbar h1 {
+    max-width: 100%;
+    font-size: 16px;
+  }
+
+  .topbarTools {
+    width: auto;
+    flex: 0 0 auto;
+    margin-left: 0;
+    gap: 4px;
+  }
+
+  .topbarTools > .desktopUtility,
+  .topbarTools .languageSwitch.desktopUtility {
+    display: none;
+  }
+
+  .topbarTools .portalAssistantTrigger,
+  .topbarTools .themeToggle,
+  .mobileTools,
+  .mobileToolsTrigger {
+    display: inline-grid;
+  }
+
+  .topbarTools .portalAssistantTrigger,
+  .topbarTools .themeToggle,
+  .mobileToolsTrigger {
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0;
+  }
+
+  .pageSurface {
+    padding-top: 18px;
+  }
+
+  .overviewPanel {
+    min-height: 0;
+    padding-bottom: 15px;
+  }
+
+  .overviewPanel h2 {
+    font-size: 18px;
+  }
+
+  .overviewAside {
+    width: auto;
+    min-width: 0;
+    padding: 7px 0;
+    border-left: 0;
+  }
+
+  .overviewAside strong {
+    display: inline;
+    margin: 0 0 0 5px;
+  }
+
+  .dashboardCommandHeader {
+    min-height: 58px;
+    padding: 10px 12px;
+  }
+
+  .dashboardCommandHeader p {
+    display: none;
+  }
+
+  .attentionItem {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    min-height: 60px;
+    padding: 9px 11px;
+  }
+
+  .attentionItem > svg {
+    display: none;
+  }
+
+  .attentionIcon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .attentionItem small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vaultSnapshot {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .vaultSnapshot > div {
+    min-height: 62px;
+    align-content: center;
+    padding: 8px 10px;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric,
+  .metric:nth-child(2),
+  .metric:last-child {
+    min-height: 96px;
+    border-right: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .metric:nth-child(even) {
+    border-right: 0;
+  }
+
+  .metric:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+
+  .metric strong {
+    font-size: 23px;
+  }
+
+  .tableScroll {
+    max-height: none;
+  }
+
+  .factoryWorkspaceHeader {
+    min-height: 58px;
+  }
+
+  .factoryWorkspaceStatus small {
+    display: none;
+  }
+
+  .factoryChatPanel {
+    min-height: 560px;
+    padding: 15px 13px;
+  }
+
+  .factoryChatPanel .panelHeader h2 {
+    font-size: 18px;
+  }
+
+  .chatComposer textarea {
+    min-height: 84px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pageSurface > .stack > section,
+  .pageSurface > .stack > .metrics,
+  .pageSurface > .stack > .dashboardGrid,
+  .sidebar nav a,
+  .attentionItem,
+  .responsiveTable tbody tr {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -72,6 +72,7 @@ import {
   Menu,
   MessageSquare,
   Minimize2,
+  MoreHorizontal,
   Moon,
   PackageSearch,
   PanelLeftClose,
@@ -539,6 +540,7 @@ export default function PortalShell({ view }: { view: View }) {
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [taskCenterOpen, setTaskCenterOpen] = useState(false);
   const [portalAssistantOpen, setPortalAssistantOpen] = useState(false);
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [toast, setToast] = useState<PortalToast | null>(null);
   const vaultSyncInFlight = useRef(false);
   const t = copy[language];
@@ -689,6 +691,7 @@ export default function PortalShell({ view }: { view: View }) {
     setGlobalSearchOpen(false);
     setTaskCenterOpen(false);
     setPortalAssistantOpen(false);
+    setMobileToolsOpen(false);
   }, [view]);
 
   useEffect(() => {
@@ -698,10 +701,12 @@ export default function PortalShell({ view }: { view: View }) {
         setGlobalSearchOpen(false);
         setTaskCenterOpen(false);
         setPortalAssistantOpen(false);
+        setMobileToolsOpen(false);
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setTaskCenterOpen(false);
+        setMobileToolsOpen(false);
         setGlobalSearchOpen(true);
       }
     }
@@ -892,6 +897,7 @@ export default function PortalShell({ view }: { view: View }) {
   function openPortalAssistant() {
     setGlobalSearchOpen(false);
     setTaskCenterOpen(false);
+    setMobileToolsOpen(false);
     if (view === "plugins") {
       window.requestAnimationFrame(() => {
         const input = document.getElementById("factory-chat-input");
@@ -996,7 +1002,7 @@ export default function PortalShell({ view }: { view: View }) {
           <div className="topbarTools">
             <a
               aria-label={localize(t, "Open Vault UI in a new tab", "새 탭에서 Vault UI 열기")}
-              className="topbarAction vaultUiLink"
+              className="topbarAction vaultUiLink desktopUtility"
               href="/ui/"
               rel="noopener noreferrer"
               target="_blank"
@@ -1026,10 +1032,11 @@ export default function PortalShell({ view }: { view: View }) {
               aria-expanded={globalSearchOpen}
               aria-haspopup="dialog"
               aria-label={localize(t, "Search systems, requests, and credentials", "시스템, 요청, Credential 통합 검색")}
-              className="topbarAction globalSearchTrigger"
+              className="topbarAction globalSearchTrigger desktopUtility"
               onClick={() => {
                 setTaskCenterOpen(false);
                 setPortalAssistantOpen(false);
+                setMobileToolsOpen(false);
                 setGlobalSearchOpen(true);
               }}
               title={localize(t, "Global search", "통합 검색")}
@@ -1043,10 +1050,11 @@ export default function PortalShell({ view }: { view: View }) {
               aria-expanded={taskCenterOpen}
               aria-haspopup="dialog"
               aria-label={localize(t, "Open my work queue", "내 작업함 열기")}
-              className="iconButton topbarAction taskCenterTrigger"
+              className="iconButton topbarAction taskCenterTrigger desktopUtility"
               onClick={() => {
                 setGlobalSearchOpen(false);
                 setPortalAssistantOpen(false);
+                setMobileToolsOpen(false);
                 setTaskCenterOpen(true);
               }}
               title={localize(t, "My work queue", "내 작업함")}
@@ -1056,7 +1064,7 @@ export default function PortalShell({ view }: { view: View }) {
               <span className="topbarActionLabel">{localize(t, "Work", "작업")}</span>
               {portalTasks.length ? <span className="actionBadge">{Math.min(portalTasks.length, 99)}</span> : null}
             </button>
-            <div className="languageSwitch" aria-label={t.languageLabel}>
+            <div className="languageSwitch desktopUtility" aria-label={t.languageLabel}>
               <button aria-pressed={language === "en"} className={language === "en" ? "active" : ""} onClick={() => setPortalLanguage("en")}>
                 EN
               </button>
@@ -1073,7 +1081,79 @@ export default function PortalShell({ view }: { view: View }) {
             >
               {theme === "light" ? <Moon aria-hidden="true" size={18} /> : <Sun aria-hidden="true" size={18} />}
             </button>
-            <div className="userBadge">
+            <div className="mobileTools">
+              <button
+                aria-controls="mobile-utility-menu"
+                aria-expanded={mobileToolsOpen}
+                aria-haspopup="menu"
+                aria-label={localize(t, "Open portal tools", "포탈 도구 열기")}
+                className="iconButton mobileToolsTrigger"
+                onClick={() => setMobileToolsOpen((current) => !current)}
+                title={localize(t, "Portal tools", "포탈 도구")}
+                type="button"
+              >
+                <MoreHorizontal aria-hidden="true" size={19} />
+              </button>
+              {mobileToolsOpen ? (
+                <>
+                  <button
+                    aria-label={localize(t, "Close portal tools", "포탈 도구 닫기")}
+                    className="mobileToolsBackdrop"
+                    onClick={() => setMobileToolsOpen(false)}
+                    type="button"
+                  />
+                  <div className="mobileToolsMenu" id="mobile-utility-menu" role="menu">
+                    <div className="mobileToolsIdentity">
+                      <span className="userAvatar" aria-hidden="true">{(user?.displayName ?? "V").slice(0, 1).toUpperCase()}</span>
+                      <span>
+                        <strong>{user?.displayName ?? t.loading}</strong>
+                        <small>{user?.roles.join(", ")}</small>
+                      </span>
+                    </div>
+                    <a href="/ui/" onClick={() => setMobileToolsOpen(false)} rel="noopener noreferrer" role="menuitem" target="_blank">
+                      <ExternalLink aria-hidden="true" size={17} />
+                      <span>{localize(t, "Open Vault UI", "Vault UI 열기")}</span>
+                    </a>
+                    <button
+                      onClick={() => {
+                        setMobileToolsOpen(false);
+                        setTaskCenterOpen(false);
+                        setPortalAssistantOpen(false);
+                        setGlobalSearchOpen(true);
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <Search aria-hidden="true" size={17} />
+                      <span>{localize(t, "Global search", "통합 검색")}</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMobileToolsOpen(false);
+                        setGlobalSearchOpen(false);
+                        setPortalAssistantOpen(false);
+                        setTaskCenterOpen(true);
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <Bell aria-hidden="true" size={17} />
+                      <span>{localize(t, "My work queue", "내 작업함")}</span>
+                      {portalTasks.length ? <em>{Math.min(portalTasks.length, 99)}</em> : null}
+                    </button>
+                    <div aria-label={t.languageLabel} className="mobileToolsLanguage" role="group">
+                      <button aria-pressed={language === "en"} className={language === "en" ? "active" : ""} onClick={() => setPortalLanguage("en")} type="button">EN</button>
+                      <button aria-pressed={language === "ko"} className={language === "ko" ? "active" : ""} onClick={() => setPortalLanguage("ko")} type="button">한글</button>
+                    </div>
+                    <button className="mobileLogout" onClick={() => void logout()} role="menuitem" type="button">
+                      <LogOut aria-hidden="true" size={17} />
+                      <span>{localize(t, "Sign out", "로그아웃")}</span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            <div className="userBadge desktopUtility">
               <span className="userAvatar" aria-hidden="true">{(user?.displayName ?? "V").slice(0, 1).toUpperCase()}</span>
               <div>
                 <span>{user?.displayName ?? t.loading}</span>
@@ -1138,6 +1218,7 @@ export default function PortalShell({ view }: { view: View }) {
             requests={requests}
             credentials={credentials}
             auditEvents={auditEvents}
+            mappingHealth={mappingHealth}
             vaultHealth={vaultHealth}
           />
         ) : null}
@@ -1688,6 +1769,7 @@ function Dashboard({
   requests,
   credentials,
   auditEvents,
+  mappingHealth,
   vaultHealth
 }: {
   t: Copy;
@@ -1697,6 +1779,7 @@ function Dashboard({
   requests: AccessRequest[];
   credentials: IssuedCredential[];
   auditEvents: AuditEvent[];
+  mappingHealth: VaultMappingHealth[];
   vaultHealth: VaultHealthResponse | null;
 }) {
   const recentCredential = credentials[0];
@@ -1744,6 +1827,56 @@ function Dashboard({
     .slice(0, 3);
   const pendingHref = canUseView(currentUser.roles, "approvals") ? "/approvals?status=pending&sort=oldest" : "/requests?status=pending&sort=oldest";
   const credentialsHref = canUseView(currentUser.roles, "credentials") ? "/credentials" : "/secrets";
+  const mappingHref = canUseView(currentUser.roles, "health") ? "/health" : "/systems";
+  const unreachableMappings = mappingHealth.filter((mapping) => !mapping.reachable).length;
+  const pendingHighRisk = highRiskRequests.filter(({ request }) => request.status === "pending").length;
+  const attentionItems: Array<{
+    id: string;
+    count: number;
+    title: string;
+    detail: string;
+    href: string;
+    icon: LucideIcon;
+    tone: "critical" | "warning" | "notice";
+  }> = [
+    {
+      id: "revoke-failures",
+      count: failed.length,
+      title: localize(t, "Revoke failures", "폐기 실패"),
+      detail: localize(t, "Retry failed revocations before reviewing routine work.", "일반 작업보다 먼저 실패한 폐기를 재시도하세요."),
+      href: `${credentialsHref}?status=revoke_failed`,
+      icon: ShieldAlert,
+      tone: "critical" as const
+    },
+    {
+      id: "high-risk",
+      count: pendingHighRisk,
+      title: localize(t, "High-risk approvals", "High Risk 승인"),
+      detail: localize(t, "Review scope, TTL, and requester evidence.", "Scope, TTL, 요청 근거를 우선 검토하세요."),
+      href: pendingHref,
+      icon: AlertTriangle,
+      tone: "warning" as const
+    },
+    {
+      id: "mapping-health",
+      count: unreachableMappings,
+      title: localize(t, "Vault mapping issues", "Vault Mapping 문제"),
+      detail: localize(t, "Mapped targets do not match the live Vault inventory.", "Portal Mapping과 실제 Vault Inventory가 일치하지 않습니다."),
+      href: mappingHref,
+      icon: HeartPulse,
+      tone: "warning" as const
+    },
+    {
+      id: "expiring-soon",
+      count: stats.expiringSoon,
+      title: localize(t, "Credentials expiring soon", "Credential 만료 임박"),
+      detail: localize(t, "Credentials expire within the next 24 hours.", "24시간 이내 만료되는 Credential입니다."),
+      href: `${credentialsHref}?status=active`,
+      icon: CalendarClock,
+      tone: "notice" as const
+    }
+  ].filter((item) => item.count > 0);
+  const attentionTotal = attentionItems.reduce((total, item) => total + item.count, 0);
 
   return (
     <div className="stack dashboardPage">
@@ -1763,23 +1896,55 @@ function Dashboard({
           </strong>
         </div>
       </section>
-      <section className="executivePanel">
-        <div>
-          <span className="eyebrow">{localize(t, "Security executive view", "보안 임원 요약")}</span>
-          <h2>{localize(t, "Executive / Security Summary", "Executive / Security Summary")}</h2>
-          <p>
-            {localize(
-              t,
-              "Vault-backed secret surfaces, active leases, expiring credentials, failed revocations, and high-risk approval items are summarized for security operations.",
-              "Vault 기반 Secret Surface, 활성 Lease, 만료 임박 Credential, 폐기 실패, 고위험 승인 요청을 보안 운영 관점으로 요약합니다."
+      <section className="dashboardCommandCenter">
+        <header className="dashboardCommandHeader">
+          <div>
+            <h2>{localize(t, "Operational priorities", "우선 확인 항목")}</h2>
+            <p>{localize(t, "Items are ordered by operational risk and time sensitivity.", "운영 위험도와 시간 민감도를 기준으로 정렬했습니다.")}</p>
+          </div>
+          <span className={attentionTotal ? "attentionCount active" : "attentionCount"}>{attentionTotal}</span>
+        </header>
+        <div className="dashboardCommandBody">
+          <div className="attentionList">
+            {attentionItems.length ? attentionItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link className={`attentionItem ${item.tone}`} href={item.href} key={item.id}>
+                  <span className="attentionIcon"><Icon aria-hidden="true" size={18} /></span>
+                  <span>
+                    <strong>{item.title}</strong>
+                    <small>{item.detail}</small>
+                  </span>
+                  <em>{item.count}</em>
+                  <ArrowRight aria-hidden="true" size={16} />
+                </Link>
+              );
+            }) : (
+              <div className="attentionClear">
+                <CheckCircle2 aria-hidden="true" size={20} />
+                <span>
+                  <strong>{localize(t, "No urgent action required", "긴급 조치가 필요하지 않습니다")}</strong>
+                  <small>{localize(t, "Continue monitoring live Vault status and routine approvals.", "실시간 Vault 상태와 일반 승인 작업을 계속 확인하세요.")}</small>
+                </span>
+              </div>
             )}
-          </p>
-        </div>
-        <div className="summaryRail">
-          <MiniStat label={localize(t, "Total secrets", "전체 Secret")} value={credentials.length} />
-          <MiniStat label={localize(t, "Active credentials", "활성 Credential")} value={stats.active} tone="good" />
-          <MiniStat label={localize(t, "Expiring soon", "만료 임박")} value={stats.expiringSoon} />
-          <MiniStat label={localize(t, "Revoke failures", "폐기 실패")} value={stats.failures} tone="risk" />
+          </div>
+          <aside className="vaultSnapshot" aria-label={localize(t, "Vault snapshot", "Vault 상태 요약")}>
+            <div>
+              <span>{localize(t, "Vault status", "Vault 상태")}</span>
+              <strong className={vaultHealth?.healthy ? "healthy" : "unhealthy"}>
+                {vaultHealth?.healthy ? localize(t, "Connected", "연결됨") : localize(t, "Check required", "확인 필요")}
+              </strong>
+            </div>
+            <div>
+              <span>{localize(t, "Mapped surfaces", "매핑 Surface")}</span>
+              <strong>{stats.secretSurfaces}</strong>
+            </div>
+            <div>
+              <span>{localize(t, "Assigned systems", "담당 시스템")}</span>
+              <strong>{stats.systems}</strong>
+            </div>
+          </aside>
         </div>
       </section>
       <div className="metrics">
@@ -8635,6 +8800,29 @@ function PostureRow({ label, value, max }: { label: string; value: number; max: 
   );
 }
 
+function tableCellBadgeKind(value: string): "status" | "risk" | undefined {
+  if (["low", "medium", "high"].includes(value)) return "risk";
+  if ([
+    "active",
+    "approved",
+    "complete",
+    "disabled",
+    "executed",
+    "expired",
+    "failed",
+    "failure",
+    "healthy",
+    "locked",
+    "pending",
+    "rejected",
+    "revoke_failed",
+    "revoked",
+    "success",
+    "warning"
+  ].includes(value)) return "status";
+  return undefined;
+}
+
 function Table({
   title,
   columns,
@@ -8672,9 +8860,22 @@ function Table({
             <tbody>
               {rows.map((row, index) => (
                 <tr key={index}>
-                  {row.map((cell, cellIndex) => (
-                    <td data-label={columns[cellIndex] ?? ""} key={cellIndex}>{cell}</td>
-                  ))}
+                  {row.map((cell, cellIndex) => {
+                    const normalized = typeof cell === "string" ? cell.trim().toLowerCase() : "";
+                    const badgeKind = tableCellBadgeKind(normalized);
+                    return (
+                      <td
+                        className={typeof cell === "number" ? "numericCell" : badgeKind ? "statusCell" : undefined}
+                        data-label={columns[cellIndex] ?? ""}
+                        key={cellIndex}
+                        title={typeof cell === "string" ? cell : undefined}
+                      >
+                        {badgeKind === "status" ? <span className={`statusBadge ${normalized}`}>{cell}</span> : null}
+                        {badgeKind === "risk" ? <span className={`riskBadge ${normalized}`}>{cell}</span> : null}
+                        {!badgeKind ? cell : null}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
