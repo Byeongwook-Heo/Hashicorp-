@@ -16,7 +16,7 @@ const orderRowSchema = z.object({
   order_id: z.string().min(1).max(64),
   payment_status: z.string().min(1).max(40),
   delivery_status: z.string().min(1).max(40),
-  updated_at: z.union([z.date(), z.string().datetime()]),
+  updated_at: z.union([z.date(), z.iso.datetime()]),
 });
 
 const summaryRowSchema = z.object({
@@ -47,7 +47,10 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
     orderId: string,
   ): Promise<OrderStatus> {
     return this.#withClient(credentials, async (client) => {
-      const result = await client.query(orderStatusQuery, [orderId]);
+      const result = await client.query<Record<string, unknown>>(
+        orderStatusQuery,
+        [orderId],
+      );
       const first = result.rows[0];
       if (!first) {
         throw new NotFoundError("Order was not found");
@@ -61,7 +64,10 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
     date: string,
   ): Promise<FailedPaymentSummary> {
     return this.#withClient(credentials, async (client) => {
-      const result = await client.query(failedPaymentSummaryQuery, [date]);
+      const result = await client.query<Record<string, unknown>>(
+        failedPaymentSummaryQuery,
+        [date],
+      );
       const byDeliveryStatus = result.rows.map((row) =>
         summaryRowSchema.parse(row),
       );

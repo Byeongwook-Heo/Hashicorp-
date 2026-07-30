@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { ConfigurationError } from "./errors.js";
 
-const optionalUrl = z.string().url().optional();
+const optionalUrl = z.url().optional();
 const optionalNonEmpty = z.string().min(1).optional();
 
 const environmentSchema = z
@@ -70,7 +70,7 @@ const environmentSchema = z
       return;
     }
 
-    const required: Array<keyof typeof value> = [
+    const required: (keyof typeof value)[] = [
       "VERIFY_TOKEN_URL",
       "VERIFY_JWKS_URL",
       "VERIFY_ISSUER",

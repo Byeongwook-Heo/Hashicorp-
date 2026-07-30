@@ -45,8 +45,9 @@ export class ToolService {
 
   public async getSensitivePaymentData(
     requestId: string,
-    _customerId: string,
+    customerId: string,
   ): Promise<SensitivePaymentDenial> {
+    void customerId;
     const accessToken = await this.identity.getVerifiedAccessToken();
     this.events.record({
       stage: "identity",

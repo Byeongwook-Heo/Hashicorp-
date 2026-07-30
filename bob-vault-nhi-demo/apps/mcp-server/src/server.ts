@@ -123,6 +123,9 @@ function logStartupError(error: unknown, startupLogger: Logger): never {
 
 process.on("beforeExit", (code) => {
   if (code !== 0) {
-    logStartupError(new Error(`process exited with code ${code}`), logger);
+    logStartupError(
+      new Error(`process exited with code ${String(code)}`),
+      logger,
+    );
   }
 });

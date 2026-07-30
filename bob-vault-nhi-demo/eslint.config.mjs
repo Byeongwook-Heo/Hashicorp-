@@ -11,6 +11,31 @@ export default tseslint.config(
   ...tseslint.configs.stylisticTypeChecked,
   prettier,
   {
+    files: ["**/*.js", "**/*.mjs"],
+    extends: [tseslint.configs.disableTypeChecked],
+  },
+  {
+    files: ["apps/mcp-server/public/*.js"],
+    languageOptions: {
+      globals: {
+        document: "readonly",
+        fetch: "readonly",
+        window: "readonly",
+      },
+    },
+  },
+  {
+    files: ["bootstrap/**/*.mjs", "eslint.config.mjs"],
+    languageOptions: {
+      globals: {
+        console: "readonly",
+        process: "readonly",
+        URL: "readonly",
+        URLSearchParams: "readonly",
+      },
+    },
+  },
+  {
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -24,6 +49,17 @@ export default tseslint.config(
         "error",
         { checksVoidReturn: { arguments: false } },
       ],
+    },
+  },
+  {
+    files: ["**/test/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/unbound-method": "off",
     },
   },
 );

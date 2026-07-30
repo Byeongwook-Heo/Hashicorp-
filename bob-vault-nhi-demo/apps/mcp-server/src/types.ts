@@ -32,10 +32,10 @@ export interface OrderStatusResult extends OrderStatus {
 export interface FailedPaymentSummary {
   date: string;
   failed_count: number;
-  by_delivery_status: Array<{
+  by_delivery_status: {
     delivery_status: string;
     count: number;
-  }>;
+  }[];
 }
 
 export interface FailedPaymentSummaryResult extends FailedPaymentSummary {

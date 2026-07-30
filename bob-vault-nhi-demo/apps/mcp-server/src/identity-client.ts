@@ -7,7 +7,7 @@ import {
   ConfigurationError,
   ExternalServiceError,
 } from "./errors.js";
-import { KmsClientAssertionSigner } from "./kms-signer.js";
+import type { KmsClientAssertionSigner } from "./kms-signer.js";
 
 const tokenResponseSchema = z
   .object({
@@ -87,7 +87,7 @@ export class VerifyIdentityClient implements IdentityProvider {
     const responseText = await response.body.text();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw new AuthenticationError(
-        `IBM Verify rejected the client assertion (${response.statusCode})`,
+        `IBM Verify rejected the client assertion (${String(response.statusCode)})`,
       );
     }
 
@@ -133,9 +133,11 @@ export class VerifyIdentityClient implements IdentityProvider {
 }
 
 export class UnconfiguredIdentityClient implements IdentityProvider {
-  public async getVerifiedAccessToken(): Promise<string> {
-    throw new ConfigurationError(
-      "Identity flow is not configured yet; add the IBM Verify values and switch APP_MODE to aws",
+  public getVerifiedAccessToken(): Promise<string> {
+    return Promise.reject(
+      new ConfigurationError(
+        "Identity flow is not configured yet; add the IBM Verify values and switch APP_MODE to aws",
+      ),
     );
   }
 }

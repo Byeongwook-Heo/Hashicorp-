@@ -44,11 +44,10 @@ export class SecurityEventStore {
 
   #removeExpired(): void {
     const cutoff = Date.now() - retentionMilliseconds;
-    while (
-      this.#events.at(-1) &&
-      Date.parse(this.#events.at(-1)!.at) < cutoff
-    ) {
+    let oldest = this.#events.at(-1);
+    while (oldest && Date.parse(oldest.at) < cutoff) {
       this.#events.pop();
+      oldest = this.#events.at(-1);
     }
   }
 }

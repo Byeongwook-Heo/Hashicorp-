@@ -9,8 +9,8 @@ describe("SecurityEventStore", () => {
       events.record({
         stage: "policy",
         status: "denied",
-        action: `read_<secret>_${index}`,
-        requestId: `request-${index}`,
+        action: `read_<secret>_${String(index)}`,
+        requestId: `request-${String(index)}`,
       });
     }
 

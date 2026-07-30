@@ -210,8 +210,9 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     error,
     request,
     response,
-    _next,
+    next,
   ) => {
+    void next;
     const requestId = response.locals.requestId as string | undefined;
     const appError = error instanceof AppError ? error : undefined;
     logger.error(
@@ -447,7 +448,12 @@ function enforceFixedToolContract(
     get_failed_payment_summary: new Set(["date"]),
     get_sensitive_payment_data: new Set(["customer_id"]),
   };
-  if (typeof toolName !== "string" || !allowedFields[toolName]) {
+  if (typeof toolName !== "string") {
+    next(new AppError("Tool is not allowed", 400, "TOOL_NOT_ALLOWED"));
+    return;
+  }
+  const toolFields = allowedFields[toolName];
+  if (!toolFields) {
     next(new AppError("Tool is not allowed", 400, "TOOL_NOT_ALLOWED"));
     return;
   }
@@ -466,7 +472,7 @@ function enforceFixedToolContract(
     return;
   }
   const unknownField = Object.keys(argumentsValue).find(
-    (field) => !allowedFields[toolName]!.has(field),
+    (field) => !toolFields.has(field),
   );
   if (unknownField) {
     next(new AppError("Unknown tool input field", 400, "INVALID_TOOL_INPUT"));

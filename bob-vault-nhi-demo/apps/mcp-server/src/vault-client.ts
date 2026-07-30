@@ -203,7 +203,7 @@ export class VaultClient implements VaultCredentialBroker {
       }
       throw new ExternalServiceError(
         "Vault",
-        `request was rejected (${response.statusCode})`,
+        `request was rejected (${String(response.statusCode)})`,
       );
     }
     if (!responseBody) {
