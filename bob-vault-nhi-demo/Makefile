@@ -14,7 +14,8 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: tf-init tf-validate tf-plan tf-apply-base bootstrap-mcp-token
 .PHONY: build-image push-image deploy-mcp-bootstrap verify-preflight
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
-.PHONY: configure-verify copy-bob-token smoke demo-reset demo-status security-check destroy
+.PHONY: configure-verify copy-bob-token smoke demo-reset demo-status security-check
+.PHONY: event-access-plan event-access-apply event-access-connect destroy
 
 help:
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -82,6 +83,15 @@ vault-bootstrap: ## Configure namespace, audit, JWT auth, policy, and database s
 
 deploy-app: ## Deploy the full MCP task using the ECR image digest.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-app"
+
+event-access-plan: ## Plan time-bounded, audited SSM access for event operators.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-access-plan"
+
+event-access-apply: ## Apply time-bounded, audited SSM access without opening SSH.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-access-apply"
+
+event-access-connect: ## Assume the event operator role and open the approved SSM shell.
+	@./scripts/start-event-ssm-session.sh
 
 smoke: ## Run AWS endpoint and MCP allow/deny smoke tests.
 	@./scripts/smoke.sh

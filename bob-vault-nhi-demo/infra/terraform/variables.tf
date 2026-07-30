@@ -104,3 +104,30 @@ variable "rds_instance_class" {
   type        = string
   default     = "db.t4g.micro"
 }
+
+variable "event_operator_principal_arns" {
+  description = "Exact IAM role ARNs allowed to assume the time-bounded EC2 event operator role. Never use account root or wildcard principals."
+  type        = list(string)
+  default = [
+    "arn:aws:iam::063455554839:role/aws_byeongwook.heo_test-developer"
+  ]
+
+  validation {
+    condition = length(var.event_operator_principal_arns) > 0 && alltrue([
+      for arn in var.event_operator_principal_arns :
+      can(regex("^arn:[a-z0-9-]+:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", arn))
+    ])
+    error_message = "event_operator_principal_arns must contain exact IAM role ARNs; STS session ARNs, account root principals, and wildcards are not allowed."
+  }
+}
+
+variable "event_access_expires_at" {
+  description = "UTC time after which new event operator role assumptions and SSM sessions are denied."
+  type        = string
+  default     = "2026-09-02T00:00:00Z"
+
+  validation {
+    condition     = can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$", var.event_access_expires_at))
+    error_message = "event_access_expires_at must be an RFC 3339 UTC timestamp ending in Z."
+  }
+}

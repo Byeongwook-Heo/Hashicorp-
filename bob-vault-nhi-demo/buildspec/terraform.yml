@@ -30,6 +30,12 @@ phases:
           deploy-app)
             terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=aws"
             ;;
+          event-access-plan)
+            terraform plan -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=bootstrap"
+            ;;
+          event-access-apply)
+            terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=bootstrap"
+            ;;
           destroy)
             test "${CONFIRM_DESTROY:-}" = "${PROJECT_NAME}"
             terraform destroy -auto-approve -input=false -lock-timeout=5m -var="deploy_service=false"
