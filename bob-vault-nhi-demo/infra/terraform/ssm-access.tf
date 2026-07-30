@@ -41,7 +41,7 @@ data "aws_iam_policy_document" "event_operator_trust" {
   statement {
     sid     = "TrustedEventOperatorsOnly"
     effect  = "Allow"
-    actions = ["sts:AssumeRole"]
+    actions = ["sts:AssumeRole", "sts:SetSourceIdentity"]
 
     principals {
       type        = "AWS"
