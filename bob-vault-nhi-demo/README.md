@@ -41,4 +41,4 @@ make tf-plan
 make smoke
 ```
 
-See [the operations runbook](docs/OPERATIONS_RUNBOOK.md), [IBM Verify setup](docs/IBM_VERIFY_SETUP.md), [Bob setup](docs/BOB_SETUP.md), and [threat model](docs/THREAT_MODEL.md).
+See [the editable draw.io architecture](docs/bob-vault-nhi-demo-architecture.drawio), [the operations runbook](docs/OPERATIONS_RUNBOOK.md), [IBM Verify setup](docs/IBM_VERIFY_SETUP.md), [Bob setup](docs/BOB_SETUP.md), and [threat model](docs/THREAT_MODEL.md).

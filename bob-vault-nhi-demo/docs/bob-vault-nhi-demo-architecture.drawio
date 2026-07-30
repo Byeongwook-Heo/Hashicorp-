@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-07-30T09:10:00.000Z" agent="Codex" version="24.7.17" type="device" compressed="false">
+  <diagram id="bob-vault-nhi-demo" name="AWS Runtime and Delivery">
+    <mxGraphModel dx="1800" dy="1040" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1040" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="IBM Bob → IBM Verify → HashiCorp Vault → Amazon RDS" style="text;html=1;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#172B4D;" vertex="1" parent="1">
+          <mxGeometry x="30" y="20" width="1130" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="subtitle" value="AWS-only build · JWT-based NHI · private runtime · short-lived PostgreSQL credentials" style="text;html=1;align=right;verticalAlign=middle;fontSize=13;fontColor=#5E6C84;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="20" width="600" height="40" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="user-boundary" value="사용자 노트북 (로컬)" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#F5F5F5;strokeColor=#666666;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="30" y="90" width="260" height="420" as="geometry"/>
+        </mxCell>
+        <mxCell id="bob-ide" value="&lt;b&gt;IBM Bob IDE&lt;/b&gt;&lt;br&gt;MCP client&lt;br&gt;로컬에서 실행" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#5B9BD5;fontColor=#1F2937;fontSize=14;" vertex="1" parent="user-boundary">
+          <mxGeometry x="30" y="55" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="local-browser" value="&lt;b&gt;Demo Dashboard&lt;/b&gt;&lt;br&gt;브라우저 · 읽기 전용" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F0D9;strokeColor=#70AD47;fontColor=#1F2937;" vertex="1" parent="user-boundary">
+          <mxGeometry x="30" y="160" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="local-config" value="&lt;b&gt;Bob에 저장되는 값&lt;/b&gt;&lt;br&gt;① HTTPS MCP URL&lt;br&gt;② 전송용 Bearer token&lt;br&gt;&lt;i&gt;AWS/Vault/DB 비밀 없음&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1F2937;" vertex="1" parent="user-boundary">
+          <mxGeometry x="30" y="245" width="200" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="local-ip-note" value="ALB 허용: 현재 공인 IP /32" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontColor=#5E6C84;" vertex="1" parent="user-boundary">
+          <mxGeometry x="30" y="370" width="200" height="25" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="verify" value="&lt;b&gt;IBM Verify SaaS&lt;/b&gt;&lt;br&gt;&lt;br&gt;OAuth 2.0 token endpoint&lt;br&gt;KMS 서명 private_key_jwt 검증&lt;br&gt;bob-db-reader NHI access JWT 발급&lt;br&gt;&lt;br&gt;&lt;i&gt;현재 남은 외부 연동 지점&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DEEBF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="330" y="185" width="280" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="verify-note" value="Issuer · Audience · JWKS · NHI claim" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#5E6C84;" vertex="1" parent="1">
+          <mxGeometry x="340" y="385" width="260" height="25" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="aws-cloud" value="AWS Account · ap-northeast-2" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#FFF7E6;strokeColor=#FF9900;strokeWidth=2;fontStyle=1;fontColor=#232F3E;" vertex="1" parent="1">
+          <mxGeometry x="650" y="70" width="1110" height="590" as="geometry"/>
+        </mxCell>
+        <mxCell id="dns-tls" value="&lt;b&gt;Route 53 + ACM&lt;/b&gt;&lt;br&gt;bob-vault-demo.…&lt;br&gt;DNS · TLS certificate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1F2937;" vertex="1" parent="aws-cloud">
+          <mxGeometry x="40" y="55" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="aws-managed-note" value="Managed AWS services: KMS · Secrets Manager · SSM Parameter Store · CloudWatch" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#A5A5A5;dashed=1;fontColor=#44546A;" vertex="1" parent="aws-cloud">
+          <mxGeometry x="295" y="70" width="760" height="55" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="vpc" value="Existing VPC vpc-0faaeb5858901d385" style="swimlane;html=1;startSize=32;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#EAF4EA;strokeColor=#3A7D44;strokeWidth=2;fontStyle=1;fontColor=#24452A;" vertex="1" parent="aws-cloud">
+          <mxGeometry x="30" y="170" width="1040" height="380" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="public-subnets" value="Public Subnets · 2 AZ" style="swimlane;html=1;startSize=30;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#FFF9E6;strokeColor=#D6B656;fontStyle=1;fontColor=#594B16;" vertex="1" parent="vpc">
+          <mxGeometry x="20" y="45" width="220" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="alb" value="&lt;b&gt;Application Load Balancer&lt;/b&gt;&lt;br&gt;HTTPS :443&lt;br&gt;Source CIDR /32&lt;br&gt;Bearer token · rate limit&lt;br&gt;HTTP→HTTPS redirect" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8B2;strokeColor=#E5A000;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="public-subnets">
+          <mxGeometry x="20" y="75" width="180" height="125" as="geometry"/>
+        </mxCell>
+        <mxCell id="alb-note" value="Public ingress는 ALB만 허용" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#5E6C84;" vertex="1" parent="public-subnets">
+          <mxGeometry x="20" y="225" width="180" height="35" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="app-subnets" value="Private App Subnets · 2 AZ" style="swimlane;html=1;startSize=30;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#EAF2F8;strokeColor=#5B9BD5;fontStyle=1;fontColor=#25445E;" vertex="1" parent="vpc">
+          <mxGeometry x="260" y="45" width="310" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="ecs" value="&lt;b&gt;ECS Fargate · MCP Runtime&lt;/b&gt;&lt;br&gt;Node.js 22 · non-root · read-only FS&lt;br&gt;정확히 3개 MCP tool&lt;br&gt;fixed SQL · memory-only tokens&lt;br&gt;&lt;i&gt;현재 bootstrap mode&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="app-subnets">
+          <mxGeometry x="20" y="50" width="270" height="125" as="geometry"/>
+        </mxCell>
+        <mxCell id="kms-sign" value="&lt;b&gt;AWS KMS&lt;/b&gt;&lt;br&gt;RS256 Sign&lt;br&gt;private key 비노출" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EADCF8;strokeColor=#8E44AD;fontColor=#1F2937;" vertex="1" parent="app-subnets">
+          <mxGeometry x="20" y="200" width="125" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="runtime-secrets" value="&lt;b&gt;Secrets + Logs&lt;/b&gt;&lt;br&gt;전송 token&lt;br&gt;CloudWatch audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F2F2;strokeColor=#7F8C8D;fontColor=#1F2937;" vertex="1" parent="app-subnets">
+          <mxGeometry x="165" y="200" width="125" height="75" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="security-subnet" value="Private Security Subnet" style="swimlane;html=1;startSize=30;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#F1ECF5;strokeColor=#8064A2;fontStyle=1;fontColor=#49375D;" vertex="1" parent="vpc">
+          <mxGeometry x="590" y="45" width="210" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="vault" value="&lt;b&gt;Vault Enterprise 2.0.3&lt;/b&gt;&lt;br&gt;EC2 · hc-security-base-* AMI&lt;br&gt;TLS 1.3 · Raft · private IP&lt;br&gt;KMS auto-unseal&lt;br&gt;JWT auth role: bob-orders&lt;br&gt;DB role TTL 2m / max 5m&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#B85450&quot;&gt;PII policy: explicit deny&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#674EA7;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="security-subnet">
+          <mxGeometry x="15" y="55" width="180" height="195" as="geometry"/>
+        </mxCell>
+        <mxCell id="vault-admin" value="관리 경로: SSM Session Manager only" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#5E6C84;" vertex="1" parent="security-subnet">
+          <mxGeometry x="15" y="255" width="180" height="25" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="db-subnets" value="Private DB Subnets · 2 AZ" style="swimlane;html=1;startSize=30;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#EAF2F8;strokeColor=#5B9BD5;fontStyle=1;fontColor=#25445E;" vertex="1" parent="vpc">
+          <mxGeometry x="820" y="45" width="200" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="rds" value="&lt;b&gt;Amazon RDS PostgreSQL&lt;/b&gt;&lt;br&gt;16.14 · encrypted&lt;br&gt;public access: false&lt;br&gt;TLS required&lt;br&gt;synthetic shop_demo data&lt;br&gt;v_bob_order_status view" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="db-subnets">
+          <mxGeometry x="15" y="75" width="170" height="145" as="geometry"/>
+        </mxCell>
+        <mxCell id="db-credential-note" value="동적 사용자 자동 생성·폐기" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#5E6C84;" vertex="1" parent="db-subnets">
+          <mxGeometry x="15" y="235" width="170" height="35" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-bob-alb" value="① HTTPS MCP · Bearer token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="bob-ide" target="alb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-browser-alb" value="Dashboard" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#70AD47;strokeWidth=1;endArrow=block;endFill=1;fontColor=#3A7D44;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="local-browser" target="alb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-dns-alb" value="DNS + certificate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#A5A5A5;endArrow=open;endFill=0;fontColor=#5E6C84;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="dns-tls" target="alb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-alb-ecs" value="② /mcp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="alb" target="ecs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-ecs-kms" value="③ SHA-256 digest + Sign" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8E44AD;strokeWidth=2;endArrow=block;endFill=1;fontColor=#674EA7;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="kms-sign">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-ecs-verify" value="④ private_key_jwt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8E44AD;strokeWidth=2;endArrow=block;endFill=1;fontColor=#674EA7;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="verify">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="255"/>
+              <mxPoint x="620" y="255"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge-verify-ecs" value="⑤ NHI access JWT" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="verify" target="ecs">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="620" y="345"/>
+              <mxPoint x="840" y="345"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge-ecs-vault-auth" value="⑥ JWT login → short-lived Vault token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#674EA7;strokeWidth=2;endArrow=block;endFill=1;fontColor=#674EA7;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="vault">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-ecs-vault-creds" value="⑦ database/creds/bob-orders-readonly" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#3A7D44;strokeWidth=2;endArrow=block;endFill=1;fontColor=#3A7D44;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="vault">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1240" y="555"/>
+              <mxPoint x="1340" y="555"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge-vault-rds" value="⑧ 동적 DB 사용자 생성 · TTL 2분" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#3A7D44;strokeWidth=2;endArrow=block;endFill=1;fontColor=#3A7D44;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="vault" target="rds">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-ecs-rds" value="⑨ TLS + parameterized query → sanitized result" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="rds">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1220" y="625"/>
+              <mxPoint x="1600" y="625"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="deny-path" value="민감 결제 도구: Vault 403 deny · DB query 없음" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;strokeWidth=2;fontColor=#7F1D1D;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="615" width="360" height="36" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-vault-deny" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#B85450;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="vault" target="deny-path">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="delivery-plane" value="AWS-only Delivery / Build Plane" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#F7F9FA;strokeColor=#7F8C8D;strokeWidth=2;fontStyle=1;fontColor=#34495E;" vertex="1" parent="1">
+          <mxGeometry x="30" y="700" width="1730" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="source-git" value="&lt;b&gt;Local source + GitHub&lt;/b&gt;&lt;br&gt;codex/bob-vault-nhi-demo&lt;br&gt;PR #8&lt;br&gt;&lt;i&gt;Docker Desktop 미사용&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F2F2;strokeColor=#666666;fontColor=#1F2937;" vertex="1" parent="delivery-plane">
+          <mxGeometry x="30" y="65" width="230" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="artifact-s3" value="&lt;b&gt;Versioned S3&lt;/b&gt;&lt;br&gt;source archive&lt;br&gt;private · encrypted" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F0D9;strokeColor=#70AD47;fontColor=#1F2937;" vertex="1" parent="delivery-plane">
+          <mxGeometry x="305" y="65" width="185" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="codebuild" value="&lt;b&gt;AWS CodeBuild&lt;/b&gt;&lt;br&gt;CI · Image · Terraform · Bootstrap&lt;br&gt;format · lint · tests · audit&lt;br&gt;Terraform 1.15.8" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="delivery-plane">
+          <mxGeometry x="535" y="55" width="260" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="ecr" value="&lt;b&gt;Amazon ECR&lt;/b&gt;&lt;br&gt;immutable image&lt;br&gt;scan on push&lt;br&gt;digest-pinned deploy" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1F2937;" vertex="1" parent="delivery-plane">
+          <mxGeometry x="845" y="65" width="185" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="tfstate" value="&lt;b&gt;Terraform State S3&lt;/b&gt;&lt;br&gt;versioned · encrypted&lt;br&gt;native lock&lt;br&gt;no local state" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#674EA7;fontColor=#1F2937;" vertex="1" parent="delivery-plane">
+          <mxGeometry x="1080" y="65" width="200" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="provisioned-runtime" value="&lt;b&gt;Provision / Deploy&lt;/b&gt;&lt;br&gt;ALB · ECS · Vault · RDS&lt;br&gt;KMS · IAM · Security Groups&lt;br&gt;Route 53 · ACM · Logs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7E6;strokeColor=#FF9900;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="delivery-plane">
+          <mxGeometry x="1330" y="55" width="330" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="delivery-security-note" value="로컬 Downloads의 임시 AWS 자격 증명과 Vault 라이선스는 배포 입력으로만 사용하며 Git/ECR 이미지에 포함하지 않음" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontColor=#5E6C84;" vertex="1" parent="delivery-plane">
+          <mxGeometry x="160" y="215" width="1410" height="35" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-source-s3" value="source zip" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7F8C8D;strokeWidth=2;endArrow=block;endFill=1;fontColor=#5E6C84;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="source-git" target="artifact-s3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-s3-codebuild" value="versioned input" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#7F8C8D;strokeWidth=2;endArrow=block;endFill=1;fontColor=#5E6C84;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="artifact-s3" target="codebuild">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-codebuild-ecr" value="build + push" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="codebuild" target="ecr">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-codebuild-tfstate" value="plan / apply" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#674EA7;strokeWidth=2;endArrow=block;endFill=1;fontColor=#674EA7;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="codebuild" target="tfstate">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-codebuild-runtime" value="IaC + bootstrap" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#FF9900;strokeWidth=2;endArrow=block;endFill=1;fontColor=#B36B00;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="codebuild" target="provisioned-runtime">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-ecr-runtime" value="image digest" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#3A7D44;strokeWidth=2;endArrow=block;endFill=1;fontColor=#3A7D44;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecr" target="provisioned-runtime">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-runtime-cloud" value="deployed resources" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#FF9900;strokeWidth=2;endArrow=block;endFill=1;fontColor=#B36B00;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="provisioned-runtime" target="aws-cloud">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
