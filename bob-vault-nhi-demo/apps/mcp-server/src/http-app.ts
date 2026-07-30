@@ -182,6 +182,7 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
       const server = createMcpServer(dependencies, requestId);
       const statelessOptions = {
         sessionIdGenerator: undefined,
+        enableJsonResponse: true,
       } as unknown as ConstructorParameters<
         typeof StreamableHTTPServerTransport
       >[0];
