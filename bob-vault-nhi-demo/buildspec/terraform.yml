@@ -31,10 +31,23 @@ phases:
             terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=aws"
             ;;
           event-access-plan)
-            terraform plan -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=bootstrap"
+            terraform plan \
+              -input=false \
+              -lock-timeout=5m \
+              -var="deploy_service=true" \
+              -var="app_mode=bootstrap" \
+              -target=aws_iam_role_policy.event_operator \
+              -target=aws_iam_role_policy.vault_ssm_session_logging
             ;;
           event-access-apply)
-            terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=bootstrap"
+            terraform apply \
+              -auto-approve \
+              -input=false \
+              -lock-timeout=5m \
+              -var="deploy_service=true" \
+              -var="app_mode=bootstrap" \
+              -target=aws_iam_role_policy.event_operator \
+              -target=aws_iam_role_policy.vault_ssm_session_logging
             ;;
           destroy)
             test "${CONFIRM_DESTROY:-}" = "${PROJECT_NAME}"
