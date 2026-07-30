@@ -22,7 +22,15 @@ Local source → S3 source artifact → CodeBuild → ECR → ECS Fargate
 Local Bob → HTTPS ALB → MCP Runtime → IBM Verify → Vault → RDS PostgreSQL
 ```
 
-Start with:
+Deployed bootstrap endpoint:
+
+```text
+https://bob-vault-demo.byeongwook-heo.sbx.hashidemos.io
+```
+
+The AWS build plane, base infrastructure, Vault initialization, synthetic database, immutable ECR image, and bootstrap ECS endpoint are deployed. IBM Verify tenant values are the remaining external input before the full identity path can be enabled.
+
+Start or verify with:
 
 ```bash
 make aws-preflight
@@ -30,6 +38,7 @@ make bootstrap-aws
 make upload-source
 make ci
 make tf-plan
+make smoke
 ```
 
-The full ordered deployment and manual Verify/Bob steps are documented under `docs/`.
+See [the operations runbook](docs/OPERATIONS_RUNBOOK.md), [IBM Verify setup](docs/IBM_VERIFY_SETUP.md), [Bob setup](docs/BOB_SETUP.md), and [threat model](docs/THREAT_MODEL.md).

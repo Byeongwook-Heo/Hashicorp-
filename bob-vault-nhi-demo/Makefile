@@ -14,7 +14,7 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: tf-init tf-validate tf-plan tf-apply-base bootstrap-mcp-token
 .PHONY: build-image push-image deploy-mcp-bootstrap verify-preflight
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
-.PHONY: configure-verify smoke demo-reset demo-status security-check destroy
+.PHONY: configure-verify copy-bob-token smoke demo-reset demo-status security-check destroy
 
 help:
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -64,6 +64,9 @@ verify-preflight: ## Validate the real Verify client assertion and issued JWT wi
 
 configure-verify: ## Store IBM Verify public integration values from VERIFY_* environment variables.
 	@./scripts/configure-verify.sh
+
+copy-bob-token: ## Copy the MCP transport token to the macOS clipboard without printing it.
+	@./scripts/copy-bob-token.sh
 
 vault-port-forward: ## Open a local SSM port forward to the private Vault listener.
 	@./scripts/ssm-vault-port-forward.sh

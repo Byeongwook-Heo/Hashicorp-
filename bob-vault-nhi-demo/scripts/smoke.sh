@@ -20,6 +20,7 @@ http_status="$(curl --silent --show-error \
   --output "${response_file}" \
   --write-out '%{http_code}' \
   --header "authorization: Bearer ${transport_token}" \
+  --header "accept: application/json, text/event-stream" \
   --header "content-type: application/json" \
   --data '{"jsonrpc":"2.0","id":"smoke-1","method":"tools/list","params":{}}' \
   "${base_url}/mcp")"
