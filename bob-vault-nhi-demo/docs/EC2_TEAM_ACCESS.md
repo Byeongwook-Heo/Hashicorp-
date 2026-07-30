@@ -5,6 +5,7 @@ The Vault EC2 instance remains private: it has no public IP, no inbound SSH rule
 ## Controls
 
 - The role can start a session only on the running `bob-vault-nhi-demo-vault` instance.
+- Each approved federated source role receives only `sts:AssumeRole` and `sts:SetSourceIdentity` permission to this one event operator role.
 - Only the custom `bob-vault-nhi-demo-event-operator-shell` document is allowed.
 - SSH and port-forward Session Manager documents are not granted.
 - Standard shell input and output stream to the KMS-encrypted `/aws/ssm/bob-vault-nhi-demo/event-operator` CloudWatch log group.

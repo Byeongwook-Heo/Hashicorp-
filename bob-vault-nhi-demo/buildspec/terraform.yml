@@ -37,6 +37,7 @@ phases:
               -var="deploy_service=true" \
               -var="app_mode=bootstrap" \
               -target=aws_iam_role_policy.event_operator \
+              -target=aws_iam_role_policy.event_operator_assume \
               -target=aws_iam_role_policy.vault_ssm_session_logging
             ;;
           event-access-apply)
@@ -47,6 +48,7 @@ phases:
               -var="deploy_service=true" \
               -var="app_mode=bootstrap" \
               -target=aws_iam_role_policy.event_operator \
+              -target=aws_iam_role_policy.event_operator_assume \
               -target=aws_iam_role_policy.vault_ssm_session_logging
             ;;
           destroy)
