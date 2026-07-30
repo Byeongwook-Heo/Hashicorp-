@@ -1,58 +1,67 @@
-# Event team access to the Vault EC2 instance
+# CGC certificate access to the Vault EC2 instance
 
-The Vault EC2 instance remains private: it has no public IP, no inbound SSH rule, and no shared SSH private key. Event operators use their own federated AWS identity to assume a time-bounded role and start an audited Systems Manager shell session.
+CGC connects with a dedicated RSA 3072 `.pem` key through a hardened public bastion. The Vault EC2 instance remains private and accepts SSH only from the bastion security group.
 
 ## Controls
 
-- The role can start a session only on the running `bob-vault-nhi-demo-vault` instance.
-- Each approved federated source role receives only `sts:AssumeRole` and `sts:SetSourceIdentity` permission to this one event operator role.
-- Only the custom `bob-vault-nhi-demo-event-operator-shell` document is allowed.
-- SSH and port-forward Session Manager documents are not granted.
-- Standard shell input and output stream to the KMS-encrypted `/aws/ssm/bob-vault-nhi-demo/event-operator` CloudWatch log group.
-- Sessions close after 20 idle minutes or 120 total minutes.
-- New role assumptions and sessions are denied after `2026-09-02T00:00:00Z`.
-- The OS session uses the SSM-managed `ssm-user`. Treat access as privileged and do not print Vault recovery material, tokens, database credentials, or environment secrets.
+- The bastion uses the approved `hc-security-base-*` AMI, an encrypted root volume, IMDSv2, and an individual SSM instance role.
+- Public SSH is restricted to the explicitly approved source CIDRs in `/bob-vault-nhi-demo/allowed-source-cidrs`.
+- Password, keyboard-interactive, and root login are disabled.
+- CGC cannot obtain a shell on the bastion; the key can only forward to `vault.bob-vault-nhi-demo.internal:22`.
+- The same key creates the `cgc` shell on Vault. Agent, X11, tunnel, and port forwarding are disabled on the Vault host.
+- The key expires at `2026-09-02T00:00:00Z`. A systemd timer also clears the key, locks the user, and terminates existing CGC sessions.
+- CGC has passwordless sudo on the event Vault host. Treat this as privileged lab access.
+- The owner retains Systems Manager as a separate break-glass path.
 
-## Add a person
+## Private key handling
 
-Each participant must send only the output of:
-
-```bash
-aws sts get-caller-identity --query Arn --output text
-```
-
-An STS result such as:
+The generated private key is:
 
 ```text
-arn:aws:sts::063455554839:assumed-role/aws_example_test-developer/person@example.com
+CGC-bob-vault-event.pem
 ```
 
-must be normalized to the stable IAM role ARN before it is added to `event_operator_principal_arns`:
+It must be transferred to CGC through an approved encrypted channel. Never send it in ordinary email or chat, upload it to GitHub, add it to an issue, or place it in the project directory.
 
-```text
-arn:aws:iam::063455554839:role/aws_example_test-developer
-```
-
-Do not exchange AWS credential files, access keys, session tokens, Vault tokens, or SSH private keys.
-
-## Connect
-
-Participants authenticate to AWS with their own approved credentials, set a recognizable session name, and run:
+On CGC's laptop:
 
 ```bash
-EVENT_OPERATOR_NAME=alice make event-access-connect
+chmod 400 ~/Downloads/CGC-bob-vault-event.pem
 ```
 
-The same access can be initiated with the AWS CLI directly after assuming the `bob-vault-nhi-demo-event-operator` role. The custom session document is mandatory.
+## SSH configuration
 
-## Operator deployment
+Add this to CGC's `~/.ssh/config`:
 
-After exact participant role ARNs are reviewed and added:
+```sshconfig
+Host bob-vault-bastion
+  HostName bob-vault-bastion.byeongwook-heo.sbx.hashidemos.io
+  User cgc
+  IdentityFile ~/Downloads/CGC-bob-vault-event.pem
+  IdentitiesOnly yes
+
+Host bob-vault
+  HostName vault.bob-vault-nhi-demo.internal
+  User cgc
+  IdentityFile ~/Downloads/CGC-bob-vault-event.pem
+  IdentitiesOnly yes
+  ProxyJump bob-vault-bastion
+```
+
+After confirming both published host-key fingerprints with the owner:
+
+```bash
+ssh bob-vault
+```
+
+## Source IP
+
+If CGC is not on an already approved network, add only CGC's current public IPv4 address as `/32`, then reapply the certificate access plan. Never open SSH to `0.0.0.0/0`.
+
+## Deployment
 
 ```bash
 make upload-source
-make event-access-plan
-make event-access-apply
+make event-ssh-plan
+make event-ssh-apply
 ```
-
-Remove participant ARNs immediately when they no longer need access. The absolute expiry is defense in depth, not a substitute for prompt removal.

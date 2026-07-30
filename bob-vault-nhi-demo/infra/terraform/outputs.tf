@@ -44,3 +44,21 @@ output "event_operator_access_expires_at" {
 output "event_operator_session_log_group" {
   value = aws_cloudwatch_log_group.ssm_sessions.name
 }
+
+output "event_bastion_hostname" {
+  description = "Public certificate-only SSH jump host."
+  value       = aws_route53_record.bastion.fqdn
+}
+
+output "event_bastion_public_ip" {
+  value = aws_eip.bastion.public_ip
+}
+
+output "event_ssh_vault_target" {
+  description = "Private Vault hostname resolved by the bastion."
+  value       = "vault.${var.project_name}.internal"
+}
+
+output "event_ssh_access_expires_at" {
+  value = var.event_ssh_expiry_calendar
+}

@@ -74,28 +74,6 @@ resource "aws_iam_role" "event_operator" {
   }
 }
 
-resource "aws_iam_role_policy" "event_operator_assume" {
-  for_each = toset(var.event_operator_principal_arns)
-
-  name = "${var.project_name}-assume-event-operator"
-  role = element(reverse(split("/", each.value)), 0)
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid      = "AssumeEventOperatorWithFederatedIdentity"
-      Effect   = "Allow"
-      Action   = ["sts:AssumeRole", "sts:SetSourceIdentity"]
-      Resource = aws_iam_role.event_operator.arn
-      Condition = {
-        DateLessThan = {
-          "aws:CurrentTime" = var.event_access_expires_at
-        }
-      }
-    }]
-  })
-}
-
 resource "aws_iam_role_policy" "event_operator" {
   name = "vault-ec2-ssm-session-only"
   role = aws_iam_role.event_operator.id

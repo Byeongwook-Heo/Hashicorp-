@@ -131,3 +131,46 @@ variable "event_access_expires_at" {
     error_message = "event_access_expires_at must be an RFC 3339 UTC timestamp ending in Z."
   }
 }
+
+variable "event_ssh_users" {
+  description = "Per-person public SSH keys allowed through the event bastion. Private .pem files must never be committed or uploaded."
+  type = map(object({
+    public_key = string
+  }))
+  default = {
+    cgc = {
+      public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC4PH7BKTKDVnLtlfrs0zq/j4SezGWishYOYV66wRXDuLZ3IZNpMa4Br60/EZUKU64IHMNBMkDxInWV0gTsS4ANaTPDDlWMl7b/9XbnWP2ZXZ685OTJhGkSqogRrMQAeK5Z8wTUHWkrIGtLvnLVm7HANPnzDpTPZ+dt1z4dF1OJ51gEaR7lQGL9qwS74/Va5KDjonZreUwWNUjqpZUnYH/hvpJo0tt4tMp5X0GEiNAdmFCTrlXf3H28LFppX61QtcCcCKQZaHz5Mbj/axou95ZQKkS+d1VJnWQ+EymLpB6ouV75d4lTfyZbvTqoZUczzNjbyJjxu1VtOd+Xb2tMiMa4+JBj2M7AbIZDevIx4xVLxajwgWmqM5fbkVs95FuJHIUGr7zwgQqf5xVph8/QN1QV+70goh8eY5oghVWdFHWK1WygiGqvcbuhf0wrpjcl16NIhgK0b8GMBmmHwN+fQwJHiBX/MYR3IM+LmwEe84ng1cDTKJfOb4r7Oa26liSJcY0= CGC bob-vault event access expires 2026-09-02"
+    }
+  }
+
+  validation {
+    condition = length(var.event_ssh_users) > 0 && alltrue([
+      for username, config in var.event_ssh_users :
+      can(regex("^[a-z][a-z0-9_-]{1,30}$", username)) &&
+      can(regex("^ssh-(rsa|ed25519) [A-Za-z0-9+/=]+( [A-Za-z0-9 .@_-]+)?$", trimspace(config.public_key)))
+    ])
+    error_message = "event_ssh_users must use safe Linux usernames and valid RSA or Ed25519 public keys with safe comments."
+  }
+}
+
+variable "event_ssh_expires_at" {
+  description = "OpenSSH authorized_keys expiry in UTC for event access."
+  type        = string
+  default     = "20260902000000Z"
+
+  validation {
+    condition     = can(regex("^[0-9]{14}Z$", var.event_ssh_expires_at))
+    error_message = "event_ssh_expires_at must use OpenSSH UTC format YYYYMMDDHHMMSSZ."
+  }
+}
+
+variable "event_ssh_expiry_calendar" {
+  description = "Systemd UTC calendar expression that terminates existing event SSH sessions."
+  type        = string
+  default     = "2026-09-02 00:00:00 UTC"
+
+  validation {
+    condition     = can(regex("^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} UTC$", var.event_ssh_expiry_calendar))
+    error_message = "event_ssh_expiry_calendar must use YYYY-MM-DD HH:MM:SS UTC."
+  }
+}

@@ -16,6 +16,7 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
 .PHONY: configure-verify copy-bob-token smoke demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
+.PHONY: event-ssh-plan event-ssh-apply
 
 help:
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -92,6 +93,12 @@ event-access-apply: ## Apply time-bounded, audited SSM access without opening SS
 
 event-access-connect: ## Assume the event operator role and open the approved SSM shell.
 	@./scripts/start-event-ssm-session.sh
+
+event-ssh-plan: ## Plan the certificate-only CGC bastion path.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-ssh-plan"
+
+event-ssh-apply: ## Deploy the certificate-only CGC bastion path.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-ssh-apply"
 
 smoke: ## Run AWS endpoint and MCP allow/deny smoke tests.
 	@./scripts/smoke.sh
