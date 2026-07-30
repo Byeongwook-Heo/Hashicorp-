@@ -13,7 +13,7 @@ usermod --password "$${event_password_hash}" "$${event_user}"
 unset event_password_hash
 install -d -m 0700 -o "$${event_user}" -g "$${event_user}" "/home/$${event_user}/.ssh"
 public_key="$(printf '%s' '${base64encode(config.public_key)}' | base64 --decode)"
-printf 'no-agent-forwarding,no-X11-forwarding,no-pty,permitopen="%s:22",expiry-time="%s" %s\n' \
+printf 'command="/bin/false",no-agent-forwarding,no-X11-forwarding,no-pty,permitopen="%s:22",expiry-time="%s" %s\n' \
   "$${vault_host}" "$${key_expiry}" "$${public_key}" \
   > "/home/$${event_user}/.ssh/authorized_keys"
 chown "$${event_user}:$${event_user}" "/home/$${event_user}/.ssh/authorized_keys"

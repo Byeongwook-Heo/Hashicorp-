@@ -54,6 +54,15 @@ After confirming both published host-key fingerprints with the owner:
 ssh bob-vault
 ```
 
+The deployed ED25519 host-key fingerprints are:
+
+```text
+bob-vault-bastion  SHA256:EGudpFGiyruZ6xSnMjW++wRiKqmcKly48mECRFS9PMw
+bob-vault           SHA256:bth/yiwukJPXkV3W5HZmSpQUgXWocMWkgpTvzWvDXtQ
+```
+
+Opening `ssh bob-vault-bastion` directly is intentionally denied. The bastion key permits only the SSH forwarding channel to `bob-vault`.
+
 ## Source IP
 
 If CGC is not on an already approved network, add only CGC's current public IPv4 address as `/32`, then reapply the certificate access plan. Never open SSH to `0.0.0.0/0`.
