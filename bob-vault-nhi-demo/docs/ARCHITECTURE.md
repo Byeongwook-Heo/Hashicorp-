@@ -33,7 +33,8 @@ This lab uses JWT because IBM Verify issues the NHI token and Vault JWT auth can
 
 - Existing VPC, subnets, routes, NAT gateways, and hosted zone are data sources only.
 - ALB: existing public subnets.
+- Event bastion: one approved `hc-security-base-*` EC2 instance in the public subnet; SSH is limited to approved `/32` sources and can forward only to the Vault host.
 - ECS and Vault: existing NAT-routed application subnets.
 - RDS: existing isolated database subnets.
-- Management: AWS Systems Manager; no SSH ingress.
+- Management: AWS Systems Manager remains the owner break-glass path. CGC has a dedicated, expiring `.pem` key through the restricted event bastion.
 - Vault: single-node Raft for the event lab. This is not an HA production topology.

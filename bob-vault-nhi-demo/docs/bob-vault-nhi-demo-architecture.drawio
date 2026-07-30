@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="app.diagrams.net" modified="2026-07-30T09:10:00.000Z" agent="Codex" version="24.7.17" type="device" compressed="false">
+<mxfile host="app.diagrams.net" modified="2026-07-30T10:05:00.000Z" agent="Codex" version="24.7.17" type="device" compressed="false">
   <diagram id="bob-vault-nhi-demo" name="AWS Runtime and Delivery">
     <mxGraphModel dx="1800" dy="1040" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1800" pageHeight="1040" math="0" shadow="0">
       <root>
@@ -13,8 +13,8 @@
           <mxGeometry x="1160" y="20" width="600" height="40" as="geometry"/>
         </mxCell>
 
-        <mxCell id="user-boundary" value="사용자 노트북 (로컬)" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#F5F5F5;strokeColor=#666666;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
-          <mxGeometry x="30" y="90" width="260" height="420" as="geometry"/>
+        <mxCell id="user-boundary" value="로컬 사용자 노트북" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#F5F5F5;strokeColor=#666666;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="30" y="90" width="260" height="570" as="geometry"/>
         </mxCell>
         <mxCell id="bob-ide" value="&lt;b&gt;IBM Bob IDE&lt;/b&gt;&lt;br&gt;MCP client&lt;br&gt;로컬에서 실행" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#5B9BD5;fontColor=#1F2937;fontSize=14;" vertex="1" parent="user-boundary">
           <mxGeometry x="30" y="55" width="200" height="80" as="geometry"/>
@@ -25,8 +25,11 @@
         <mxCell id="local-config" value="&lt;b&gt;Bob에 저장되는 값&lt;/b&gt;&lt;br&gt;① HTTPS MCP URL&lt;br&gt;② 전송용 Bearer token&lt;br&gt;&lt;i&gt;AWS/Vault/DB 비밀 없음&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1F2937;" vertex="1" parent="user-boundary">
           <mxGeometry x="30" y="245" width="200" height="105" as="geometry"/>
         </mxCell>
-        <mxCell id="local-ip-note" value="ALB 허용: 현재 공인 IP /32" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontColor=#5E6C84;" vertex="1" parent="user-boundary">
-          <mxGeometry x="30" y="370" width="200" height="25" as="geometry"/>
+        <mxCell id="cgc-operator" value="&lt;b&gt;CGC 작업자&lt;/b&gt;&lt;br&gt;전용 RSA 3072 .pem&lt;br&gt;2026-09-02 자동 만료" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8B2;strokeColor=#E5A000;fontColor=#1F2937;" vertex="1" parent="user-boundary">
+          <mxGeometry x="30" y="380" width="200" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="local-ip-note" value="ALB/SSH 허용: 승인된 공인 IP /32" style="text;html=1;align=center;verticalAlign=middle;fontSize=12;fontColor=#5E6C84;" vertex="1" parent="user-boundary">
+          <mxGeometry x="30" y="480" width="200" height="25" as="geometry"/>
         </mxCell>
 
         <mxCell id="verify" value="&lt;b&gt;IBM Verify SaaS&lt;/b&gt;&lt;br&gt;&lt;br&gt;OAuth 2.0 token endpoint&lt;br&gt;KMS 서명 private_key_jwt 검증&lt;br&gt;bob-db-reader NHI access JWT 발급&lt;br&gt;&lt;br&gt;&lt;i&gt;현재 남은 외부 연동 지점&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DEEBF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1">
@@ -56,8 +59,11 @@
         <mxCell id="alb" value="&lt;b&gt;Application Load Balancer&lt;/b&gt;&lt;br&gt;HTTPS :443&lt;br&gt;Source CIDR /32&lt;br&gt;Bearer token · rate limit&lt;br&gt;HTTP→HTTPS redirect" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8B2;strokeColor=#E5A000;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="public-subnets">
           <mxGeometry x="20" y="75" width="180" height="125" as="geometry"/>
         </mxCell>
-        <mxCell id="alb-note" value="Public ingress는 ALB만 허용" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#5E6C84;" vertex="1" parent="public-subnets">
-          <mxGeometry x="20" y="225" width="180" height="35" as="geometry"/>
+        <mxCell id="bastion" value="&lt;b&gt;Event SSH Bastion&lt;/b&gt;&lt;br&gt;hc-security-base-* · :22&lt;br&gt;Vault 전달만 허용" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8B2;strokeColor=#E5A000;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="public-subnets">
+          <mxGeometry x="20" y="210" width="180" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="alb-note" value="공개 진입점은 각각 승인된 /32만 허용" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#5E6C84;" vertex="1" parent="public-subnets">
+          <mxGeometry x="20" y="278" width="180" height="20" as="geometry"/>
         </mxCell>
 
         <mxCell id="app-subnets" value="Private App Subnets · 2 AZ" style="swimlane;html=1;startSize=30;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#EAF2F8;strokeColor=#5B9BD5;fontStyle=1;fontColor=#25445E;" vertex="1" parent="vpc">
@@ -79,7 +85,7 @@
         <mxCell id="vault" value="&lt;b&gt;Vault Enterprise 2.0.3&lt;/b&gt;&lt;br&gt;EC2 · hc-security-base-* AMI&lt;br&gt;TLS 1.3 · Raft · private IP&lt;br&gt;KMS auto-unseal&lt;br&gt;JWT auth role: bob-orders&lt;br&gt;DB role TTL 2m / max 5m&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#B85450&quot;&gt;PII policy: explicit deny&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#674EA7;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="security-subnet">
           <mxGeometry x="15" y="55" width="180" height="195" as="geometry"/>
         </mxCell>
-        <mxCell id="vault-admin" value="관리 경로: SSM Session Manager only" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#5E6C84;" vertex="1" parent="security-subnet">
+        <mxCell id="vault-admin" value="관리: SSM break-glass · CGC bastion SSH" style="text;html=1;align=center;verticalAlign=middle;fontSize=10;fontColor=#5E6C84;" vertex="1" parent="security-subnet">
           <mxGeometry x="15" y="255" width="180" height="25" as="geometry"/>
         </mxCell>
 
@@ -97,6 +103,12 @@
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
         <mxCell id="edge-browser-alb" value="Dashboard" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#70AD47;strokeWidth=1;endArrow=block;endFill=1;fontColor=#3A7D44;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="local-browser" target="alb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-cgc-bastion" value="SSH .pem · source /32" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#E5A000;strokeWidth=2;endArrow=block;endFill=1;fontColor=#8A6100;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="cgc-operator" target="bastion">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge-bastion-vault" value="제한된 SSH 전달 :22" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#E5A000;strokeWidth=2;endArrow=block;endFill=1;fontColor=#8A6100;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="bastion" target="vault">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
         <mxCell id="edge-dns-alb" value="DNS + certificate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#A5A5A5;endArrow=open;endFill=0;fontColor=#5E6C84;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="dns-tls" target="alb">
