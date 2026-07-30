@@ -309,6 +309,9 @@ Resources:
                   - ec2:DescribeVpcs
                   - ec2:CreateNetworkInterfacePermission
                   - kms:Decrypt
+                  - kms:DescribeKey
+                  - kms:Encrypt
+                  - kms:GenerateDataKey*
                   - kms:GetPublicKey
                   - kms:Sign
                   - secretsmanager:GetSecretValue
