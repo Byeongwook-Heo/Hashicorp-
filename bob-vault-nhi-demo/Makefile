@@ -1,0 +1,94 @@
+SHELL := /bin/bash
+AWS_REGION ?= ap-northeast-2
+AWS_ACCOUNT_ID ?= 063455554839
+PROJECT ?= bob-vault-nhi-demo
+ARTIFACT_BUCKET ?= $(PROJECT)-artifacts-$(AWS_ACCOUNT_ID)-$(AWS_REGION)
+SOURCE_KEY ?= source/$(PROJECT).zip
+SOURCE_ARCHIVE ?= /tmp/$(PROJECT)-source.zip
+VPC_ID ?= vpc-0faaeb5858901d385
+APP_SUBNET_IDS ?= subnet-026ffcc7ad4b697c6,subnet-06c50448784244f83
+TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
+
+.PHONY: help install format lint typecheck test test-unit test-integration
+.PHONY: local-up local-down local-smoke aws-preflight bootstrap-aws upload-source ci
+.PHONY: tf-init tf-validate tf-plan tf-apply-base bootstrap-mcp-token
+.PHONY: build-image push-image deploy-mcp-bootstrap verify-preflight
+.PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
+.PHONY: configure-verify smoke demo-reset demo-status security-check destroy
+
+help:
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+install: ## No-op: dependencies are installed in CodeBuild.
+	@echo "Local installation is intentionally disabled; run 'make ci'."
+
+format lint typecheck test test-unit test-integration tf-init tf-validate security-check: ## Run validation in AWS CodeBuild.
+	@./scripts/start-codebuild.sh "$(PROJECT)-ci" "CI_TARGET=$@"
+
+local-up local-down local-smoke: ## Run the local-mode suite inside AWS CodeBuild.
+	@./scripts/start-codebuild.sh "$(PROJECT)-ci" "CI_TARGET=$@"
+
+aws-preflight: ## Validate AWS identity, network, AMI, license parameter, and required tools.
+	@./scripts/aws-preflight.sh
+
+bootstrap-aws: ## Create AWS-only build, artifact, and ECR bootstrap resources.
+	@./scripts/aws-preflight.sh
+	@PROJECT_NAME="$(PROJECT)" AWS_ACCOUNT_ID="$(AWS_ACCOUNT_ID)" AWS_REGION="$(AWS_REGION)" ARTIFACT_BUCKET="$(ARTIFACT_BUCKET)" VPC_ID="$(VPC_ID)" APP_SUBNET_IDS="$(APP_SUBNET_IDS)" TF_STATE_BUCKET="$(TF_STATE_BUCKET)" ./scripts/deploy-build-stack.sh
+	@./scripts/upload-license.sh
+	@./scripts/configure-source-cidr.sh
+	@./bootstrap/aws/bootstrap-mcp-token.sh
+
+upload-source: ## Upload a source-only archive to the versioned S3 artifact bucket.
+	@./scripts/upload-source.sh "$(ARTIFACT_BUCKET)" "$(SOURCE_KEY)" "$(SOURCE_ARCHIVE)"
+
+ci: ## Run all validation in AWS CodeBuild.
+	@./scripts/start-codebuild.sh "$(PROJECT)-ci" "CI_TARGET=ci"
+
+tf-plan: ## Run Terraform plan in AWS CodeBuild.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=plan"
+
+tf-apply-base: ## Apply base infrastructure without the MCP ECS service.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=apply-base"
+
+bootstrap-mcp-token: ## Generate and store the transport token without printing it.
+	@./bootstrap/aws/bootstrap-mcp-token.sh
+
+build-image push-image: ## Build in CodeBuild and push an immutable image to ECR.
+	@./scripts/start-codebuild.sh "$(PROJECT)-image" "IMAGE_ACTION=build-and-push"
+
+deploy-mcp-bootstrap: ## Deploy MCP health/JWKS/dashboard before Verify configuration.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-bootstrap"
+
+verify-preflight: ## Validate the real Verify client assertion and issued JWT without printing tokens.
+	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-preflight"
+
+configure-verify: ## Store IBM Verify public integration values from VERIFY_* environment variables.
+	@./scripts/configure-verify.sh
+
+vault-port-forward: ## Open a local SSM port forward to the private Vault listener.
+	@./scripts/ssm-vault-port-forward.sh
+
+vault-init: ## Initialize Vault in the private VPC and securely store recovery material.
+	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=vault-init"
+
+db-bootstrap: ## Build the synthetic RDS schema and least-privilege database roles.
+	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=db-bootstrap"
+
+vault-bootstrap: ## Configure namespace, audit, JWT auth, policy, and database secrets engine.
+	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=vault-bootstrap"
+
+deploy-app: ## Deploy the full MCP task using the ECR image digest.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-app"
+
+smoke: ## Run AWS endpoint and MCP allow/deny smoke tests.
+	@./scripts/smoke.sh
+
+demo-reset: ## Reset only sanitized in-memory demo events.
+	@./scripts/demo-reset.sh
+
+demo-status: ## Display endpoint health and sanitized deployment state.
+	@./scripts/demo-status.sh
+
+destroy: ## Destruction is disabled unless CONFIRM_DESTROY=bob-vault-nhi-demo.
+	@test "$(CONFIRM_DESTROY)" = "$(PROJECT)" || { echo "Set CONFIRM_DESTROY=$(PROJECT)"; exit 2; }
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=destroy,CONFIRM_DESTROY=$(PROJECT)"

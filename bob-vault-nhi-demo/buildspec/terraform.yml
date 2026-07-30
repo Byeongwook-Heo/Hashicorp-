@@ -1,0 +1,41 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  install:
+    commands:
+      - ./scripts/install-terraform.sh
+  pre_build:
+    commands:
+      - set -euo pipefail
+      - cd infra/terraform
+      - terraform init -input=false -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="key=${TF_STATE_KEY}" -backend-config="region=${AWS_REGION}" -backend-config="use_lockfile=true"
+      - terraform validate
+  build:
+    commands:
+      - |
+        set -euo pipefail
+        case "${TF_ACTION:-plan}" in
+          plan)
+            terraform plan -input=false -lock-timeout=5m -var="deploy_service=false"
+            ;;
+          apply-base)
+            terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=false"
+            ;;
+          deploy-bootstrap)
+            terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=bootstrap"
+            ;;
+          deploy-app)
+            terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=aws"
+            ;;
+          destroy)
+            test "${CONFIRM_DESTROY:-}" = "${PROJECT_NAME}"
+            terraform destroy -auto-approve -input=false -lock-timeout=5m -var="deploy_service=false"
+            ;;
+          *)
+            echo "Unsupported TF_ACTION: ${TF_ACTION}" >&2
+            exit 2
+            ;;
+        esac
