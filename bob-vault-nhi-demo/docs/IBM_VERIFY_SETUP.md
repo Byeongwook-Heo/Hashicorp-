@@ -9,9 +9,9 @@ IBM Verify tenant administration is the only external configuration still requir
 - exact issuer claim
 - access-token audience
 - API client ID
-- optional scope, default `openid`
-- NHI claim name, recommended `sub`
-- NHI value, recommended `bob-db-reader`
+- custom scope `vault.db.read`
+- NHI claim name, expected `client_id` for an API-client token
+- NHI claim value, the generated API client ID
 
 Do not create or download a client secret. Configure client authentication as `private_key_jwt` with RS256.
 
@@ -33,6 +33,8 @@ make verify-jwks-apply
 ```
 
 In Verify, set the client authentication method to `Private key JWT` and enter the deployed URL in `JWKS URI`.
+
+Use `bob-db-reader` as the API client name. Leave `Additional properties` empty: IBM documents those values as API-client metadata, not access-token claims. After creation, use the generated client ID as the technical NHI binding (`client_id`) while retaining `bob-db-reader` as the human-readable identity name.
 
 Required client assertion validation:
 
@@ -59,9 +61,9 @@ export VERIFY_JWKS_URL='https://…'
 export VERIFY_ISSUER='https://…'
 export VERIFY_AUDIENCE='…'
 export VERIFY_CLIENT_ID='…'
-export VERIFY_SCOPE='openid'
-export VERIFY_NHI_CLAIM='sub'
-export VERIFY_NHI_VALUE='bob-db-reader'
+export VERIFY_SCOPE='vault.db.read'
+export VERIFY_NHI_CLAIM='client_id'
+export VERIFY_NHI_VALUE="${VERIFY_CLIENT_ID}"
 make configure-verify
 ```
 
