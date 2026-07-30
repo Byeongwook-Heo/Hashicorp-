@@ -16,7 +16,10 @@ phases:
       - docker push "${ECR_REPOSITORY_URI}:${IMAGE_TAG}"
   post_build:
     commands:
-      - IMAGE_DIGEST="$(aws ecr describe-images --repository-name "${PROJECT_NAME}" --image-ids imageTag="${IMAGE_TAG}" --query 'imageDetails[0].imageDigest' --output text)"
-      - test -n "${IMAGE_DIGEST}" -a "${IMAGE_DIGEST}" != "None"
-      - aws ssm put-parameter --name "/${PROJECT_NAME}/image-uri" --type String --overwrite --value "${ECR_REPOSITORY_URI}@${IMAGE_DIGEST}" >/dev/null
-      - echo "Published immutable image digest to SSM."
+      - |
+        if [[ "${CODEBUILD_BUILD_SUCCEEDING}" = "1" ]]; then
+          IMAGE_DIGEST="$(aws ecr describe-images --repository-name "${PROJECT_NAME}" --image-ids imageTag="${IMAGE_TAG}" --query 'imageDetails[0].imageDigest' --output text)"
+          test -n "${IMAGE_DIGEST}" -a "${IMAGE_DIGEST}" != "None"
+          aws ssm put-parameter --name "/${PROJECT_NAME}/image-uri" --type String --overwrite --value "${ECR_REPOSITORY_URI}@${IMAGE_DIGEST}" >/dev/null
+          echo "Published immutable image digest to SSM."
+        fi

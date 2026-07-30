@@ -12,7 +12,7 @@ RUN apt-get update \
 COPY package.json package-lock.json ./
 COPY apps/mcp-server/package.json apps/mcp-server/package.json
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --workspace=@bob-vault-nhi-demo/mcp-server
+    npm ci --ignore-scripts
 
 FROM dependencies AS build
 COPY eslint.config.mjs ./
