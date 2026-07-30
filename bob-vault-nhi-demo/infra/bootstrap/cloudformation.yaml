@@ -267,7 +267,9 @@ Resources:
                   - ec2:*
                   - ecs:*
                   - elasticloadbalancing:*
-                  - ecr:DescribeRepositories
+                  - ecr:Describe*
+                  - ecr:GetLifecyclePolicy
+                  - ecr:GetRepositoryPolicy
                   - ecr:ListTagsForResource
                   - iam:*
                   - kms:*
