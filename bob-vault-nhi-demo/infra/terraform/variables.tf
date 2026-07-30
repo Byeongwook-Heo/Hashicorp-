@@ -93,6 +93,31 @@ variable "service_version" {
   default     = "0.1.0"
 }
 
+variable "verify_jwks_source_cidrs" {
+  description = "Official IBM Verify Europe egress CIDRs allowed to retrieve only the public client JWKS."
+  type        = list(string)
+  default = [
+    "159.122.122.57/32",
+    "159.122.122.60/32",
+    "169.50.174.103/32",
+    "169.50.174.14/32",
+    "35.180.161.22/32",
+    "15.188.92.17/32",
+    "13.36.19.201/32",
+    "52.29.222.95/32",
+    "3.66.207.203/32",
+    "18.184.196.56/32",
+  ]
+
+  validation {
+    condition = length(var.verify_jwks_source_cidrs) > 0 && alltrue([
+      for cidr in var.verify_jwks_source_cidrs :
+      can(cidrnetmask(cidr)) && endswith(cidr, "/32")
+    ])
+    error_message = "verify_jwks_source_cidrs must contain explicit IPv4 /32 addresses."
+  }
+}
+
 variable "rds_engine_version" {
   description = "PostgreSQL version available in ap-northeast-2."
   type        = string

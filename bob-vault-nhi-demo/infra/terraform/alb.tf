@@ -72,6 +72,53 @@ resource "aws_lb_listener" "https" {
   }
 }
 
+resource "aws_lb_listener_rule" "verify_jwks" {
+  for_each = local.verify_jwks_source_ips
+
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 10 + each.value
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+
+  condition {
+    source_ip {
+      values = [each.key]
+    }
+  }
+
+  condition {
+    path_pattern {
+      values = ["/.well-known/jwks.json"]
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "deny_verify_other_paths" {
+  for_each = local.verify_jwks_source_ips
+
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 30 + each.value
+
+  action {
+    type = "fixed-response"
+
+    fixed_response {
+      content_type = "application/json"
+      message_body = "{\"error\":\"forbidden\"}"
+      status_code  = "403"
+    }
+  }
+
+  condition {
+    source_ip {
+      values = [each.key]
+    }
+  }
+}
+
 resource "aws_route53_record" "app" {
   zone_id = var.hosted_zone_id
   name    = local.fqdn

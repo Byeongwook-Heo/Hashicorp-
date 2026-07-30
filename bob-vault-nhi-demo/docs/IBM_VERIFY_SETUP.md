@@ -23,7 +23,16 @@ The deployed public JWK is available at:
 https://bob-vault-demo.byeongwook-heo.sbx.hashidemos.io/.well-known/jwks.json
 ```
 
-The ALB is source-CIDR restricted. Download the JWK from the approved operator network and upload/register it as the client's static public JWK in Verify. If the tenant only supports remote JWKS retrieval, add only the documented Verify egress CIDR to the source allowlist; do not open the ALB to `0.0.0.0/0`.
+The tenant is `https://ceiam.verify.ibm.com` in the IBM Verify Europe region. The ALB permits the documented Europe egress IPs on HTTPS, but listener rules forward only the exact public JWKS path. Requests from those addresses to `/mcp`, `/demo`, `/healthz`, or any other path receive HTTP 403. The ALB is never opened to `0.0.0.0/0`.
+
+Apply or refresh this narrow exception with:
+
+```bash
+make verify-jwks-plan
+make verify-jwks-apply
+```
+
+In Verify, set the client authentication method to `Private key JWT` and enter the deployed URL in `JWKS URI`.
 
 Required client assertion validation:
 

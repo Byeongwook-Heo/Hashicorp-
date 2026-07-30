@@ -86,6 +86,27 @@ phases:
               -target=aws_ssm_association.vault_event_ssh \
               -target=aws_vpc_security_group_ingress_rule.vault_ssh_from_bastion
             ;;
+          verify-jwks-plan)
+            terraform plan \
+              -input=false \
+              -lock-timeout=5m \
+              -var="deploy_service=true" \
+              -var="app_mode=bootstrap" \
+              -target=aws_vpc_security_group_ingress_rule.alb_verify_jwks_https \
+              -target=aws_lb_listener_rule.verify_jwks \
+              -target=aws_lb_listener_rule.deny_verify_other_paths
+            ;;
+          verify-jwks-apply)
+            terraform apply \
+              -auto-approve \
+              -input=false \
+              -lock-timeout=5m \
+              -var="deploy_service=true" \
+              -var="app_mode=bootstrap" \
+              -target=aws_vpc_security_group_ingress_rule.alb_verify_jwks_https \
+              -target=aws_lb_listener_rule.verify_jwks \
+              -target=aws_lb_listener_rule.deny_verify_other_paths
+            ;;
           destroy)
             test "${CONFIRM_DESTROY:-}" = "${PROJECT_NAME}"
             terraform destroy -auto-approve -input=false -lock-timeout=5m -var="deploy_service=false"

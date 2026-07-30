@@ -69,9 +69,10 @@ data "aws_secretsmanager_secret" "transport_token" {
 }
 
 locals {
-  fqdn                 = "${var.hostname}.${var.public_zone_name}"
-  allowed_source_cidrs = split(",", nonsensitive(data.aws_ssm_parameter.allowed_source_cidrs.value))
-  full_identity_mode   = var.deploy_service && var.app_mode == "aws"
+  fqdn                   = "${var.hostname}.${var.public_zone_name}"
+  allowed_source_cidrs   = split(",", nonsensitive(data.aws_ssm_parameter.allowed_source_cidrs.value))
+  verify_jwks_source_ips = { for index, cidr in var.verify_jwks_source_cidrs : cidr => index }
+  full_identity_mode     = var.deploy_service && var.app_mode == "aws"
 }
 
 data "aws_ssm_parameter" "verify_token_url" {

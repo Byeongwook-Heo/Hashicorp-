@@ -19,6 +19,17 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https" {
   cidr_ipv4         = each.value
 }
 
+resource "aws_vpc_security_group_ingress_rule" "alb_verify_jwks_https" {
+  for_each = local.verify_jwks_source_ips
+
+  security_group_id = aws_security_group.alb.id
+  description       = "IBM Verify Europe public JWKS retrieval"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+  cidr_ipv4         = each.key
+}
+
 resource "aws_security_group" "ecs" {
   name        = "${var.project_name}-ecs"
   description = "Private MCP tasks"

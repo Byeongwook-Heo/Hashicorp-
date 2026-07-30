@@ -17,6 +17,7 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: configure-verify copy-bob-token smoke demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
 .PHONY: event-ssh-plan event-ssh-apply
+.PHONY: verify-jwks-plan verify-jwks-apply
 
 help:
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "%-28s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -99,6 +100,12 @@ event-ssh-plan: ## Plan the certificate-only CGC bastion path.
 
 event-ssh-apply: ## Deploy the certificate-only CGC bastion path.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-ssh-apply"
+
+verify-jwks-plan: ## Plan path-restricted JWKS access from official IBM Verify Europe egress IPs.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=verify-jwks-plan"
+
+verify-jwks-apply: ## Allow IBM Verify Europe to retrieve only the public JWKS.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=verify-jwks-apply"
 
 smoke: ## Run AWS endpoint and MCP allow/deny smoke tests.
 	@./scripts/smoke.sh
