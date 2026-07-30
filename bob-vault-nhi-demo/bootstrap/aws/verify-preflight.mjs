@@ -30,7 +30,8 @@ const assertion = await signer.sign();
 const body = new URLSearchParams({
   grant_type: "client_credentials",
   client_id: process.env.VERIFY_CLIENT_ID,
-  client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+  client_assertion_type:
+    "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
   client_assertion: assertion,
   ...(process.env.VERIFY_SCOPE ? { scope: process.env.VERIFY_SCOPE } : {}),
 });
@@ -47,7 +48,9 @@ const response = await request(process.env.VERIFY_TOKEN_URL, {
 });
 const responseText = await response.body.text();
 if (response.statusCode < 200 || response.statusCode >= 300) {
-  throw new Error(`IBM Verify rejected the client assertion (${response.statusCode})`);
+  throw new Error(
+    `IBM Verify rejected the client assertion (${response.statusCode})`,
+  );
 }
 const tokenResponse = JSON.parse(responseText);
 if (typeof tokenResponse.access_token !== "string") {
@@ -62,7 +65,10 @@ const verification = await jwtVerify(tokenResponse.access_token, jwks, {
   audience: process.env.VERIFY_AUDIENCE,
   algorithms: ["RS256"],
 });
-if (verification.payload[process.env.VERIFY_NHI_CLAIM] !== process.env.VERIFY_NHI_VALUE) {
+if (
+  verification.payload[process.env.VERIFY_NHI_CLAIM] !==
+  process.env.VERIFY_NHI_VALUE
+) {
   throw new Error("IBM Verify token did not contain the expected NHI binding");
 }
 

@@ -9,7 +9,9 @@ import type { VaultCredentialBroker } from "../src/vault-client.js";
 
 function buildService() {
   const identity: IdentityProvider = {
-    getVerifiedAccessToken: vi.fn().mockResolvedValue("header.payload.signature"),
+    getVerifiedAccessToken: vi
+      .fn()
+      .mockResolvedValue("header.payload.signature"),
   };
   const vault: VaultCredentialBroker = {
     withDatabaseCredentials: vi.fn(async (_jwt, operation) =>
@@ -52,7 +54,10 @@ describe("ToolService", () => {
   it("uses the verified JWT only inside the Vault broker", async () => {
     const fixture = buildService();
 
-    const result = await fixture.service.getOrderStatus("request-123", "ORD-1001");
+    const result = await fixture.service.getOrderStatus(
+      "request-123",
+      "ORD-1001",
+    );
 
     expect(result.payment_status).toBe("PAID");
     expect(result.access.credential_ttl_seconds).toBe(120);

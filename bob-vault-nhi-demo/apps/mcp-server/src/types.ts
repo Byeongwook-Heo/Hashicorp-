@@ -1,4 +1,5 @@
-export type EventStage = "transport" | "identity" | "vault" | "database" | "policy";
+export type EventStage =
+  "transport" | "identity" | "vault" | "database" | "policy";
 export type EventStatus = "allowed" | "denied" | "error" | "ok";
 
 export interface SecurityEvent {

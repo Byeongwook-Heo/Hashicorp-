@@ -31,7 +31,10 @@ export interface VaultCredentialBroker {
     verifiedJwt: string,
     operation: (credentials: DynamicDatabaseCredentials) => Promise<T>,
   ): Promise<T>;
-  attemptDeniedDatabaseCredentials(verifiedJwt: string, path: string): Promise<never>;
+  attemptDeniedDatabaseCredentials(
+    verifiedJwt: string,
+    path: string,
+  ): Promise<never>;
   close(): Promise<void>;
 }
 
@@ -60,7 +63,10 @@ export class VaultClient implements VaultCredentialBroker {
       return await operation(credentials);
     } finally {
       if (credentials) {
-        await this.#bestEffortRevokeLease(session.clientToken, credentials.leaseId);
+        await this.#bestEffortRevokeLease(
+          session.clientToken,
+          credentials.leaseId,
+        );
       }
       await this.#bestEffortRevokeToken(session);
     }
@@ -79,7 +85,10 @@ export class VaultClient implements VaultCredentialBroker {
       const unexpected = credentialsResponseSchema.parse(
         await this.#requestJson("GET", `/v1/${path}`, session.clientToken),
       );
-      await this.#bestEffortRevokeLease(session.clientToken, unexpected.lease_id);
+      await this.#bestEffortRevokeLease(
+        session.clientToken,
+        unexpected.lease_id,
+      );
       throw new ExternalServiceError(
         "Vault",
         "the sensitive database role was unexpectedly authorized",
@@ -105,7 +114,9 @@ export class VaultClient implements VaultCredentialBroker {
     };
   }
 
-  async #readDatabaseCredentials(clientToken: string): Promise<DynamicDatabaseCredentials> {
+  async #readDatabaseCredentials(
+    clientToken: string,
+  ): Promise<DynamicDatabaseCredentials> {
     const response = credentialsResponseSchema.parse(
       await this.#requestJson(
         "GET",
@@ -121,7 +132,10 @@ export class VaultClient implements VaultCredentialBroker {
     };
   }
 
-  async #bestEffortRevokeLease(clientToken: string, leaseId: string): Promise<void> {
+  async #bestEffortRevokeLease(
+    clientToken: string,
+    leaseId: string,
+  ): Promise<void> {
     try {
       await this.#requestJson(
         "POST",
@@ -136,7 +150,12 @@ export class VaultClient implements VaultCredentialBroker {
 
   async #bestEffortRevokeToken(session: VaultSession): Promise<void> {
     try {
-      await this.#requestJson("POST", "/v1/auth/token/revoke-self", session.clientToken, "{}");
+      await this.#requestJson(
+        "POST",
+        "/v1/auth/token/revoke-self",
+        session.clientToken,
+        "{}",
+      );
     } catch {
       // The Vault role enforces a short, non-renewable token TTL.
     }
@@ -153,7 +172,9 @@ export class VaultClient implements VaultCredentialBroker {
       accept: "application/json",
       ...(body ? { "content-type": "application/json" } : {}),
       ...(clientToken ? { "x-vault-token": clientToken } : {}),
-      ...(this.#config.namespace ? { "x-vault-namespace": this.#config.namespace } : {}),
+      ...(this.#config.namespace
+        ? { "x-vault-namespace": this.#config.namespace }
+        : {}),
     };
 
     let response;
@@ -168,15 +189,22 @@ export class VaultClient implements VaultCredentialBroker {
         maxRedirections: 0,
       });
     } catch (error) {
-      throw new ExternalServiceError("Vault", "request failed", { cause: error });
+      throw new ExternalServiceError("Vault", "request failed", {
+        cause: error,
+      });
     }
 
     const responseBody = await response.body.text();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       if (response.statusCode === 403) {
-        throw new AuthorizationError("Vault policy denied the requested database role");
+        throw new AuthorizationError(
+          "Vault policy denied the requested database role",
+        );
       }
-      throw new ExternalServiceError("Vault", `request was rejected (${response.statusCode})`);
+      throw new ExternalServiceError(
+        "Vault",
+        `request was rejected (${response.statusCode})`,
+      );
     }
     if (!responseBody) {
       return {};
@@ -185,7 +213,9 @@ export class VaultClient implements VaultCredentialBroker {
     try {
       return JSON.parse(responseBody);
     } catch (error) {
-      throw new ExternalServiceError("Vault", "response was not valid JSON", { cause: error });
+      throw new ExternalServiceError("Vault", "response was not valid JSON", {
+        cause: error,
+      });
     }
   }
 

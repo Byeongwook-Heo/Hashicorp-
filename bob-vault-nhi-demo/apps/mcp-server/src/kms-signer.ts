@@ -21,14 +21,19 @@ export class KmsClientAssertionSigner {
   readonly #config: KmsSignerConfig;
   #descriptor?: Promise<{ kid: string; jwk: JsonWebKey }>;
 
-  public constructor(config: KmsSignerConfig, client = new KMSClient({ region: config.region })) {
+  public constructor(
+    config: KmsSignerConfig,
+    client = new KMSClient({ region: config.region }),
+  ) {
     this.#config = config;
     this.#client = client;
   }
 
   public async sign(): Promise<string> {
     if (!this.#config.clientId || !this.#config.audience) {
-      throw new ConfigurationError("IBM Verify client ID and token audience are not configured");
+      throw new ConfigurationError(
+        "IBM Verify client ID and token audience are not configured",
+      );
     }
     const { kid } = await this.#getDescriptor();
     const now = Math.floor(Date.now() / 1000);
@@ -53,13 +58,18 @@ export class KmsClientAssertionSigner {
       }),
     );
     if (!response.Signature) {
-      throw new ExternalServiceError("AWS KMS", "signing response did not contain a signature");
+      throw new ExternalServiceError(
+        "AWS KMS",
+        "signing response did not contain a signature",
+      );
     }
 
     return `${signingInput}.${Buffer.from(response.Signature).toString("base64url")}`;
   }
 
-  public async publicJwk(): Promise<JsonWebKey & { kid: string; alg: string; use: string }> {
+  public async publicJwk(): Promise<
+    JsonWebKey & { kid: string; alg: string; use: string }
+  > {
     const { kid, jwk } = await this.#getDescriptor();
     return { ...jwk, kid, alg: "RS256", use: "sig" };
   }
@@ -70,14 +80,26 @@ export class KmsClientAssertionSigner {
   }
 
   async #loadDescriptor(): Promise<{ kid: string; jwk: JsonWebKey }> {
-    const response = await this.#client.send(new GetPublicKeyCommand({ KeyId: this.#config.keyId }));
+    const response = await this.#client.send(
+      new GetPublicKeyCommand({ KeyId: this.#config.keyId }),
+    );
     if (!response.PublicKey) {
-      throw new ExternalServiceError("AWS KMS", "public key response was empty");
+      throw new ExternalServiceError(
+        "AWS KMS",
+        "public key response was empty",
+      );
     }
 
     const publicKey = Buffer.from(response.PublicKey);
-    const kid = createHash("sha256").update(publicKey).digest("base64url").slice(0, 32);
-    const jwk = createPublicKey({ key: publicKey, format: "der", type: "spki" }).export({
+    const kid = createHash("sha256")
+      .update(publicKey)
+      .digest("base64url")
+      .slice(0, 32);
+    const jwk = createPublicKey({
+      key: publicKey,
+      format: "der",
+      type: "spki",
+    }).export({
       format: "jwk",
     });
     return { kid, jwk };

@@ -177,6 +177,19 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Ref BasePolicy
+      Policies:
+        - PolicyName: test-reports
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codebuild:CreateReportGroup
+                  - codebuild:CreateReport
+                  - codebuild:UpdateReport
+                  - codebuild:BatchPutTestCases
+                  - codebuild:BatchPutCodeCoverages
+                Resource: !Sub "arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${ProjectName}-ci-*"
 
   ImageRole:
     Type: AWS::IAM::Role

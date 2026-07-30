@@ -12,7 +12,9 @@
   --red: #ff8b91;
   --amber: #e9ca73;
   --mono: "SFMono-Regular", "Roboto Mono", "Cascadia Code", monospace;
-  --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --sans:
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
 }
 
 * {

@@ -7,9 +7,13 @@ const optionalNonEmpty = z.string().min(1).optional();
 
 const environmentSchema = z
   .object({
-    NODE_ENV: z.enum(["development", "test", "production"]).default("production"),
+    NODE_ENV: z
+      .enum(["development", "test", "production"])
+      .default("production"),
     PORT: z.coerce.number().int().min(1024).max(65535).default(8080),
-    LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+    LOG_LEVEL: z
+      .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
+      .default("info"),
     APP_MODE: z.enum(["bootstrap", "aws"]).default("bootstrap"),
     SERVICE_VERSION: z.string().min(1).max(80).default("dev"),
     AWS_REGION: z.string().min(1).default("ap-northeast-2"),
@@ -27,21 +31,39 @@ const environmentSchema = z
     VERIFY_NHI_VALUE: optionalNonEmpty,
     VAULT_ADDR: optionalUrl,
     VAULT_NAMESPACE: optionalNonEmpty,
-    VAULT_JWT_AUTH_PATH: z.string().regex(/^[A-Za-z0-9_-]+$/).default("jwt"),
+    VAULT_JWT_AUTH_PATH: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .default("jwt"),
     VAULT_JWT_ROLE: optionalNonEmpty,
     VAULT_DB_CREDS_PATH: z
       .string()
       .regex(/^database\/creds\/[A-Za-z0-9_-]+$/)
       .default("database/creds/bob-orders-readonly"),
     VAULT_CA_PEM: optionalNonEmpty,
-    VAULT_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30_000).default(8_000),
+    VAULT_REQUEST_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(30_000)
+      .default(8_000),
     DB_HOST: optionalNonEmpty,
     DB_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
     DB_NAME: z.string().min(1).default("shop_demo"),
     DB_CA_PEM: optionalNonEmpty,
     DB_CA_FILE: z.string().min(1).default("/app/certs/rds-ca.pem"),
-    DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
-    DB_QUERY_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
+    DB_CONNECT_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(500)
+      .max(30_000)
+      .default(5_000),
+    DB_QUERY_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(500)
+      .max(30_000)
+      .default(5_000),
   })
   .superRefine((value, context) => {
     if (value.APP_MODE !== "aws") {
@@ -125,13 +147,19 @@ function normalizePem(value: string | undefined): string | undefined {
   return value?.replaceAll("\\n", "\n");
 }
 
-export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppConfig {
+export function loadConfig(
+  environment: NodeJS.ProcessEnv = process.env,
+): AppConfig {
   const parsed = environmentSchema.safeParse(environment);
   if (!parsed.success) {
     const reasons = parsed.error.issues
-      .map((issue) => `${issue.path.join(".") || "environment"}: ${issue.message}`)
+      .map(
+        (issue) => `${issue.path.join(".") || "environment"}: ${issue.message}`,
+      )
       .join("; ");
-    throw new ConfigurationError(`Invalid environment configuration: ${reasons}`);
+    throw new ConfigurationError(
+      `Invalid environment configuration: ${reasons}`,
+    );
   }
 
   const value = parsed.data;
@@ -161,12 +189,16 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): AppCon
       ...(value.VERIFY_NHI_VALUE ? { nhiValue: value.VERIFY_NHI_VALUE } : {}),
     },
     vault: {
-      ...(value.VAULT_ADDR ? { address: value.VAULT_ADDR.replace(/\/$/, "") } : {}),
+      ...(value.VAULT_ADDR
+        ? { address: value.VAULT_ADDR.replace(/\/$/, "") }
+        : {}),
       ...(value.VAULT_NAMESPACE ? { namespace: value.VAULT_NAMESPACE } : {}),
       jwtAuthPath: value.VAULT_JWT_AUTH_PATH,
       ...(value.VAULT_JWT_ROLE ? { jwtRole: value.VAULT_JWT_ROLE } : {}),
       databaseCredentialsPath: value.VAULT_DB_CREDS_PATH,
-      ...(value.VAULT_CA_PEM ? { caPem: normalizePem(value.VAULT_CA_PEM) } : {}),
+      ...(value.VAULT_CA_PEM
+        ? { caPem: normalizePem(value.VAULT_CA_PEM) }
+        : {}),
       requestTimeoutMs: value.VAULT_REQUEST_TIMEOUT_MS,
     },
     database: {

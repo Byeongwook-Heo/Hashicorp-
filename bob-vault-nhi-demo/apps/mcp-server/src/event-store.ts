@@ -24,7 +24,9 @@ export class SecurityEventStore {
       status: input.status,
       action: input.action.replace(safeActionPattern, "").slice(0, 96),
       requestId: input.requestId.slice(0, 64),
-      ...(input.latencyMs === undefined ? {} : { latencyMs: Math.max(0, Math.round(input.latencyMs)) }),
+      ...(input.latencyMs === undefined
+        ? {}
+        : { latencyMs: Math.max(0, Math.round(input.latencyMs)) }),
     };
     this.#events.unshift(event);
     this.#events.splice(maximumEvents);
@@ -42,7 +44,10 @@ export class SecurityEventStore {
 
   #removeExpired(): void {
     const cutoff = Date.now() - retentionMilliseconds;
-    while (this.#events.at(-1) && Date.parse(this.#events.at(-1)!.at) < cutoff) {
+    while (
+      this.#events.at(-1) &&
+      Date.parse(this.#events.at(-1)!.at) < cutoff
+    ) {
       this.#events.pop();
     }
   }

@@ -62,10 +62,15 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
   ): Promise<FailedPaymentSummary> {
     return this.#withClient(credentials, async (client) => {
       const result = await client.query(failedPaymentSummaryQuery, [date]);
-      const byDeliveryStatus = result.rows.map((row) => summaryRowSchema.parse(row));
+      const byDeliveryStatus = result.rows.map((row) =>
+        summaryRowSchema.parse(row),
+      );
       return {
         date,
-        failed_count: byDeliveryStatus.reduce((total, row) => total + row.count, 0),
+        failed_count: byDeliveryStatus.reduce(
+          (total, row) => total + row.count,
+          0,
+        ),
         by_delivery_status: byDeliveryStatus,
       };
     });
@@ -76,10 +81,14 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
     operation: (client: Client) => Promise<T>,
   ): Promise<T> {
     if (!this.#config.host) {
-      throw new ExternalServiceError("PostgreSQL", "database endpoint is not configured");
+      throw new ExternalServiceError(
+        "PostgreSQL",
+        "database endpoint is not configured",
+      );
     }
     const certificateAuthority =
-      this.#config.caPem ?? readFileSync(this.#config.caFile, { encoding: "utf8" });
+      this.#config.caPem ??
+      readFileSync(this.#config.caFile, { encoding: "utf8" });
 
     const client = new Client({
       host: this.#config.host,
@@ -104,7 +113,11 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
       if (error instanceof NotFoundError) {
         throw error;
       }
-      throw new ExternalServiceError("PostgreSQL", "database operation failed", { cause: error });
+      throw new ExternalServiceError(
+        "PostgreSQL",
+        "database operation failed",
+        { cause: error },
+      );
     } finally {
       await client.end().catch(() => undefined);
     }
@@ -117,6 +130,9 @@ function mapOrder(input: unknown): OrderStatus {
     order_id: row.order_id,
     payment_status: row.payment_status,
     delivery_status: row.delivery_status,
-    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    updated_at:
+      row.updated_at instanceof Date
+        ? row.updated_at.toISOString()
+        : row.updated_at,
   };
 }

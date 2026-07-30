@@ -2,7 +2,11 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { request } from "undici";
 import { z } from "zod";
 
-import { AuthenticationError, ConfigurationError, ExternalServiceError } from "./errors.js";
+import {
+  AuthenticationError,
+  ConfigurationError,
+  ExternalServiceError,
+} from "./errors.js";
 import { KmsClientAssertionSigner } from "./kms-signer.js";
 
 const tokenResponseSchema = z
@@ -33,7 +37,10 @@ export class VerifyIdentityClient implements IdentityProvider {
   readonly #signer: KmsClientAssertionSigner;
   readonly #jwks: ReturnType<typeof createRemoteJWKSet>;
 
-  public constructor(config: IdentityClientConfig, signer: KmsClientAssertionSigner) {
+  public constructor(
+    config: IdentityClientConfig,
+    signer: KmsClientAssertionSigner,
+  ) {
     this.#config = config;
     this.#signer = signer;
     this.#jwks = createRemoteJWKSet(new URL(config.jwksUrl), {
@@ -48,7 +55,8 @@ export class VerifyIdentityClient implements IdentityProvider {
     const body = new URLSearchParams({
       grant_type: "client_credentials",
       client_id: this.#config.clientId,
-      client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion_type:
+        "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
       client_assertion: assertion,
       ...(this.#config.scope ? { scope: this.#config.scope } : {}),
     });
@@ -67,38 +75,57 @@ export class VerifyIdentityClient implements IdentityProvider {
         maxRedirections: 0,
       });
     } catch (error) {
-      throw new ExternalServiceError("IBM Verify", "token endpoint was unavailable", {
-        cause: error,
-      });
+      throw new ExternalServiceError(
+        "IBM Verify",
+        "token endpoint was unavailable",
+        {
+          cause: error,
+        },
+      );
     }
 
     const responseText = await response.body.text();
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw new AuthenticationError(`IBM Verify rejected the client assertion (${response.statusCode})`);
+      throw new AuthenticationError(
+        `IBM Verify rejected the client assertion (${response.statusCode})`,
+      );
     }
 
     let tokenResponse: z.infer<typeof tokenResponseSchema>;
     try {
       tokenResponse = tokenResponseSchema.parse(JSON.parse(responseText));
     } catch (error) {
-      throw new ExternalServiceError("IBM Verify", "token response was invalid", { cause: error });
+      throw new ExternalServiceError(
+        "IBM Verify",
+        "token response was invalid",
+        { cause: error },
+      );
     }
 
     try {
-      const verification = await jwtVerify(tokenResponse.access_token, this.#jwks, {
-        issuer: this.#config.issuer,
-        audience: this.#config.audience,
-        algorithms: ["RS256"],
-      });
+      const verification = await jwtVerify(
+        tokenResponse.access_token,
+        this.#jwks,
+        {
+          issuer: this.#config.issuer,
+          audience: this.#config.audience,
+          algorithms: ["RS256"],
+        },
+      );
       const actualNhi = verification.payload[this.#config.nhiClaim];
       if (actualNhi !== this.#config.nhiValue) {
-        throw new AuthenticationError("IBM Verify token did not contain the required NHI binding");
+        throw new AuthenticationError(
+          "IBM Verify token did not contain the required NHI binding",
+        );
       }
     } catch (error) {
       if (error instanceof AuthenticationError) {
         throw error;
       }
-      throw new AuthenticationError("IBM Verify access token validation failed", { cause: error });
+      throw new AuthenticationError(
+        "IBM Verify access token validation failed",
+        { cause: error },
+      );
     }
 
     return tokenResponse.access_token;

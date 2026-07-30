@@ -36,7 +36,9 @@ async function loadStatus() {
 function renderEvents(events) {
   eventList.replaceChildren();
   if (!Array.isArray(events) || events.length === 0) {
-    eventList.append(makeElement("li", "empty", "Waiting for a security decision…"));
+    eventList.append(
+      makeElement("li", "empty", "Waiting for a security decision…"),
+    );
     return;
   }
 
@@ -48,9 +50,19 @@ function renderEvents(events) {
       new Date(event.at).toLocaleTimeString([], { hour12: false }),
     );
     timestamp.dateTime = String(event.at);
-    const stage = makeElement("span", "event-stage", String(event.stage).toUpperCase());
-    const safeStatus = allowedStatuses.has(event.status) ? event.status : "error";
-    const status = makeElement("span", `event-status ${safeStatus}`, safeStatus);
+    const stage = makeElement(
+      "span",
+      "event-stage",
+      String(event.stage).toUpperCase(),
+    );
+    const safeStatus = allowedStatuses.has(event.status)
+      ? event.status
+      : "error";
+    const status = makeElement(
+      "span",
+      `event-status ${safeStatus}`,
+      safeStatus,
+    );
     const action = makeElement("span", "event-action", String(event.action));
     row.append(timestamp, stage, status, action);
     eventList.append(row);

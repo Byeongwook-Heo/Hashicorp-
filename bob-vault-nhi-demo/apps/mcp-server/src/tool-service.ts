@@ -23,7 +23,10 @@ export class ToolService {
     private readonly nhiName = "bob-db-reader",
   ) {}
 
-  public async getOrderStatus(requestId: string, orderId: string): Promise<OrderStatusResult> {
+  public async getOrderStatus(
+    requestId: string,
+    orderId: string,
+  ): Promise<OrderStatusResult> {
     return this.#runAuthorized(requestId, "get_order_status", (credentials) =>
       this.database.getOrderStatus(credentials, orderId),
     );
@@ -33,8 +36,10 @@ export class ToolService {
     requestId: string,
     date: string,
   ): Promise<FailedPaymentSummaryResult> {
-    return this.#runAuthorized(requestId, "get_failed_payment_summary", (credentials) =>
-      this.database.getFailedPaymentSummary(credentials, date),
+    return this.#runAuthorized(
+      requestId,
+      "get_failed_payment_summary",
+      (credentials) => this.database.getFailedPaymentSummary(credentials, date),
     );
   }
 
@@ -54,7 +59,10 @@ export class ToolService {
         accessToken,
         "database/creds/bob-payment-pii",
       );
-      throw new ExternalServiceError("Vault", "sensitive role policy did not deny access");
+      throw new ExternalServiceError(
+        "Vault",
+        "sensitive role policy did not deny access",
+      );
     } catch (error) {
       if (!(error instanceof AuthorizationError)) {
         throw error;
@@ -92,35 +100,32 @@ export class ToolService {
 
       const result = await this.vault.withDatabaseCredentials<
         T & { access: OrderStatusResult["access"] }
-      >(
-        accessToken,
-        async (credentials) => {
-          this.events.record({
-            stage: "vault",
-            status: "allowed",
-            action: "dynamic_credentials_issued",
-            requestId,
-          });
-          const databaseResult = await databaseOperation(credentials);
-          this.events.record({
-            stage: "database",
-            status: "ok",
-            action,
-            requestId,
-            latencyMs: performance.now() - startedAt,
-          });
-          return {
-            ...databaseResult,
-            access: {
-              nhi: this.nhiName,
-              verify: "authenticated",
-              vault: "authorized",
-              credential_type: "dynamic",
-              credential_ttl_seconds: credentials.leaseDurationSeconds,
-            },
-          };
-        },
-      );
+      >(accessToken, async (credentials) => {
+        this.events.record({
+          stage: "vault",
+          status: "allowed",
+          action: "dynamic_credentials_issued",
+          requestId,
+        });
+        const databaseResult = await databaseOperation(credentials);
+        this.events.record({
+          stage: "database",
+          status: "ok",
+          action,
+          requestId,
+          latencyMs: performance.now() - startedAt,
+        });
+        return {
+          ...databaseResult,
+          access: {
+            nhi: this.nhiName,
+            verify: "authenticated",
+            vault: "authorized",
+            credential_type: "dynamic",
+            credential_ttl_seconds: credentials.leaseDurationSeconds,
+          },
+        };
+      });
       return result;
     } catch (error) {
       this.events.record({

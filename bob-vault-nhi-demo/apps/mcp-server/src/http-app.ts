@@ -29,12 +29,21 @@ interface AppDependencies {
 }
 
 const requestIdPattern = /^[A-Za-z0-9_.:-]{8,64}$/;
-const orderIdSchema = z.string().max(16).regex(/^ORD-[0-9]{4,12}$/);
-const customerIdSchema = z.string().max(16).regex(/^CUS-[0-9]{4,12}$/);
+const orderIdSchema = z
+  .string()
+  .max(16)
+  .regex(/^ORD-[0-9]{4,12}$/);
+const customerIdSchema = z
+  .string()
+  .max(16)
+  .regex(/^CUS-[0-9]{4,12}$/);
 const summaryDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
-  .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)), "Invalid date");
+  .refine(
+    (value) => !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)),
+    "Invalid date",
+  );
 const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
 
 export function createHttpApp(dependencies: AppDependencies): express.Express {
@@ -103,9 +112,19 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
       },
     });
   });
-  const listEvents = (request: Request, response: Response, next: NextFunction) => {
+  const listEvents = (
+    request: Request,
+    response: Response,
+    next: NextFunction,
+  ) => {
     try {
-      const limit = z.coerce.number().int().min(1).max(100).default(30).parse(request.query["limit"]);
+      const limit = z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(100)
+        .default(30)
+        .parse(request.query["limit"]);
       response.json({ events: events.list(limit) });
     } catch (error) {
       next(error);
@@ -129,7 +148,9 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
   app.get("/demo", (_request, response) => {
     response.sendFile(`${publicDirectory}/index.html`);
   });
-  app.use(express.static(publicDirectory, { index: "index.html", maxAge: "5m" }));
+  app.use(
+    express.static(publicDirectory, { index: "index.html", maxAge: "5m" }),
+  );
 
   const mcpRateLimiter = rateLimit({
     windowMs: 60_000,
@@ -143,10 +164,14 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     enforceAllowedOrigin(config),
     authenticateTransport(config, events),
   );
-  app.post("/api/demo/reset", authenticateTransport(config, events), (_request, response) => {
-    events.clear();
-    response.status(204).end();
-  });
+  app.post(
+    "/api/demo/reset",
+    authenticateTransport(config, events),
+    (_request, response) => {
+      events.clear();
+      response.status(204).end();
+    },
+  );
   app.post(
     "/mcp",
     requireJsonContentType,
@@ -176,10 +201,17 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
   app.all("/mcp", methodNotAllowed);
 
   app.use((_request, response) => {
-    response.status(404).json({ error: { code: "NOT_FOUND", message: "Route not found" } });
+    response
+      .status(404)
+      .json({ error: { code: "NOT_FOUND", message: "Route not found" } });
   });
 
-  const errorHandler: ErrorRequestHandler = (error, request, response, _next) => {
+  const errorHandler: ErrorRequestHandler = (
+    error,
+    request,
+    response,
+    _next,
+  ) => {
     const requestId = response.locals.requestId as string | undefined;
     const appError = error instanceof AppError ? error : undefined;
     logger.error(
@@ -207,7 +239,10 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
   return app;
 }
 
-function createMcpServer(dependencies: AppDependencies, requestId: string): McpServer {
+function createMcpServer(
+  dependencies: AppDependencies,
+  requestId: string,
+): McpServer {
   const server = new McpServer(
     {
       name: "bob-vault-nhi-demo",
@@ -220,9 +255,12 @@ function createMcpServer(dependencies: AppDependencies, requestId: string): McpS
     "get_order_status",
     {
       title: "Get order status",
-      description: "Return the current status for one order using short-lived Vault credentials.",
+      description:
+        "Return the current status for one order using short-lived Vault credentials.",
       inputSchema: {
-        order_id: orderIdSchema.describe("Order identifier, for example ORD-1001"),
+        order_id: orderIdSchema.describe(
+          "Order identifier, for example ORD-1001",
+        ),
       },
       outputSchema: {
         order_id: z.string(),
@@ -246,7 +284,8 @@ function createMcpServer(dependencies: AppDependencies, requestId: string): McpS
     "get_failed_payment_summary",
     {
       title: "Summarize failed payments",
-      description: "Return a bounded, non-personal aggregate of failed payments for one date.",
+      description:
+        "Return a bounded, non-personal aggregate of failed payments for one date.",
       inputSchema: {
         date: summaryDateSchema.describe("Calendar date in YYYY-MM-DD format"),
       },
@@ -269,7 +308,9 @@ function createMcpServer(dependencies: AppDependencies, requestId: string): McpS
       },
     },
     async ({ date }) =>
-      toolResult(() => dependencies.tools.getFailedPaymentSummary(requestId, date)),
+      toolResult(() =>
+        dependencies.tools.getFailedPaymentSummary(requestId, date),
+      ),
   );
 
   server.registerTool(
@@ -289,7 +330,9 @@ function createMcpServer(dependencies: AppDependencies, requestId: string): McpS
       },
     },
     async ({ customer_id }) =>
-      toolResult(() => dependencies.tools.getSensitivePaymentData(requestId, customer_id)),
+      toolResult(() =>
+        dependencies.tools.getSensitivePaymentData(requestId, customer_id),
+      ),
   );
 
   return server;
@@ -323,7 +366,9 @@ function authenticateTransport(
   config: AppConfig,
   events: SecurityEventStore,
 ): (request: Request, response: Response, next: NextFunction) => void {
-  const expectedDigest = createHash("sha256").update(config.transportBearerToken).digest();
+  const expectedDigest = createHash("sha256")
+    .update(config.transportBearerToken)
+    .digest();
   return (request, response, next) => {
     const header = request.header("authorization") ?? "";
     const suppliedToken = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -361,9 +406,19 @@ function enforceAllowedOrigin(
   };
 }
 
-function requireJsonContentType(request: Request, _response: Response, next: NextFunction): void {
+function requireJsonContentType(
+  request: Request,
+  _response: Response,
+  next: NextFunction,
+): void {
   if (!request.is("application/json")) {
-    next(new AppError("Content-Type must be application/json", 415, "UNSUPPORTED_MEDIA_TYPE"));
+    next(
+      new AppError(
+        "Content-Type must be application/json",
+        415,
+        "UNSUPPORTED_MEDIA_TYPE",
+      ),
+    );
     return;
   }
   next();
@@ -401,7 +456,13 @@ function enforceFixedToolContract(
     typeof argumentsValue !== "object" ||
     Array.isArray(argumentsValue)
   ) {
-    next(new AppError("Tool arguments must be an object", 400, "INVALID_TOOL_INPUT"));
+    next(
+      new AppError(
+        "Tool arguments must be an object",
+        400,
+        "INVALID_TOOL_INPUT",
+      ),
+    );
     return;
   }
   const unknownField = Object.keys(argumentsValue).find(
@@ -415,9 +476,15 @@ function enforceFixedToolContract(
 }
 
 function methodNotAllowed(_request: Request, response: Response): void {
-  response.status(405).setHeader("allow", "POST").json({
-    jsonrpc: "2.0",
-    error: { code: -32_000, message: "Method not allowed; stateless MCP accepts POST only" },
-    id: null,
-  });
+  response
+    .status(405)
+    .setHeader("allow", "POST")
+    .json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32_000,
+        message: "Method not allowed; stateless MCP accepts POST only",
+      },
+      id: null,
+    });
 }

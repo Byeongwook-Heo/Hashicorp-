@@ -21,7 +21,9 @@ function buildApp() {
     ALLOWED_ORIGINS: "https://bob.example.test",
   });
   const identity: IdentityProvider = {
-    getVerifiedAccessToken: vi.fn().mockResolvedValue("header.payload.signature"),
+    getVerifiedAccessToken: vi
+      .fn()
+      .mockResolvedValue("header.payload.signature"),
   };
   const vault: VaultCredentialBroker = {
     withDatabaseCredentials: vi.fn(async (_token, operation) =>
@@ -76,7 +78,9 @@ describe("HTTP security boundary", () => {
 
     expect(response.body).toEqual({ status: "ok", version: "dev" });
     expect(response.headers["x-powered-by"]).toBeUndefined();
-    expect(response.headers["content-security-policy"]).toContain("default-src 'self'");
+    expect(response.headers["content-security-policy"]).toContain(
+      "default-src 'self'",
+    );
   });
 
   it("rejects MCP requests without the bearer token", async () => {
@@ -116,7 +120,11 @@ describe("HTTP security boundary", () => {
       .send(toolsListRequest)
       .expect(200);
 
-    expect(response.body.result.tools.map((tool: { name: string }) => tool.name).sort()).toEqual([
+    expect(
+      response.body.result.tools
+        .map((tool: { name: string }) => tool.name)
+        .sort(),
+    ).toEqual([
       "get_failed_payment_summary",
       "get_order_status",
       "get_sensitive_payment_data",

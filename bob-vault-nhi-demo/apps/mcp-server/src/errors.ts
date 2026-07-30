@@ -17,13 +17,19 @@ export class ConfigurationError extends AppError {
 }
 
 export class AuthenticationError extends AppError {
-  public constructor(message = "Authentication failed", options?: ErrorOptions) {
+  public constructor(
+    message = "Authentication failed",
+    options?: ErrorOptions,
+  ) {
     super(message, 401, "AUTHENTICATION_FAILED", options);
   }
 }
 
 export class AuthorizationError extends AppError {
-  public constructor(message = "Operation is not permitted", options?: ErrorOptions) {
+  public constructor(
+    message = "Operation is not permitted",
+    options?: ErrorOptions,
+  ) {
     super(message, 403, "AUTHORIZATION_DENIED", options);
   }
 }

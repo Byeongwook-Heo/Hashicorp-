@@ -92,7 +92,8 @@
           <button id="refresh" type="button">Refresh events</button>
         </div>
         <div class="event-header" aria-hidden="true">
-          <span>TIME</span><span>CONTROL</span><span>DECISION</span><span>ACTION</span>
+          <span>TIME</span><span>CONTROL</span><span>DECISION</span
+          ><span>ACTION</span>
         </div>
         <ol id="events" class="event-list" aria-live="polite">
           <li class="empty">Waiting for a security decision…</li>
@@ -105,10 +106,22 @@
           <h2 id="guardrails-title">The agent never holds the keys.</h2>
         </div>
         <dl>
-          <div><dt>Private signing key</dt><dd>KMS only · never exportable</dd></div>
-          <div><dt>Database credential</dt><dd>Dynamic · revoked after each call</dd></div>
-          <div><dt>SQL surface</dt><dd>2 parameterized read-only queries</dd></div>
-          <div><dt>Sensitive request</dt><dd>Denied before Vault is contacted</dd></div>
+          <div>
+            <dt>Private signing key</dt>
+            <dd>KMS only · never exportable</dd>
+          </div>
+          <div>
+            <dt>Database credential</dt>
+            <dd>Dynamic · revoked after each call</dd>
+          </div>
+          <div>
+            <dt>SQL surface</dt>
+            <dd>2 parameterized read-only queries</dd>
+          </div>
+          <div>
+            <dt>Sensitive request</dt>
+            <dd>Denied before Vault is contacted</dd>
+          </div>
         </dl>
       </section>
     </main>
