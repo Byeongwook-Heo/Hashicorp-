@@ -63,6 +63,7 @@ phases:
               -target=aws_vpc_security_group_egress_rule.bastion_dns_tcp \
               -target=aws_vpc_security_group_egress_rule.bastion_ntp \
               -target=aws_route53_record.bastion \
+              -target=aws_ssm_association.bastion_event_ssh \
               -target=aws_ssm_association.vault_event_ssh \
               -target=aws_vpc_security_group_ingress_rule.vault_ssh_from_bastion
             ;;
@@ -81,6 +82,7 @@ phases:
               -target=aws_vpc_security_group_egress_rule.bastion_dns_tcp \
               -target=aws_vpc_security_group_egress_rule.bastion_ntp \
               -target=aws_route53_record.bastion \
+              -target=aws_ssm_association.bastion_event_ssh \
               -target=aws_ssm_association.vault_event_ssh \
               -target=aws_vpc_security_group_ingress_rule.vault_ssh_from_bastion
             ;;

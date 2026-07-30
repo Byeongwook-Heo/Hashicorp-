@@ -8,7 +8,9 @@ key_expiry="${event_ssh_expires_at}"
 %{ for username, config in event_ssh_users ~}
 event_user="${username}"
 id "$${event_user}" >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$${event_user}"
-passwd --lock "$${event_user}" >/dev/null 2>&1 || true
+event_password_hash="$(openssl passwd -6 "$(openssl rand -hex 32)")"
+usermod --password "$${event_password_hash}" "$${event_user}"
+unset event_password_hash
 install -d -m 0700 -o "$${event_user}" -g "$${event_user}" "/home/$${event_user}/.ssh"
 public_key="$(printf '%s' '${base64encode(config.public_key)}' | base64 --decode)"
 printf 'no-agent-forwarding,no-X11-forwarding,no-pty,permitopen="%s:22",expiry-time="%s" %s\n' \

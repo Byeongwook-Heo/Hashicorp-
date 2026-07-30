@@ -105,7 +105,7 @@ resource "aws_instance" "bastion" {
   vpc_security_group_ids      = [aws_security_group.bastion.id]
   iam_instance_profile        = aws_iam_instance_profile.bastion.name
   associate_public_ip_address = true
-  user_data_replace_on_change = true
+  user_data_replace_on_change = false
 
   metadata_options {
     http_endpoint               = "enabled"
@@ -160,6 +160,46 @@ resource "aws_route53_record" "bastion" {
   type    = "A"
   ttl     = 60
   records = [aws_eip.bastion.public_ip]
+}
+
+resource "aws_ssm_document" "configure_bastion_event_ssh" {
+  name            = "${var.project_name}-configure-bastion-event-ssh"
+  document_type   = "Command"
+  document_format = "JSON"
+
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Configure time-bounded per-person SSH public keys on the event bastion"
+    mainSteps = [{
+      action = "aws:runShellScript"
+      name   = "configureEventSsh"
+      inputs = {
+        timeoutSeconds = "300"
+        runCommand = [templatefile("${path.module}/templates/bastion-user-data.sh.tftpl", {
+          event_ssh_users           = var.event_ssh_users
+          event_ssh_expires_at      = var.event_ssh_expires_at
+          event_ssh_expiry_calendar = var.event_ssh_expiry_calendar
+          vault_private_dns_name    = "vault.${var.project_name}.internal"
+        })]
+      }
+    }]
+  })
+
+  tags = {
+    Name = "${var.project_name}-configure-bastion-event-ssh"
+  }
+}
+
+resource "aws_ssm_association" "bastion_event_ssh" {
+  name             = aws_ssm_document.configure_bastion_event_ssh.name
+  association_name = "${var.project_name}-bastion-event-ssh"
+
+  targets {
+    key    = "InstanceIds"
+    values = [aws_instance.bastion.id]
+  }
+
+  wait_for_success_timeout_seconds = 600
 }
 
 resource "aws_ssm_document" "configure_vault_event_ssh" {

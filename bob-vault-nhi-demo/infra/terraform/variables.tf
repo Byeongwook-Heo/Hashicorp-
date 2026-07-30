@@ -154,13 +154,13 @@ variable "event_ssh_users" {
 }
 
 variable "event_ssh_expires_at" {
-  description = "OpenSSH authorized_keys expiry in UTC for event access."
+  description = "OpenSSH 8.9-compatible authorized_keys expiry in UTC for event access."
   type        = string
-  default     = "20260902000000Z"
+  default     = "20260902000000"
 
   validation {
-    condition     = can(regex("^[0-9]{14}Z$", var.event_ssh_expires_at))
-    error_message = "event_ssh_expires_at must use OpenSSH UTC format YYYYMMDDHHMMSSZ."
+    condition     = can(regex("^[0-9]{14}$", var.event_ssh_expires_at))
+    error_message = "event_ssh_expires_at must use OpenSSH 8.9-compatible UTC format YYYYMMDDHHMMSS."
   }
 }
 
