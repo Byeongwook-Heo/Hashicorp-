@@ -11,10 +11,6 @@ export default tseslint.config(
   ...tseslint.configs.stylisticTypeChecked,
   prettier,
   {
-    files: ["**/*.js", "**/*.mjs"],
-    extends: [tseslint.configs.disableTypeChecked],
-  },
-  {
     files: ["apps/mcp-server/public/*.js"],
     languageOptions: {
       globals: {
@@ -50,6 +46,10 @@ export default tseslint.config(
         { checksVoidReturn: { arguments: false } },
       ],
     },
+  },
+  {
+    files: ["**/*.js", "**/*.mjs"],
+    extends: [tseslint.configs.disableTypeChecked],
   },
   {
     files: ["**/test/**/*.ts"],
