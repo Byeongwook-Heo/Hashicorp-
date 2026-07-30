@@ -20,7 +20,7 @@ aws ec2 describe-subnets \
 aws ec2 describe-images --image-ids ami-09d68fa4b57f9e888 \
   --query 'Images[0].[Architecture,Name,State]' --output text | grep -q $'x86_64\thc-security-base-ubuntu-2204-20260730033928\tavailable'
 aws route53 get-hosted-zone --id Z07579811BJW2L1U58CO1 >/dev/null
-aws s3api head-bucket --bucket ibm-hc-lab-tfstate-063455554839-ap-northeast-2
+aws s3api head-bucket --bucket ibm-hc-lab-tfstate-063455554839-ap-northeast-2 >/dev/null
 
 license_file="${VAULT_LICENSE_FILE:-${HOME}/Downloads/vault_aisummit_20260902.hclic}"
 test -s "${license_file}"
