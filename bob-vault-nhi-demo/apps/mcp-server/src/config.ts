@@ -143,10 +143,6 @@ export interface AppConfig {
   };
 }
 
-function normalizePem(value: string | undefined): string | undefined {
-  return value?.replaceAll("\\n", "\n");
-}
-
 export function loadConfig(
   environment: NodeJS.ProcessEnv = process.env,
 ): AppConfig {
@@ -197,7 +193,7 @@ export function loadConfig(
       ...(value.VAULT_JWT_ROLE ? { jwtRole: value.VAULT_JWT_ROLE } : {}),
       databaseCredentialsPath: value.VAULT_DB_CREDS_PATH,
       ...(value.VAULT_CA_PEM
-        ? { caPem: normalizePem(value.VAULT_CA_PEM) }
+        ? { caPem: value.VAULT_CA_PEM.replaceAll("\\n", "\n") }
         : {}),
       requestTimeoutMs: value.VAULT_REQUEST_TIMEOUT_MS,
     },
@@ -205,7 +201,9 @@ export function loadConfig(
       ...(value.DB_HOST ? { host: value.DB_HOST } : {}),
       port: value.DB_PORT,
       name: value.DB_NAME,
-      ...(value.DB_CA_PEM ? { caPem: normalizePem(value.DB_CA_PEM) } : {}),
+      ...(value.DB_CA_PEM
+        ? { caPem: value.DB_CA_PEM.replaceAll("\\n", "\n") }
+        : {}),
       caFile: value.DB_CA_FILE,
       connectTimeoutMs: value.DB_CONNECT_TIMEOUT_MS,
       queryTimeoutMs: value.DB_QUERY_TIMEOUT_MS,

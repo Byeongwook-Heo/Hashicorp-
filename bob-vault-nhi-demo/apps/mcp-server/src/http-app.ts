@@ -76,9 +76,9 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
   );
   app.use((request, response, next) => {
     const supplied = request.header("x-request-id");
-    response.locals.requestId =
+    response.locals["requestId"] =
       supplied && requestIdPattern.test(supplied) ? supplied : randomUUID();
-    response.setHeader("x-request-id", response.locals.requestId as string);
+    response.setHeader("x-request-id", response.locals["requestId"] as string);
     next();
   });
 
@@ -178,18 +178,23 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     express.json({ limit: "64kb", strict: true }),
     enforceFixedToolContract,
     async (request, response, next) => {
-      const requestId = response.locals.requestId as string;
+      const requestId = response.locals["requestId"] as string;
       const server = createMcpServer(dependencies, requestId);
-      const transport = new StreamableHTTPServerTransport({
+      const statelessOptions = {
         sessionIdGenerator: undefined,
-      });
+      } as unknown as ConstructorParameters<
+        typeof StreamableHTTPServerTransport
+      >[0];
+      const transport = new StreamableHTTPServerTransport(statelessOptions);
       response.on("close", () => {
         void transport.close();
         void server.close();
       });
 
       try {
-        await server.connect(transport);
+        await server.connect(
+          transport as unknown as Parameters<McpServer["connect"]>[0],
+        );
         await transport.handleRequest(request, response, request.body);
       } catch (error) {
         next(error);
@@ -213,7 +218,7 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     next,
   ) => {
     void next;
-    const requestId = response.locals.requestId as string | undefined;
+    const requestId = response.locals["requestId"] as string | undefined;
     const appError = error instanceof AppError ? error : undefined;
     logger.error(
       {
@@ -379,7 +384,7 @@ function authenticateTransport(
         stage: "transport",
         status: "denied",
         action: "invalid_bearer_token",
-        requestId: response.locals.requestId as string,
+        requestId: response.locals["requestId"] as string,
       });
       next(new AuthenticationError());
       return;
@@ -388,7 +393,7 @@ function authenticateTransport(
       stage: "transport",
       status: "allowed",
       action: "mcp_request_authenticated",
-      requestId: response.locals.requestId as string,
+      requestId: response.locals["requestId"] as string,
     });
     next();
   };

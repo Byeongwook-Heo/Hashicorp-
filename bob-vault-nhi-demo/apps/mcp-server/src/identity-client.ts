@@ -72,7 +72,6 @@ export class VerifyIdentityClient implements IdentityProvider {
         body: body.toString(),
         bodyTimeout: 5_000,
         headersTimeout: 5_000,
-        maxRedirections: 0,
       });
     } catch (error) {
       throw new ExternalServiceError(

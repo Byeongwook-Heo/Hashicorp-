@@ -186,7 +186,6 @@ export class VaultClient implements VaultCredentialBroker {
         dispatcher: this.#dispatcher,
         bodyTimeout: this.#config.requestTimeoutMs,
         headersTimeout: this.#config.requestTimeoutMs,
-        maxRedirections: 0,
       });
     } catch (error) {
       throw new ExternalServiceError("Vault", "request failed", {
