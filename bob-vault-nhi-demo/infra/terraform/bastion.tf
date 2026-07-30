@@ -141,6 +141,8 @@ resource "aws_instance" "bastion" {
       error_message = "The bastion requires the approved x86_64 hardened AMI."
     }
   }
+
+  depends_on = [aws_iam_role_policy_attachment.bastion_ssm]
 }
 
 resource "aws_eip" "bastion" {
