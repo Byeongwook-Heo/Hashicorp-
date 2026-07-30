@@ -16,8 +16,7 @@ master_password="$(printf '%s' "${master_secret}" | jq -er '.password')"
 rds_ca="$(download_rds_ca)"
 vault_admin_password="$(openssl rand -base64 36 | tr -d '\n')"
 
-PGPASSWORD="${master_password}" VAULT_ADMIN_PASSWORD="${vault_admin_password}" \
-  PGSSLMODE=verify-full PGSSLROOTCERT="${rds_ca}" \
+PGPASSWORD="${master_password}" PGSSLMODE=verify-full PGSSLROOTCERT="${rds_ca}" \
   psql --host="${db_host}" --port=5432 --username="${master_user}" --dbname="${db_name}" \
   --no-password --set=ON_ERROR_STOP=1 <<'SQL'
 CREATE TABLE IF NOT EXISTS orders (
@@ -75,12 +74,19 @@ GRANT CONNECT ON DATABASE shop_demo TO bob_orders_reader;
 GRANT USAGE ON SCHEMA public TO bob_orders_reader;
 GRANT SELECT ON v_bob_order_status TO bob_orders_reader;
 
-\getenv vault_admin_password VAULT_ADMIN_PASSWORD
+SQL
+
+admin_sql="$(new_private_file)"
+printf "\\set vault_admin_password '%s'\n" "${vault_admin_password}" >"${admin_sql}"
+cat >>"${admin_sql}" <<'SQL'
 SELECT 'CREATE ROLE vault_db_admin LOGIN'
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'vault_db_admin') \gexec
 ALTER ROLE vault_db_admin WITH LOGIN CREATEROLE PASSWORD :'vault_admin_password';
 GRANT bob_orders_reader TO vault_db_admin WITH ADMIN OPTION;
 SQL
+PGPASSWORD="${master_password}" PGSSLMODE=verify-full PGSSLROOTCERT="${rds_ca}" \
+  psql --host="${db_host}" --port=5432 --username="${master_user}" --dbname="${db_name}" \
+  --no-password --set=ON_ERROR_STOP=1 --file="${admin_sql}"
 
 bootstrap_secret_file="$(new_private_file)"
 jq -cn \
