@@ -62,7 +62,7 @@ test("enables JWT and removes only the temporary admin entitlement", () => {
   const updated = prepareVerifyClientUpdate(current, clientId);
 
   assert.equal(updated.accessTokenType, "jwt");
-  assert.equal(updated.jwtSigningAlg, "RS256");
+  assert.equal(updated.idTokenSigningAlg, "RS256");
   assert.deepEqual(updated.entitlements, ["readUsers"]);
   assert.equal(updated.clientSecret, current.clientSecret);
   assert.equal(updated.jwkUri, current.jwkUri);
@@ -96,8 +96,8 @@ test("sanitized plan never includes the client secret value", () => {
       "clientSecret",
       "enabled",
       "entitlements",
+      "idTokenSigningAlg",
       "jwkUri",
-      "jwtSigningAlg",
       "restrictScopes",
       "scopes",
     ],
