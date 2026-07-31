@@ -4,6 +4,7 @@ import { KmsClientAssertionSigner } from "../../apps/mcp-server/dist/src/kms-sig
 import {
   buildVerifyManagementUrl,
   prepareVerifyClientUpdate,
+  sanitizedVerifyErrorDetail,
   sanitizedUpdatePlan,
 } from "./verify-client-enable-jwt-lib.mjs";
 
@@ -142,8 +143,14 @@ async function requestJson(
   });
   const responseText = await response.body.text();
   if (response.statusCode < 200 || response.statusCode >= 300) {
+    const safeDetail = sanitizedVerifyErrorDetail(responseText, [
+      accessToken,
+      ...(typeof jsonBody?.clientSecret === "string"
+        ? [jsonBody.clientSecret]
+        : []),
+    ]);
     throw new Error(
-      `IBM Verify failed to ${operation} (${response.statusCode})`,
+      `IBM Verify failed to ${operation} (${response.statusCode})${safeDetail ? `: ${safeDetail}` : ""}`,
     );
   }
   if (allowEmptyResponse && responseText.trim().length === 0) {

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildVerifyManagementUrl,
   prepareVerifyClientUpdate,
+  sanitizedVerifyErrorDetail,
   sanitizedUpdatePlan,
 } from "./verify-client-enable-jwt-lib.mjs";
 
@@ -110,6 +111,34 @@ test("reports response fields that are unsafe to omit from an update", () => {
   assert.deepEqual(plan.unexpectedOmittedResponseFieldNames, [
     "tenantSpecificSetting",
   ]);
+});
+
+test("extracts useful Verify errors without exposing credentials", () => {
+  const secret = "client-secret-value";
+  const accessToken = "management-access-token";
+  const detail = sanitizedVerifyErrorDetail(
+    JSON.stringify({
+      error: "invalid_request",
+      error_description: `Invalid accessTokenType; ${secret}`,
+      request: {
+        clientSecret: secret,
+        access_token: accessToken,
+      },
+      errors: [
+        {
+          field: "accessTokenType",
+          message: "Unsupported value",
+        },
+      ],
+    }),
+    [secret, accessToken],
+  );
+
+  assert.match(detail, /invalid_request/);
+  assert.match(detail, /accessTokenType/);
+  assert.match(detail, /\[REDACTED\]/);
+  assert.equal(detail.includes(secret), false);
+  assert.equal(detail.includes(accessToken), false);
 });
 
 test("refuses an update if the management entitlement is absent", () => {
