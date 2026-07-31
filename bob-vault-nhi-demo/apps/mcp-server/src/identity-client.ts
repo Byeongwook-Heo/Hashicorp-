@@ -1,4 +1,9 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import {
+  createRemoteJWKSet,
+  decodeJwt,
+  decodeProtectedHeader,
+  jwtVerify,
+} from "jose";
 import { request } from "undici";
 import { z } from "zod";
 
@@ -147,6 +152,38 @@ interface OboIdentityClientConfig {
   actorValue: string;
 }
 
+function describeOboJwtValidationFailure(
+  token: string,
+  config: Pick<OboIdentityClientConfig, "issuer" | "audience">,
+  error: unknown,
+): string {
+  const errorCode =
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+      ? error.code
+      : "JWT_VALIDATION_ERROR";
+  try {
+    const header = decodeProtectedHeader(token);
+    const payload = decodeJwt(token);
+    const actualAudience = Array.isArray(payload.aud)
+      ? payload.aud.join(",")
+      : (payload.aud ?? "missing");
+    return [
+      "IBM Verify OBO token validation failed",
+      `reason=${errorCode}`,
+      `alg=${header.alg ?? "missing"}`,
+      `issuer=${payload.iss ?? "missing"}`,
+      `expected_issuer=${config.issuer}`,
+      `audience=${actualAudience}`,
+      `expected_audience=${config.audience}`,
+    ].join("; ");
+  } catch {
+    return `IBM Verify OBO token validation failed; reason=${errorCode}; token_shape=invalid_jwt`;
+  }
+}
+
 export class VerifyOboIdentityClient implements IdentityProvider {
   readonly #config: OboIdentityClientConfig;
   readonly #signer: KmsClientAssertionSigner;
@@ -251,9 +288,14 @@ export class VerifyOboIdentityClient implements IdentityProvider {
       if (error instanceof AuthenticationError) {
         throw error;
       }
-      throw new AuthenticationError("IBM Verify OBO token validation failed", {
-        cause: error,
-      });
+      throw new AuthenticationError(
+        describeOboJwtValidationFailure(
+          tokenResponse.access_token,
+          this.#config,
+          error,
+        ),
+        { cause: error },
+      );
     }
 
     return tokenResponse.access_token;
