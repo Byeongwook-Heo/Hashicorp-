@@ -228,6 +228,7 @@ img {
   border: 1px solid var(--blue);
   color: var(--blue);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .header-login:hover {
