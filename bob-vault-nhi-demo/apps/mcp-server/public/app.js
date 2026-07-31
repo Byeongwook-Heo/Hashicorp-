@@ -24,6 +24,17 @@ const traceStageCount = document.querySelector("#trace-stage-count");
 const traceStageDetail = document.querySelector("#trace-stage-detail");
 const pathProgress = document.querySelector("#path-progress");
 const traceProgressFill = document.querySelector("#trace-progress-fill");
+const requestProgressDock = document.querySelector("#request-progress-dock");
+const requestProgressId = document.querySelector("#request-progress-id");
+const requestProgressTitle = document.querySelector("#request-progress-title");
+const requestProgressCount = document.querySelector("#request-progress-count");
+const requestProgressElapsed = document.querySelector(
+  "#request-progress-elapsed",
+);
+const requestProgressTrack = document.querySelector("#request-progress-track");
+const requestProgressTrackFill = document.querySelector(
+  "#request-progress-track-fill",
+);
 const form = document.querySelector("#chat-form");
 const input = document.querySelector("#chat-input");
 const send = document.querySelector("#send");
@@ -71,6 +82,12 @@ const pathSteps = {
   vault: document.querySelector("#path-step-vault"),
   database: document.querySelector("#path-step-database"),
 };
+const dockSteps = Object.fromEntries(
+  ["verify", "agent", "mcp", "vault", "database"].map((key) => [
+    key,
+    document.querySelector(`[data-dock-stage="${key}"]`),
+  ]),
+);
 
 const defaultTraceMarkup = trace.innerHTML;
 const defaultConversationMarkup = conversation.innerHTML;
@@ -170,6 +187,9 @@ let latestTool = "";
 let stageDialogTrigger = null;
 let activeRequestId = null;
 let requestProgressInterval = null;
+let requestElapsedInterval = null;
+let requestStartedAt = 0;
+let requestElapsedMilliseconds = 0;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -493,6 +513,7 @@ function initialsFor(displayName) {
 
 function showLogin() {
   stopRequestProgressPolling();
+  resetRequestProgressDock();
   document.body.classList.remove("authenticated");
   workspace.hidden = true;
   identity.hidden = true;
@@ -517,6 +538,7 @@ function showWorkspace() {
   loginPanel.hidden = true;
   workspace.hidden = false;
   activeRequestId = null;
+  resetRequestProgressDock();
   resetTelemetryPath();
   renderCurrentAccessStatus([]);
   input.focus();
@@ -623,6 +645,50 @@ function startRequestProgressPolling() {
   requestProgressInterval = window.setInterval(() => void loadEvents(), 250);
 }
 
+function formatRequestElapsed(milliseconds) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return "—";
+  const seconds = milliseconds / 1000;
+  return seconds < 10 ? `${seconds.toFixed(1)}초` : `${Math.round(seconds)}초`;
+}
+
+function renderRequestElapsed() {
+  const elapsed = requestStartedAt
+    ? Date.now() - requestStartedAt
+    : requestElapsedMilliseconds;
+  requestElapsedMilliseconds = Math.max(elapsed, 0);
+  requestProgressElapsed.textContent = formatRequestElapsed(
+    requestElapsedMilliseconds,
+  );
+}
+
+function stopRequestElapsedTimer() {
+  if (requestStartedAt) renderRequestElapsed();
+  requestStartedAt = 0;
+  if (!requestElapsedInterval) return;
+  window.clearInterval(requestElapsedInterval);
+  requestElapsedInterval = null;
+}
+
+function startRequestElapsedTimer() {
+  stopRequestElapsedTimer();
+  requestElapsedMilliseconds = 0;
+  requestStartedAt = Date.now();
+  renderRequestElapsed();
+  requestElapsedInterval = window.setInterval(renderRequestElapsed, 100);
+}
+
+function resetRequestProgressDock() {
+  stopRequestElapsedTimer();
+  requestElapsedMilliseconds = 0;
+  requestProgressId.textContent = "새 요청 대기";
+  requestProgressTitle.textContent = "요청 대기";
+  requestProgressCount.textContent = "0/5";
+  requestProgressElapsed.textContent = "—";
+  requestProgressDock.dataset.state = "waiting";
+  requestProgressTrack.setAttribute("aria-valuenow", "0");
+  requestProgressTrackFill.style.width = "0%";
+}
+
 function addThinking() {
   const article = addMessage(
     "agent",
@@ -685,6 +751,18 @@ function updatePathStep(key, label, status, time = "—", active = false) {
   }
   const timestamp = step.querySelector("time");
   if (timestamp) timestamp.textContent = time;
+
+  const dockStep = dockSteps[key];
+  if (dockStep) {
+    dockStep.classList.toggle("active", active);
+    dockStep.classList.toggle("complete", status === "allowed");
+    dockStep.classList.toggle("denied", status === "denied");
+    dockStep.classList.toggle("error", status === "error");
+    dockStep.setAttribute(
+      "aria-label",
+      `${dockStep.textContent.trim()} ${label}`,
+    );
+  }
 }
 
 function resetVisiblePath() {
@@ -724,6 +802,7 @@ function updatePathOverview(stage, state, detail) {
 
   traceStageCount.textContent =
     state === "waiting" ? "0/5" : `${String(currentValue)}/5`;
+  requestProgressCount.textContent = traceStageCount.textContent;
   traceLiveState.textContent = overviewLabel;
   traceLiveState.className = `live-state ${
     state === "complete" || state === "response" ? "verified" : state
@@ -732,9 +811,19 @@ function updatePathOverview(stage, state, detail) {
   pathProgress.className = `path-progress ${state}`;
   pathProgress.setAttribute("aria-valuenow", String(currentValue));
   traceProgressFill.style.width = `${String(progressPercent)}%`;
+  requestProgressDock.dataset.state = state;
+  requestProgressTitle.textContent = overviewLabel;
+  requestProgressTrack.setAttribute("aria-valuenow", String(currentValue));
+  requestProgressTrackFill.style.width = `${String(progressPercent)}%`;
+
+  if (["complete", "response", "denied", "error"].includes(state)) {
+    stopRequestElapsedTimer();
+  }
 }
 
 function beginRequestPath() {
+  requestProgressId.textContent = `요청 ${activeRequestId.slice(0, 8)}`;
+  startRequestElapsedTimer();
   resetVisiblePath();
   updatePathStep("verify", activePathCopy.verify.state, "active", "—", true);
   updatePathOverview("verify", "active", activePathCopy.verify.detail);
@@ -1405,6 +1494,7 @@ async function resetDemoSession() {
     latestTool = "";
     stopRequestProgressPolling();
     activeRequestId = null;
+    resetRequestProgressDock();
     conversation.innerHTML = defaultConversationMarkup;
     renderTrace([]);
     renderEvents([]);
