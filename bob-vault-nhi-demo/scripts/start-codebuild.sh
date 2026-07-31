@@ -36,20 +36,33 @@ fi
 build_id="$(aws codebuild start-build "${arguments[@]}" --query 'build.id' --output text)"
 echo "Started CodeBuild job: ${build_id}"
 
+print_build_logs() {
+  local log_group log_stream
+  log_group="$(aws codebuild batch-get-builds --ids "${build_id}" --query 'builds[0].logs.groupName' --output text)"
+  log_stream="$(aws codebuild batch-get-builds --ids "${build_id}" --query 'builds[0].logs.streamName' --output text)"
+  if [[ "${log_group}" != "None" && "${log_stream}" != "None" ]]; then
+    aws logs get-log-events \
+      --log-group-name "${log_group}" \
+      --log-stream-name "${log_stream}" \
+      --limit 80 \
+      --query 'events[].message' \
+      --output text
+  fi
+}
+
 while true; do
   status="$(aws codebuild batch-get-builds --ids "${build_id}" --query 'builds[0].buildStatus' --output text)"
   case "${status}" in
     SUCCEEDED)
       echo "CodeBuild succeeded."
+      if [[ "${PRINT_BUILD_LOGS:-0}" == "1" ]]; then
+        print_build_logs || echo "Warning: CodeBuild logs could not be retrieved." >&2
+      fi
       exit 0
       ;;
     FAILED|FAULT|STOPPED|TIMED_OUT)
-      log_group="$(aws codebuild batch-get-builds --ids "${build_id}" --query 'builds[0].logs.groupName' --output text)"
-      log_stream="$(aws codebuild batch-get-builds --ids "${build_id}" --query 'builds[0].logs.streamName' --output text)"
       echo "CodeBuild ended with ${status}." >&2
-      if [[ "${log_group}" != "None" && "${log_stream}" != "None" ]]; then
-        aws logs get-log-events --log-group-name "${log_group}" --log-stream-name "${log_stream}" --limit 80 --query 'events[].message' --output text >&2 || true
-      fi
+      print_build_logs >&2 || true
       exit 1
       ;;
     *)

@@ -68,6 +68,11 @@ if (mode === "plan") {
   );
   process.exit(0);
 }
+if (plan.unexpectedOmittedResponseFieldNames.length > 0) {
+  throw new Error(
+    `Refusing to omit unrecognized IBM Verify response fields: ${plan.unexpectedOmittedResponseFieldNames.join(", ")}`,
+  );
+}
 
 await requestJson(managementUrl, {
   method: "PUT",

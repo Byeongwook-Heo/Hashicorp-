@@ -18,9 +18,17 @@ function client(overrides = {}) {
     entitlements: ["readUsers", "manageAPIClients"],
     accessTokenType: "default",
     jwkUri: "https://bob-vault-demo.example.test/.well-known/jwks.json",
+    restrictScopes: true,
+    scopes: [{ name: "vault.db.read", description: "Vault DB read" }],
     additionalConfig: {
       clientAuthMethod: "private_key_jwt",
       validateJti: true,
+    },
+    id: "read-only-internal-id",
+    _links: {
+      self: {
+        href: `/v1.0/apiclients/${clientId}`,
+      },
     },
     ...overrides,
   };
@@ -56,7 +64,12 @@ test("enables JWT and removes only the temporary admin entitlement", () => {
   assert.deepEqual(updated.entitlements, ["readUsers"]);
   assert.equal(updated.clientSecret, current.clientSecret);
   assert.equal(updated.jwkUri, current.jwkUri);
+  assert.equal(updated.restrictScopes, true);
+  assert.deepEqual(updated.scopes, current.scopes);
   assert.deepEqual(updated.additionalConfig, current.additionalConfig);
+  assert.equal(Object.hasOwn(updated, "clientId"), false);
+  assert.equal(Object.hasOwn(updated, "id"), false);
+  assert.equal(Object.hasOwn(updated, "_links"), false);
 });
 
 test("sanitized plan never includes the client secret value", () => {
@@ -72,8 +85,31 @@ test("sanitized plan never includes the client secret value", () => {
     preservedEntitlementCount: 1,
     preservesClientSecret: true,
     preservesJwksUri: true,
+    submittedFieldNames: [
+      "accessTokenType",
+      "additionalConfig",
+      "clientName",
+      "clientSecret",
+      "enabled",
+      "entitlements",
+      "jwkUri",
+      "restrictScopes",
+      "scopes",
+    ],
+    omittedResponseFieldNames: ["_links", "clientId", "id"],
+    unexpectedOmittedResponseFieldNames: [],
   });
   assert.equal(JSON.stringify(plan).includes(current.clientSecret), false);
+});
+
+test("reports response fields that are unsafe to omit from an update", () => {
+  const current = client({ tenantSpecificSetting: "preserve-me" });
+  const updated = prepareVerifyClientUpdate(current, clientId);
+  const plan = sanitizedUpdatePlan(current, updated);
+
+  assert.deepEqual(plan.unexpectedOmittedResponseFieldNames, [
+    "tenantSpecificSetting",
+  ]);
 });
 
 test("refuses an update if the management entitlement is absent", () => {

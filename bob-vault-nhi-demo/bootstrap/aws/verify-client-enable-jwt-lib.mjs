@@ -1,4 +1,22 @@
 const ADMIN_ENTITLEMENT = "manageAPIClients";
+const READ_ONLY_RESPONSE_FIELD_NAMES = new Set(["_links", "clientId", "id"]);
+const UPDATE_FIELD_NAMES = Object.freeze([
+  "clientName",
+  "entitlements",
+  "clientSecret",
+  "enabled",
+  "overrideSettings",
+  "description",
+  "additionalProperties",
+  "ipFilterOp",
+  "ipFilters",
+  "jwkUri",
+  "additionalConfig",
+  "idTokenSigningAlg",
+  "accessTokenType",
+  "restrictScopes",
+  "scopes",
+]);
 
 export function buildVerifyManagementUrl(tokenUrlValue, issuerValue, clientId) {
   const tokenUrl = requireHttpsUrl(tokenUrlValue, "VERIFY_TOKEN_URL");
@@ -53,16 +71,23 @@ export function prepareVerifyClientUpdate(value, expectedClientId) {
     throw new Error("The API client does not contain a valid HTTPS JWKS URI");
   }
 
-  return {
-    ...value,
-    accessTokenType: "jwt",
-    entitlements: value.entitlements.filter(
-      (entitlement) => entitlement !== ADMIN_ENTITLEMENT,
-    ),
-  };
+  const update = {};
+  for (const fieldName of UPDATE_FIELD_NAMES) {
+    if (Object.hasOwn(value, fieldName)) {
+      update[fieldName] = value[fieldName];
+    }
+  }
+  update.accessTokenType = "jwt";
+  update.entitlements = value.entitlements.filter(
+    (entitlement) => entitlement !== ADMIN_ENTITLEMENT,
+  );
+  return update;
 }
 
 export function sanitizedUpdatePlan(current, updated) {
+  const omittedResponseFieldNames = Object.keys(current)
+    .filter((fieldName) => !Object.hasOwn(updated, fieldName))
+    .sort();
   return {
     clientId: current.clientId,
     currentAccessTokenType: current.accessTokenType ?? "default",
@@ -75,6 +100,11 @@ export function sanitizedUpdatePlan(current, updated) {
       current.clientSecret === updated.clientSecret &&
       typeof updated.clientSecret === "string",
     preservesJwksUri: current.jwkUri === updated.jwkUri,
+    submittedFieldNames: Object.keys(updated).sort(),
+    omittedResponseFieldNames,
+    unexpectedOmittedResponseFieldNames: omittedResponseFieldNames.filter(
+      (fieldName) => !READ_ONLY_RESPONSE_FIELD_NAMES.has(fieldName),
+    ),
   };
 }
 
