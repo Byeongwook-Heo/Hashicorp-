@@ -101,11 +101,11 @@ make verify-preflight
 
 The plan is read-only and prints no token or client secret. The guarded update
 reads the complete client definition, refuses to continue if the response
-omits the existing client secret, changes `accessTokenType` to `jwt`, and
-removes `manageAPIClients` in the same request. The update is intentionally
-one-shot because the target client no longer has management access afterward.
-Delete the temporary management client in the Verify Admin UI after preflight
-succeeds.
+omits the existing client secret, changes `accessTokenType` to `jwt`, sets the
+JWT access-token signing algorithm to `RS256`, and removes `manageAPIClients`
+in the same request. The update is intentionally one-shot because the target
+client no longer has management access afterward. Delete the temporary
+management client in the Verify Admin UI after preflight succeeds.
 
 ## Vault claim mapping
 

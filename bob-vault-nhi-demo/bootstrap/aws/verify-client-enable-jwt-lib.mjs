@@ -81,6 +81,7 @@ export function prepareVerifyClientUpdate(value, expectedClientId) {
     }
   }
   update.accessTokenType = "jwt";
+  update.jwtSigningAlg = "RS256";
   update.entitlements = value.entitlements.filter(
     (entitlement) => entitlement !== ADMIN_ENTITLEMENT,
   );
@@ -95,6 +96,7 @@ export function sanitizedUpdatePlan(current, updated) {
     clientId: current.clientId,
     currentAccessTokenType: current.accessTokenType ?? "default",
     requestedAccessTokenType: updated.accessTokenType,
+    requestedJwtSigningAlgorithm: updated.jwtSigningAlg,
     removesTemporaryAdminEntitlement:
       current.entitlements.includes(ADMIN_ENTITLEMENT) &&
       !updated.entitlements.includes(ADMIN_ENTITLEMENT),
