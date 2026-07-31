@@ -7,6 +7,9 @@ const refreshLabel = refresh.querySelector(".refresh-label");
 const lastUpdated = document.querySelector("#last-updated");
 const decisionTotal = document.querySelector("#decision-total");
 const decisionCaption = document.querySelector("#decision-caption");
+const decisionOverview = document
+  .querySelector("#decision-overview-title")
+  .closest("article");
 const countAllowed = document.querySelector("#count-allowed");
 const countDenied = document.querySelector("#count-denied");
 const countError = document.querySelector("#count-error");
@@ -134,6 +137,10 @@ function renderDecisionOverview(events) {
 
   if (!summary.total) {
     decisionCaption.textContent = "표시할 보안 결정이 아직 없습니다.";
+    decisionOverview.setAttribute(
+      "aria-label",
+      "아직 집계할 보안 결정이 없습니다.",
+    );
     return;
   }
 
@@ -141,6 +148,10 @@ function renderDecisionOverview(events) {
     summary.denied > 0
       ? `최근 ${summary.total}건 중 ${summary.allowed}건은 정상 흐름, ${summary.denied}건은 정책 차단으로 끝났습니다.`
       : `최근 ${summary.total}건은 모두 정상 또는 허용 흐름으로 처리되었습니다.`;
+  decisionOverview.setAttribute(
+    "aria-label",
+    `최근 보안 결정 ${summary.total}건. 정상 또는 허용 ${summary.allowed}건, 차단 ${summary.denied}건, 오류 ${summary.error}건.`,
+  );
 }
 
 function renderStageChart(events) {
@@ -177,6 +188,10 @@ function renderStageChart(events) {
     track.append(fill);
     const value = makeElement("span", "stage-value", String(count));
     row.append(label, track, value);
+    row.setAttribute(
+      "aria-label",
+      `${label.textContent} 단계 ${String(count)}건`,
+    );
     stageChart.append(row);
   }
 }
@@ -236,7 +251,7 @@ function renderActivityChart(events) {
 
   const legend = makeElement("div", "activity-legend");
   legend.append(
-    legendItem("허용", "allowed"),
+    legendItem("정상·허용", "allowed"),
     legendItem("차단", "denied"),
     legendItem("오류", "error"),
   );

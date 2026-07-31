@@ -98,7 +98,7 @@ footer {
   height: 40px;
   place-items: center;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: 8px;
   color: var(--blue);
   background: var(--surface);
   box-shadow: var(--shadow-1);
@@ -210,7 +210,7 @@ footer {
   align-items: center;
   padding: 10px 12px;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
 .ops-link svg {
@@ -385,7 +385,7 @@ h2 {
   padding: 24px;
   overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--surface-soft);
   scrollbar-color: #a8a8a8 transparent;
   scrollbar-width: thin;
@@ -410,7 +410,7 @@ h2 {
   height: 36px;
   place-items: center;
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: 8px;
   font: 700 10px var(--mono);
 }
 
@@ -436,7 +436,7 @@ h2 {
   padding: 14px 16px;
   border: 1px solid var(--line);
   border-left: 3px solid #c6dafc;
-  border-radius: 0 12px 12px 12px;
+  border-radius: 0 8px 8px 8px;
   background: var(--surface);
   box-shadow: var(--shadow-1);
 }
@@ -445,7 +445,7 @@ h2 {
   border-color: #c6dafc;
   border-right: 3px solid var(--blue);
   border-left-width: 1px;
-  border-radius: 12px 0 12px 12px;
+  border-radius: 8px 0 8px 8px;
   background: var(--surface-accent);
   text-align: left;
 }
@@ -505,7 +505,7 @@ h2 {
   min-height: 64px;
   padding: 12px 14px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--surface);
   text-align: left;
   cursor: pointer;
@@ -539,7 +539,7 @@ h2 {
   height: 36px;
   place-items: center;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   color: var(--blue);
   background: var(--surface-soft);
 }
@@ -547,7 +547,7 @@ h2 {
 .composer {
   padding: 16px 18px 14px;
   border: 1px solid var(--line-strong);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow-1);
 }
@@ -598,7 +598,7 @@ h2 {
   height: 48px;
   place-items: center;
   border: 0;
-  border-radius: 10px;
+  border-radius: 0;
   color: #fff;
   background: var(--blue);
   cursor: pointer;
@@ -651,7 +651,7 @@ h2 {
   height: 44px;
   place-items: center;
   border: 1px solid var(--line-strong);
-  border-radius: 12px;
+  border-radius: 8px;
   color: var(--teal);
   background: var(--surface);
 }
@@ -890,7 +890,7 @@ h2 {
   gap: 16px;
   align-items: center;
   padding: 14px 18px;
-  border-radius: 10px;
+  border-radius: 0;
   color: #fff;
   background: var(--blue);
   font-size: 14px;
@@ -994,7 +994,7 @@ footer {
   .chat-column,
   .security-panel,
   .login-panel {
-    border-radius: 14px;
+    border-radius: 8px;
   }
 
   .chat-column,

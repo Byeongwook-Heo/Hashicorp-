@@ -35,13 +35,7 @@ body {
   min-width: 320px;
   margin: 0;
   color: var(--text);
-  background:
-    radial-gradient(
-      circle at top right,
-      rgba(69, 137, 255, 0.1),
-      transparent 24%
-    ),
-    linear-gradient(180deg, #171717 0%, #111315 100%);
+  background: linear-gradient(180deg, #171717 0%, #111315 100%);
   font-family: var(--sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -86,7 +80,7 @@ footer {
   height: 38px;
   place-items: center;
   border: 1px solid var(--blue);
-  border-radius: 10px;
+  border-radius: 0;
   color: var(--blue);
   background: rgba(69, 137, 255, 0.08);
 }
@@ -476,7 +470,7 @@ h2 {
 .stage-fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--blue), var(--teal));
+  background: var(--blue);
   transition: width 220ms ease;
 }
 
