@@ -135,7 +135,7 @@ locals {
     { name = "VERIFY_OBO_ACTOR_VALUE", value = nonsensitive(data.aws_ssm_parameter.verify_obo_actor_value[0].value) }
   ] : []
 
-  app_secrets = concat(
+  app_secrets = var.deploy_service ? concat(
     [{
       name      = "TRANSPORT_BEARER_TOKEN"
       valueFrom = data.aws_secretsmanager_secret.transport_token[0].arn
@@ -144,7 +144,7 @@ locals {
       name      = "SESSION_SECRET"
       valueFrom = data.aws_secretsmanager_secret.chat_session[0].arn
     }] : []
-  )
+  ) : []
 }
 
 resource "aws_ecs_task_definition" "app" {
