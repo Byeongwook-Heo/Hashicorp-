@@ -96,6 +96,7 @@ locals {
     { name = "MCP_INTERNAL_URL", value = "http://127.0.0.1:8080/mcp" },
     { name = "VERIFY_KMS_KEY_ID", value = aws_kms_key.verify_signing.arn },
     { name = "VAULT_ADDR", value = "https://${aws_route53_record.vault_private.fqdn}:8200" },
+    { name = "VAULT_NAMESPACE", value = "demo" },
     { name = "VAULT_JWT_AUTH_PATH", value = "jwt" },
     { name = "VAULT_JWT_ROLE", value = "bob-orders" },
     { name = "VAULT_DB_CREDS_PATH", value = "database/creds/bob-orders-readonly" },
