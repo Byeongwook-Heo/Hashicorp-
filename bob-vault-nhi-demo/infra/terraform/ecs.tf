@@ -183,6 +183,7 @@ resource "aws_ecs_service" "app" {
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 200
   enable_execute_command             = false
+  wait_for_steady_state              = true
 
   deployment_circuit_breaker {
     enable   = true
