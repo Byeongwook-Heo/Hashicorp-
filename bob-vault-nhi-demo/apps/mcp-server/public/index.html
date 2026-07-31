@@ -114,10 +114,13 @@
               </div>
             </article>
             <article>
-              <span
-                class="carbon-icon icon-postgresql"
-                aria-hidden="true"
-              ></span>
+              <img
+                class="postgresql-logo"
+                src="/icons/custom/postgresql-elephant.svg"
+                alt=""
+                width="24"
+                height="25"
+              />
               <div>
                 <strong>동적 PostgreSQL 접근</strong>
                 <p>짧은 TTL의 읽기 전용 계정만 발급합니다.</p>
@@ -175,13 +178,22 @@
             <span class="carbon-icon icon-user-id" aria-hidden="true"></span>
           </a>
           <a href="#identity-path" aria-label="데이터베이스 접근">
-            <span class="carbon-icon icon-postgresql" aria-hidden="true"></span>
+            <img
+              class="postgresql-logo rail-logo"
+              src="/icons/custom/postgresql-elephant.svg"
+              alt=""
+              width="23"
+              height="24"
+            />
           </a>
           <a href="#events" aria-label="보안 이벤트">
             <span class="carbon-icon icon-policy" aria-hidden="true"></span>
           </a>
-          <a href="#activity-chart" aria-label="보안 결정 추이">
-            <span class="carbon-icon icon-chart-bar" aria-hidden="true"></span>
+          <a href="#current-access-status" aria-label="현재 접근 상태">
+            <span
+              class="carbon-icon icon-security-services"
+              aria-hidden="true"
+            ></span>
           </a>
           <span class="rail-spacer"></span>
           <span class="rail-static" aria-hidden="true">
@@ -453,10 +465,13 @@
                   <li id="path-step-database">
                     <span class="path-node" aria-hidden="true">›</span>
                     <span class="path-icon postgresql-path-icon">
-                      <span
-                        class="carbon-icon icon-postgresql"
-                        aria-hidden="true"
-                      ></span>
+                      <img
+                        class="postgresql-logo"
+                        src="/icons/custom/postgresql-elephant.svg"
+                        alt=""
+                        width="30"
+                        height="31"
+                      />
                     </span>
                     <span class="path-copy">
                       <strong>PostgreSQL</strong
@@ -503,6 +518,69 @@
                 </li>
               </ol>
 
+              <section
+                class="access-status-panel"
+                id="current-access-status"
+                aria-labelledby="current-access-status-title"
+              >
+                <div class="section-heading access-status-heading">
+                  <h3 id="current-access-status-title">현재 접근 상태</h3>
+                  <span id="access-status-request">요청 대기</span>
+                </div>
+
+                <div
+                  class="access-status-summary waiting"
+                  id="access-status-summary"
+                >
+                  <span
+                    class="access-status-indicator"
+                    aria-hidden="true"
+                  ></span>
+                  <div>
+                    <strong id="access-status-result">요청 대기 중</strong>
+                    <p id="access-status-description">
+                      요청을 보내면 현재 신원·권한·데이터베이스 접근 상태를
+                      표시합니다.
+                    </p>
+                  </div>
+                  <span
+                    class="access-status-badge waiting"
+                    id="access-status-badge"
+                    >대기</span
+                  >
+                </div>
+
+                <dl class="access-status-details">
+                  <div>
+                    <dt>현재 단계</dt>
+                    <dd id="access-status-stage">대기</dd>
+                  </div>
+                  <div>
+                    <dt>Vault 권한</dt>
+                    <dd id="access-status-policy">평가 전</dd>
+                  </div>
+                  <div>
+                    <dt>DB 자격증명</dt>
+                    <dd id="access-status-credentials">미발급</dd>
+                  </div>
+                  <div>
+                    <dt>마지막 조치</dt>
+                    <dd id="access-status-action">기록 없음</dd>
+                  </div>
+                </dl>
+
+                <div
+                  class="access-status-recent"
+                  id="decision-counts"
+                  aria-label="최근 보안 이벤트 요약"
+                >
+                  <span>최근 이벤트 <b id="decision-total">0건</b></span>
+                  <span class="allowed">허용 <b id="count-allowed">0</b></span>
+                  <span class="denied">차단 <b id="count-denied">0</b></span>
+                  <span class="error">오류 <b id="count-error">0</b></span>
+                </div>
+              </section>
+
               <section class="event-ledger" aria-labelledby="events-title">
                 <div class="section-heading events-heading">
                   <h3 id="events-title">최근 보안 결정</h3>
@@ -514,44 +592,6 @@
                   <li class="state loading">보안 결정을 불러오는 중…</li>
                 </ol>
               </section>
-
-              <section
-                class="trend-panel"
-                aria-labelledby="activity-chart-title"
-              >
-                <div class="section-heading trend-heading">
-                  <h3 id="activity-chart-title">보안 결정 추이</h3>
-                  <span>최근 7일</span>
-                </div>
-                <div class="trend-legend" id="decision-counts">
-                  <span
-                    ><i class="allowed"></i>허용
-                    <b id="count-allowed">0</b></span
-                  >
-                  <span
-                    ><i class="denied"></i>차단 <b id="count-denied">0</b></span
-                  >
-                  <span
-                    ><i class="error"></i>오류 <b id="count-error">0</b></span
-                  >
-                </div>
-                <p class="sr-only" id="activity-caption">
-                  최근 보안 결정 추이를 계산하는 중입니다.
-                </p>
-                <div id="activity-chart" class="activity-chart"></div>
-              </section>
-
-              <div hidden aria-hidden="true">
-                <strong id="decision-total">0건</strong>
-                <p id="decision-caption">
-                  보안 결정 데이터를 기다리는 중입니다.
-                </p>
-                <span id="segment-allowed"></span>
-                <span id="segment-denied"></span>
-                <span id="segment-error"></span>
-                <p id="stage-caption">단계별 이벤트를 집계하는 중입니다.</p>
-                <div id="stage-chart"></div>
-              </div>
             </div>
           </aside>
         </section>

@@ -31,17 +31,23 @@ const refreshLabel = document.querySelector(".refresh-label");
 const refreshAnnouncement = document.querySelector("#refresh-announcement");
 const lastUpdated = document.querySelector("#last-updated");
 const decisionTotal = document.querySelector("#decision-total");
-const decisionCaption = document.querySelector("#decision-caption");
 const countAllowed = document.querySelector("#count-allowed");
 const countDenied = document.querySelector("#count-denied");
 const countError = document.querySelector("#count-error");
-const segmentAllowed = document.querySelector("#segment-allowed");
-const segmentDenied = document.querySelector("#segment-denied");
-const segmentError = document.querySelector("#segment-error");
-const stageChart = document.querySelector("#stage-chart");
-const stageCaption = document.querySelector("#stage-caption");
-const activityChart = document.querySelector("#activity-chart");
-const activityCaption = document.querySelector("#activity-caption");
+const decisionCounts = document.querySelector("#decision-counts");
+const accessStatusRequest = document.querySelector("#access-status-request");
+const accessStatusSummary = document.querySelector("#access-status-summary");
+const accessStatusResult = document.querySelector("#access-status-result");
+const accessStatusDescription = document.querySelector(
+  "#access-status-description",
+);
+const accessStatusBadge = document.querySelector("#access-status-badge");
+const accessStatusStage = document.querySelector("#access-status-stage");
+const accessStatusPolicy = document.querySelector("#access-status-policy");
+const accessStatusCredentials = document.querySelector(
+  "#access-status-credentials",
+);
+const accessStatusAction = document.querySelector("#access-status-action");
 const pathSteps = {
   verify: document.querySelector("#path-step-verify"),
   agent: document.querySelector("#path-step-agent"),
@@ -165,13 +171,6 @@ function buildSummary(events) {
     allowed: 0,
     denied: 0,
     error: 0,
-    stageCounts: {
-      transport: 0,
-      identity: 0,
-      vault: 0,
-      database: 0,
-      policy: 0,
-    },
   };
 
   if (!Array.isArray(events)) return summary;
@@ -185,18 +184,9 @@ function buildSummary(events) {
     } else {
       summary.error += 1;
     }
-
-    const stage = String(event.stage ?? "");
-    if (Object.hasOwn(summary.stageCounts, stage)) {
-      summary.stageCounts[stage] += 1;
-    }
   }
 
   return summary;
-}
-
-function setSegmentWidth(node, percent) {
-  node.style.width = `${Math.max(0, Math.min(100, percent))}%`;
 }
 
 async function loadStatus() {
@@ -573,205 +563,183 @@ async function sendMessage(message) {
   }
 }
 
-function renderDecisionOverview(events) {
+function latestRequestEvents(events) {
+  if (!Array.isArray(events) || events.length === 0) return [];
+  const latestRequestId = String(events[0]?.requestId ?? "");
+  return latestRequestId
+    ? events.filter(
+        (event) => String(event.requestId ?? "") === latestRequestId,
+      )
+    : events.slice(0, 1);
+}
+
+function renderCurrentAccessStatus(events, loadFailed = false) {
   const summary = buildSummary(events);
   decisionTotal.textContent = `${summary.total}건`;
   countAllowed.textContent = String(summary.allowed);
   countDenied.textContent = String(summary.denied);
   countError.textContent = String(summary.error);
-
-  const denominator = summary.total || 1;
-  setSegmentWidth(segmentAllowed, (summary.allowed / denominator) * 100);
-  setSegmentWidth(segmentDenied, (summary.denied / denominator) * 100);
-  setSegmentWidth(segmentError, (summary.error / denominator) * 100);
-
-  if (!summary.total) {
-    decisionCaption.textContent = "표시할 보안 결정이 아직 없습니다.";
-    return;
-  }
-
-  decisionCaption.textContent =
-    summary.denied > 0
-      ? `최근 ${summary.total}건 중 ${summary.allowed}건은 정상 흐름, ${summary.denied}건은 정책 차단으로 끝났습니다.`
-      : `최근 ${summary.total}건은 모두 정상 또는 허용 흐름으로 처리되었습니다.`;
-}
-
-function renderStageChart(events) {
-  stageChart.replaceChildren();
-  const summary = buildSummary(events);
-  const entries = Object.entries(summary.stageCounts);
-  const maxCount = Math.max(...entries.map(([, count]) => count), 0);
-
-  if (!summary.total || maxCount === 0) {
-    stageCaption.textContent = "단계별 분포를 계산할 이벤트가 없습니다.";
-    stageChart.append(
-      element("p", "chart-caption", "표시할 단계별 데이터가 없습니다."),
-    );
-    return;
-  }
-
-  const [topStageKey, topStageCount] = [...entries].sort(
-    (left, right) => right[1] - left[1],
-  )[0];
-  stageCaption.textContent = `${stageLabels[topStageKey] ?? topStageKey} 단계가 ${topStageCount}건으로 가장 많이 관측되었습니다.`;
-
-  for (const [stageKey, count] of entries) {
-    const row = document.createElement("div");
-    row.className = "stage-row";
-
-    const label = element(
-      "span",
-      "stage-label",
-      stageLabels[stageKey] ?? stageKey,
-    );
-    const track = element("div", "stage-track");
-    const fill = element("span", "stage-fill");
-    fill.style.width = `${(count / maxCount) * 100}%`;
-    track.append(fill);
-    const value = element("span", "stage-value", String(count));
-    row.append(label, track, value);
-    row.setAttribute(
-      "aria-label",
-      `${label.textContent} 단계 ${String(count)}건`,
-    );
-    stageChart.append(row);
-  }
-}
-
-function renderActivityChart(events) {
-  activityChart.replaceChildren();
-
-  if (!Array.isArray(events) || events.length === 0) {
-    activityCaption.textContent = "최근 요청 흐름을 계산할 이벤트가 없습니다.";
-    activityChart.append(
-      element("p", "chart-caption", "표시할 최근 이벤트가 없습니다."),
-    );
-    return;
-  }
-
-  const svgNamespace = "http://www.w3.org/2000/svg";
-  const width = 520;
-  const height = 170;
-  const plot = { left: 34, right: 10, top: 12, bottom: 28 };
-  const today = new Date();
-  const dateFormatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const shortDateFormatter = new Intl.DateTimeFormat("ko-KR", {
-    timeZone: "Asia/Seoul",
-    month: "numeric",
-    day: "numeric",
-  });
-  const buckets = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(today.getTime() - (6 - index) * 86_400_000);
-    return {
-      key: dateFormatter.format(date),
-      label: shortDateFormatter
-        .format(date)
-        .replace(/\.\s*/gu, "/")
-        .replace(/\/$/u, ""),
-      allowed: 0,
-      denied: 0,
-      error: 0,
-    };
-  });
-  const byDate = new Map(buckets.map((bucket) => [bucket.key, bucket]));
-
-  for (const event of events) {
-    const eventDate = new Date(event.at);
-    if (Number.isNaN(eventDate.getTime())) continue;
-    const bucket = byDate.get(dateFormatter.format(eventDate));
-    if (!bucket) continue;
-    const status = String(event.status ?? "error");
-    if (status === "allowed" || status === "ok") bucket.allowed += 1;
-    else if (status === "denied") bucket.denied += 1;
-    else bucket.error += 1;
-  }
-
-  const maxValue = Math.max(
-    1,
-    ...buckets.flatMap((bucket) => [
-      bucket.allowed,
-      bucket.denied,
-      bucket.error,
-    ]),
-  );
-  const xFor = (index) =>
-    plot.left +
-    (index / Math.max(1, buckets.length - 1)) *
-      (width - plot.left - plot.right);
-  const yFor = (value) =>
-    plot.top + (1 - value / maxValue) * (height - plot.top - plot.bottom);
-  const svg = document.createElementNS(svgNamespace, "svg");
-  svg.setAttribute("viewBox", `0 0 ${String(width)} ${String(height)}`);
-  svg.setAttribute("class", "trend-svg");
-  svg.setAttribute("role", "img");
-  svg.setAttribute(
+  decisionCounts.setAttribute(
     "aria-label",
-    `최근 7일 허용 ${String(buckets.reduce((sum, bucket) => sum + bucket.allowed, 0))}건, 차단 ${String(buckets.reduce((sum, bucket) => sum + bucket.denied, 0))}건, 오류 ${String(buckets.reduce((sum, bucket) => sum + bucket.error, 0))}건`,
+    `최근 보안 이벤트 ${String(summary.total)}건, 허용 ${String(summary.allowed)}건, 차단 ${String(summary.denied)}건, 오류 ${String(summary.error)}건`,
   );
 
-  for (const ratio of [0, 0.5, 1]) {
-    const value = Math.round(maxValue * (1 - ratio));
-    const y = plot.top + ratio * (height - plot.top - plot.bottom);
-    const line = document.createElementNS(svgNamespace, "line");
-    line.setAttribute("x1", String(plot.left));
-    line.setAttribute("x2", String(width - plot.right));
-    line.setAttribute("y1", String(y));
-    line.setAttribute("y2", String(y));
-    line.setAttribute("class", "trend-grid");
-    svg.append(line);
-
-    const label = document.createElementNS(svgNamespace, "text");
-    label.setAttribute("x", String(plot.left - 7));
-    label.setAttribute("y", String(y + 3));
-    label.setAttribute("text-anchor", "end");
-    label.setAttribute("class", "trend-axis-label");
-    label.textContent = String(value);
-    svg.append(label);
-  }
-
-  for (const [index, bucket] of buckets.entries()) {
-    const label = document.createElementNS(svgNamespace, "text");
-    label.setAttribute("x", String(xFor(index)));
-    label.setAttribute("y", String(height - 7));
-    label.setAttribute("text-anchor", "middle");
-    label.setAttribute("class", "trend-axis-label");
-    label.textContent = bucket.label;
-    svg.append(label);
-  }
-
-  for (const series of ["allowed", "denied", "error"]) {
-    const values = buckets.map((bucket) => bucket[series]);
-    const path = document.createElementNS(svgNamespace, "path");
-    path.setAttribute(
-      "d",
-      values
-        .map(
-          (value, index) =>
-            `${index === 0 ? "M" : "L"}${xFor(index).toFixed(1)},${yFor(value).toFixed(1)}`,
-        )
-        .join(" "),
+  const requestEvents = latestRequestEvents(events);
+  if (loadFailed || requestEvents.length === 0) {
+    const kind = loadFailed ? "error" : "waiting";
+    accessStatusSummary.className = `access-status-summary ${kind}`;
+    accessStatusBadge.className = `access-status-badge ${kind}`;
+    accessStatusRequest.textContent = loadFailed
+      ? "상태 확인 실패"
+      : "요청 대기";
+    accessStatusResult.textContent = loadFailed
+      ? "접근 상태를 확인하지 못했습니다"
+      : "요청 대기 중";
+    accessStatusDescription.textContent = loadFailed
+      ? "보안 이벤트를 불러오지 못했습니다. 잠시 후 새로고침해 주세요."
+      : "요청을 보내면 현재 신원·권한·데이터베이스 접근 상태를 표시합니다.";
+    accessStatusBadge.textContent = loadFailed ? "오류" : "대기";
+    accessStatusStage.textContent = loadFailed ? "확인 필요" : "대기";
+    accessStatusPolicy.textContent = loadFailed ? "확인 필요" : "평가 전";
+    accessStatusCredentials.textContent = loadFailed ? "확인 필요" : "미발급";
+    accessStatusAction.textContent = loadFailed
+      ? "이벤트 조회 실패"
+      : "기록 없음";
+    accessStatusAction.removeAttribute("title");
+    accessStatusSummary.setAttribute(
+      "aria-label",
+      `${accessStatusResult.textContent}. ${accessStatusDescription.textContent}`,
     );
-    path.setAttribute("class", `trend-line ${series}`);
-    svg.append(path);
-
-    values.forEach((value, index) => {
-      const dot = document.createElementNS(svgNamespace, "circle");
-      dot.setAttribute("cx", String(xFor(index)));
-      dot.setAttribute("cy", String(yFor(value)));
-      dot.setAttribute("r", "2.7");
-      dot.setAttribute("class", `trend-dot ${series}`);
-      svg.append(dot);
-    });
+    return;
   }
 
-  const latestEvent = events[0];
-  activityCaption.textContent = `가장 최근 조치는 ${formatAction(latestEvent.action)}이며, 결과는 ${statusLabels[String(latestEvent.status)] ?? "오류"}입니다.`;
-  activityChart.append(svg);
+  const terminalEvent =
+    requestEvents.find((event) => {
+      const status = String(event.status ?? "");
+      return status === "denied" || (status !== "allowed" && status !== "ok");
+    }) ?? requestEvents[0];
+  const terminalStatus = String(terminalEvent?.status ?? "");
+  const deniedEvent = terminalStatus === "denied" ? terminalEvent : null;
+  const errorEvent =
+    terminalStatus !== "allowed" &&
+    terminalStatus !== "ok" &&
+    terminalStatus !== "denied"
+      ? terminalEvent
+      : null;
+  const databaseSuccess = requestEvents.some((event) => {
+    const status = String(event.status ?? "");
+    return (
+      String(event.stage ?? "") === "database" &&
+      (status === "allowed" || status === "ok")
+    );
+  });
+  const credentialsIssued = requestEvents.some(
+    (event) =>
+      String(event.action ?? "") === "dynamic_credentials_issued" ||
+      (String(event.stage ?? "") === "database" &&
+        ["allowed", "ok"].includes(String(event.status ?? ""))),
+  );
+  const stageKey = String(terminalEvent?.stage ?? "");
+  const stage = stageLabels[stageKey] ?? "보안 제어";
+  const requestId = String(requestEvents[0]?.requestId ?? "");
+  const eventDate = new Date(requestEvents[0]?.at);
+  const eventTime = Number.isNaN(eventDate.getTime())
+    ? "시각 정보 없음"
+    : seoulTimeFormatter.format(eventDate);
+
+  let kind = "active";
+  if (deniedEvent) kind = "denied";
+  else if (errorEvent) kind = "error";
+  else if (databaseSuccess) kind = "allowed";
+
+  const deniedResultByStage = {
+    transport: "MCP 인증 단계에서 접근 차단",
+    identity: "Verify 신원 검증에서 접근 차단",
+    policy: "에이전트 정책으로 요청 차단",
+    vault: "Vault 최소 권한 정책으로 접근 차단",
+    database: "PostgreSQL 접근 단계에서 요청 차단",
+  };
+  const deniedDescriptionByStage = {
+    transport:
+      "MCP가 사용자 토큰을 검증하지 못해 요청을 중단했습니다. Vault와 PostgreSQL에는 도달하지 않았습니다.",
+    identity:
+      "IBM Verify 신원 또는 OBO 토큰 검증에 실패해 요청을 중단했습니다. Vault 권한은 평가되지 않았습니다.",
+    policy:
+      "에이전트 정책이 요청 범위를 허용하지 않아 중단했습니다. Vault와 PostgreSQL에는 도달하지 않았습니다.",
+    vault: credentialsIssued
+      ? "Vault 정책이 요청을 차단했습니다. 발급된 자격증명은 데이터 접근에 사용되지 않았습니다."
+      : "Vault 정책이 요청을 차단했습니다. PostgreSQL 자격증명은 발급되지 않았습니다.",
+    database: credentialsIssued
+      ? "PostgreSQL 접근 단계에서 요청을 차단했습니다. 발급된 자격증명은 데이터 조회에 사용되지 않았습니다."
+      : "PostgreSQL 접근 단계에서 요청을 차단했습니다. 자격증명은 발급되지 않았습니다.",
+  };
+  const preVaultStages = new Set(["transport", "identity", "policy"]);
+  const deniedPolicy = preVaultStages.has(stageKey)
+    ? "평가 전"
+    : stageKey === "vault"
+      ? "정책 차단"
+      : "평가 완료";
+  const errorPolicy = preVaultStages.has(stageKey)
+    ? "평가 전"
+    : stageKey === "vault"
+      ? "평가 오류"
+      : "평가 완료";
+
+  const copyByKind = {
+    active: {
+      result: "접근 요청 처리 중",
+      description: `${stage} 단계에서 요청을 처리하고 있습니다. 완료되면 권한과 자격증명 상태가 갱신됩니다.`,
+      badge: "처리 중",
+      policy: requestEvents.some(
+        (event) => String(event.stage ?? "") === "vault",
+      )
+        ? "평가 중"
+        : "평가 전",
+      credentials: credentialsIssued ? "발급 완료" : "발급 전",
+    },
+    allowed: {
+      result: "PostgreSQL 읽기 접근 허용",
+      description:
+        "Verify 사용자와 Bob OBO 신원이 검증되었고, Vault가 읽기 전용 데이터 접근을 허용했습니다.",
+      badge: "허용",
+      policy: "읽기 전용 허용",
+      credentials: "발급·사용 완료",
+    },
+    denied: {
+      result: deniedResultByStage[stageKey] ?? `${stage} 단계에서 접근 차단`,
+      description:
+        deniedDescriptionByStage[stageKey] ??
+        `${stage} 단계에서 요청을 차단했습니다. 이후 데이터 접근은 수행되지 않았습니다.`,
+      badge: "차단",
+      policy: deniedPolicy,
+      credentials: credentialsIssued ? "발급 후 사용 차단" : "미발급",
+    },
+    error: {
+      result: "접근 처리 중 오류 발생",
+      description: `${stage} 단계에서 처리 오류가 발생했습니다. 최근 보안 결정을 확인해 주세요.`,
+      badge: "오류",
+      policy: errorPolicy,
+      credentials: credentialsIssued ? "발급 여부 확인" : "미발급",
+    },
+  };
+  const copy = copyByKind[kind];
+  const action = formatAction(requestEvents[0]?.action);
+
+  accessStatusSummary.className = `access-status-summary ${kind}`;
+  accessStatusBadge.className = `access-status-badge ${kind}`;
+  accessStatusRequest.textContent = `${requestId ? `요청 ${requestId.slice(0, 8)}` : "최근 요청"} · ${eventTime}`;
+  accessStatusResult.textContent = copy.result;
+  accessStatusDescription.textContent = copy.description;
+  accessStatusBadge.textContent = copy.badge;
+  accessStatusStage.textContent = stage;
+  accessStatusPolicy.textContent = copy.policy;
+  accessStatusCredentials.textContent = copy.credentials;
+  accessStatusAction.textContent = action;
+  accessStatusAction.title = action;
+  accessStatusSummary.setAttribute(
+    "aria-label",
+    `${copy.result}. ${copy.description}`,
+  );
 }
 
 function renderState(kind, message) {
@@ -793,18 +761,30 @@ function updatePathFromEvents(events) {
     database: "database",
   };
   const updated = new Set();
-  const latestRequestId = String(events[0]?.requestId ?? "");
-  const requestEvents = latestRequestId
-    ? events.filter(
-        (event) => String(event.requestId ?? "") === latestRequestId,
-      )
-    : events.slice(0, 1);
-  const hasDeniedEvent = requestEvents.some(
-    (event) => String(event.status ?? "") === "denied",
-  );
+  const requestEvents = latestRequestEvents(events);
+  const terminalEvent = requestEvents.find((event) => {
+    const status = String(event.status ?? "");
+    return status === "denied" || (status !== "allowed" && status !== "ok");
+  });
+  const terminalStatus = String(terminalEvent?.status ?? "");
+  const databaseComplete = requestEvents.some((event) => {
+    const status = String(event.status ?? "");
+    return (
+      String(event.stage ?? "") === "database" &&
+      (status === "allowed" || status === "ok")
+    );
+  });
+  const traceState =
+    terminalStatus === "denied"
+      ? { label: "요청 차단", kind: "denied" }
+      : terminalEvent
+        ? { label: "요청 오류", kind: "error" }
+        : databaseComplete
+          ? { label: "접근 완료", kind: "verified" }
+          : { label: "처리 중", kind: "active" };
 
-  traceLiveState.textContent = hasDeniedEvent ? "정책 차단" : "최근 요청 완료";
-  traceLiveState.className = `live-state ${hasDeniedEvent ? "denied" : "verified"}`;
+  traceLiveState.textContent = traceState.label;
+  traceLiveState.className = `live-state ${traceState.kind}`;
 
   for (const [index, event] of requestEvents.entries()) {
     const key = pathByStage[String(event.stage ?? "")];
@@ -822,7 +802,7 @@ function updatePathFromEvents(events) {
           ? "allowed"
           : rawStatus === "denied"
             ? "denied"
-            : "denied";
+            : "error";
     const label =
       key === "agent" && rawStatus === "denied"
         ? "정책 적용"
@@ -921,9 +901,7 @@ async function loadEvents(announce = false) {
     if (!response.ok) throw new Error("events unavailable");
     const payload = await response.json();
     renderEvents(payload.events);
-    renderDecisionOverview(payload.events);
-    renderStageChart(payload.events);
-    renderActivityChart(payload.events);
+    renderCurrentAccessStatus(payload.events);
     lastUpdated.textContent = `마지막 업데이트 ${seoulTimeFormatter.format(new Date())}`;
     if (announce && refreshAnnouncement) {
       refreshAnnouncement.textContent = `보안 결정 ${String(payload.events.length)}건을 새로고침했습니다.`;
@@ -934,9 +912,7 @@ async function loadEvents(announce = false) {
       "error",
       "보안 결정 기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     );
-    renderDecisionOverview([]);
-    renderStageChart([]);
-    renderActivityChart([]);
+    renderCurrentAccessStatus([], true);
     lastUpdated.textContent = "업데이트 실패";
     if (announce && refreshAnnouncement) {
       refreshAnnouncement.textContent =

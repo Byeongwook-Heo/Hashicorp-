@@ -139,7 +139,10 @@ describe("HTTP security boundary", () => {
 
     expect(html).toContain('id="chat-section"');
     expect(html).toContain('id="control-center"');
+    expect(html).toContain('id="current-access-status"');
+    expect(html).toContain("/icons/custom/postgresql-elephant.svg");
     expect(html).toContain("Bob AI 에이전트");
+    expect(html).not.toContain("보안 결정 추이");
   });
 
   it("redirects legacy operations routes to the unified control center", async () => {
