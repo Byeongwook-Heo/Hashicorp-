@@ -8,11 +8,24 @@ prepare_vault_environment
 wait_for_vault
 load_vault_root_token
 
-verify_jwks_url="$(parameter_value "/${PROJECT_NAME}/verify/jwks-url")"
-verify_issuer="$(parameter_value "/${PROJECT_NAME}/verify/issuer")"
-verify_audience="$(parameter_value "/${PROJECT_NAME}/verify/audience")"
-verify_nhi_claim="$(parameter_value "/${PROJECT_NAME}/verify/nhi-claim")"
-verify_nhi_value="$(parameter_value "/${PROJECT_NAME}/verify/nhi-value")"
+if aws ssm get-parameter \
+  --name "/${PROJECT_NAME}/verify/obo/token-url" >/dev/null 2>&1; then
+  verify_jwks_url="$(parameter_value "/${PROJECT_NAME}/verify/obo/jwks-url")"
+  verify_issuer="$(parameter_value "/${PROJECT_NAME}/verify/obo/issuer")"
+  verify_audience="$(parameter_value "/${PROJECT_NAME}/verify/obo/audience")"
+  verify_user_claim="sub"
+  verify_bound_claim="$(parameter_value "/${PROJECT_NAME}/verify/obo/actor-claim")"
+  verify_bound_value="$(parameter_value "/${PROJECT_NAME}/verify/obo/actor-value")"
+  identity_flow="obo"
+else
+  verify_jwks_url="$(parameter_value "/${PROJECT_NAME}/verify/jwks-url")"
+  verify_issuer="$(parameter_value "/${PROJECT_NAME}/verify/issuer")"
+  verify_audience="$(parameter_value "/${PROJECT_NAME}/verify/audience")"
+  verify_user_claim="$(parameter_value "/${PROJECT_NAME}/verify/nhi-claim")"
+  verify_bound_claim="${verify_user_claim}"
+  verify_bound_value="$(parameter_value "/${PROJECT_NAME}/verify/nhi-value")"
+  identity_flow="client_credentials"
+fi
 
 unset VAULT_NAMESPACE
 if ! vault namespace lookup demo >/dev/null 2>&1; then
@@ -46,10 +59,10 @@ vault write auth/jwt/config \
 
 role_file="$(new_private_file)"
 jq -n \
-  --arg user_claim "${verify_nhi_claim}" \
+  --arg user_claim "${verify_user_claim}" \
   --arg audience "${verify_audience}" \
-  --arg claim "${verify_nhi_claim}" \
-  --arg value "${verify_nhi_value}" \
+  --arg claim "${verify_bound_claim}" \
+  --arg value "${verify_bound_value}" \
   '{
     role_type: "jwt",
     user_claim: $user_claim,
@@ -62,6 +75,11 @@ jq -n \
     token_explicit_max_ttl: "5m"
   }' >"${role_file}"
 vault write auth/jwt/role/bob-orders - <"${role_file}" >/dev/null
+
+if vault read database/config/shop-postgres >/dev/null 2>&1; then
+  echo "Vault ${identity_flow} JWT role updated; the existing rotating PostgreSQL configuration was preserved."
+  exit 0
+fi
 
 bootstrap_secret_name="${PROJECT_NAME}/bootstrap/vault-db-admin"
 db_admin_secret="$(aws secretsmanager get-secret-value \
@@ -95,4 +113,4 @@ aws secretsmanager delete-secret \
   --secret-id "${bootstrap_secret_name}" \
   --force-delete-without-recovery >/dev/null
 
-echo "Vault namespace, audit, JWT policy, and rotating PostgreSQL credentials are configured."
+echo "Vault namespace, ${identity_flow} JWT policy, and rotating PostgreSQL credentials are configured."

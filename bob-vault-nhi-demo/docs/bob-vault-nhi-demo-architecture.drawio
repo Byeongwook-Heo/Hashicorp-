@@ -6,23 +6,23 @@
         <mxCell id="0"/>
         <mxCell id="1" parent="0"/>
 
-        <mxCell id="title" value="IBM Bob → IBM Verify → HashiCorp Vault → Amazon RDS" style="text;html=1;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#172B4D;" vertex="1" parent="1">
+        <mxCell id="title" value="Verify 사용자 → Chat Agent → MCP → Verify OBO → Vault → RDS" style="text;html=1;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;fontColor=#172B4D;" vertex="1" parent="1">
           <mxGeometry x="30" y="20" width="1130" height="40" as="geometry"/>
         </mxCell>
-        <mxCell id="subtitle" value="AWS-only build · JWT-based NHI · private runtime · short-lived PostgreSQL credentials" style="text;html=1;align=right;verticalAlign=middle;fontSize=13;fontColor=#5E6C84;" vertex="1" parent="1">
+        <mxCell id="subtitle" value="Authorization Code + PKCE · RFC 8693 OBO · private MCP runtime · dynamic DB credentials" style="text;html=1;align=right;verticalAlign=middle;fontSize=13;fontColor=#5E6C84;" vertex="1" parent="1">
           <mxGeometry x="1160" y="20" width="600" height="40" as="geometry"/>
         </mxCell>
 
-        <mxCell id="user-boundary" value="로컬 사용자 노트북" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#F5F5F5;strokeColor=#666666;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+        <mxCell id="user-boundary" value="사용자 브라우저" style="swimlane;html=1;startSize=34;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#F5F5F5;strokeColor=#666666;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
           <mxGeometry x="30" y="90" width="260" height="570" as="geometry"/>
         </mxCell>
-        <mxCell id="bob-ide" value="&lt;b&gt;IBM Bob IDE&lt;/b&gt;&lt;br&gt;MCP client&lt;br&gt;로컬에서 실행" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#5B9BD5;fontColor=#1F2937;fontSize=14;" vertex="1" parent="user-boundary">
+        <mxCell id="bob-ide" value="&lt;b&gt;Sample Chatbot UI&lt;/b&gt;&lt;br&gt;Verify 로그인&lt;br&gt;Agent 대화 + 보안 trace" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#5B9BD5;fontColor=#1F2937;fontSize=14;" vertex="1" parent="user-boundary">
           <mxGeometry x="30" y="55" width="200" height="80" as="geometry"/>
         </mxCell>
-        <mxCell id="local-browser" value="&lt;b&gt;Demo Dashboard&lt;/b&gt;&lt;br&gt;브라우저 · 읽기 전용" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F0D9;strokeColor=#70AD47;fontColor=#1F2937;" vertex="1" parent="user-boundary">
+        <mxCell id="local-browser" value="&lt;b&gt;Operations Dashboard&lt;/b&gt;&lt;br&gt;/ops · sanitized events" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E2F0D9;strokeColor=#70AD47;fontColor=#1F2937;" vertex="1" parent="user-boundary">
           <mxGeometry x="30" y="160" width="200" height="60" as="geometry"/>
         </mxCell>
-        <mxCell id="local-config" value="&lt;b&gt;Bob에 저장되는 값&lt;/b&gt;&lt;br&gt;① HTTPS MCP URL&lt;br&gt;② 전송용 Bearer token&lt;br&gt;&lt;i&gt;AWS/Vault/DB 비밀 없음&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1F2937;" vertex="1" parent="user-boundary">
+        <mxCell id="local-config" value="&lt;b&gt;브라우저 보안 경계&lt;/b&gt;&lt;br&gt;① PKCE S256&lt;br&gt;② 암호화 HttpOnly session&lt;br&gt;③ CSRF 검증&lt;br&gt;&lt;i&gt;Vault/DB 비밀 없음&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;fontColor=#1F2937;" vertex="1" parent="user-boundary">
           <mxGeometry x="30" y="245" width="200" height="105" as="geometry"/>
         </mxCell>
         <mxCell id="cgc-operator" value="&lt;b&gt;CGC 작업자&lt;/b&gt;&lt;br&gt;전용 RSA 3072 .pem&lt;br&gt;2026-09-02 자동 만료" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8B2;strokeColor=#E5A000;fontColor=#1F2937;" vertex="1" parent="user-boundary">
@@ -32,10 +32,10 @@
           <mxGeometry x="30" y="480" width="200" height="25" as="geometry"/>
         </mxCell>
 
-        <mxCell id="verify" value="&lt;b&gt;IBM Verify SaaS&lt;/b&gt;&lt;br&gt;&lt;br&gt;OAuth 2.0 token endpoint&lt;br&gt;KMS 서명 private_key_jwt 검증&lt;br&gt;bob-db-reader NHI access JWT 발급&lt;br&gt;&lt;br&gt;&lt;i&gt;현재 남은 외부 연동 지점&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DEEBF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1">
+        <mxCell id="verify" value="&lt;b&gt;IBM Verify SaaS&lt;/b&gt;&lt;br&gt;&lt;br&gt;① 사용자 OIDC + PKCE&lt;br&gt;② Agent STS client&lt;br&gt;③ RFC 8693 token exchange&lt;br&gt;④ user sub + Agent claim OBO JWT&lt;br&gt;&lt;br&gt;&lt;i&gt;JWT access token · RS256&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DEEBF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;fontSize=13;" vertex="1" parent="1">
           <mxGeometry x="330" y="185" width="280" height="190" as="geometry"/>
         </mxCell>
-        <mxCell id="verify-note" value="Issuer · Audience · JWKS · NHI claim" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#5E6C84;" vertex="1" parent="1">
+        <mxCell id="verify-note" value="User issuer/JWKS · STS issuer/JWKS · audience · actor claim" style="text;html=1;align=center;verticalAlign=middle;fontSize=11;fontColor=#5E6C84;" vertex="1" parent="1">
           <mxGeometry x="340" y="385" width="260" height="25" as="geometry"/>
         </mxCell>
 
@@ -56,7 +56,7 @@
         <mxCell id="public-subnets" value="Public Subnets · 2 AZ" style="swimlane;html=1;startSize=30;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#FFF9E6;strokeColor=#D6B656;fontStyle=1;fontColor=#594B16;" vertex="1" parent="vpc">
           <mxGeometry x="20" y="45" width="220" height="300" as="geometry"/>
         </mxCell>
-        <mxCell id="alb" value="&lt;b&gt;Application Load Balancer&lt;/b&gt;&lt;br&gt;HTTPS :443&lt;br&gt;Source CIDR /32&lt;br&gt;Bearer token · rate limit&lt;br&gt;HTTP→HTTPS redirect" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8B2;strokeColor=#E5A000;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="public-subnets">
+        <mxCell id="alb" value="&lt;b&gt;Application Load Balancer&lt;/b&gt;&lt;br&gt;HTTPS :443&lt;br&gt;Event source CIDRs&lt;br&gt;Verify user session · rate limit&lt;br&gt;TLS 1.2 / 1.3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8B2;strokeColor=#E5A000;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="public-subnets">
           <mxGeometry x="20" y="75" width="180" height="125" as="geometry"/>
         </mxCell>
         <mxCell id="bastion" value="&lt;b&gt;Event SSH Bastion&lt;/b&gt;&lt;br&gt;hc-security-base-* · :22&lt;br&gt;Vault 전달만 허용" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCE8B2;strokeColor=#E5A000;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="public-subnets">
@@ -69,13 +69,13 @@
         <mxCell id="app-subnets" value="Private App Subnets · 2 AZ" style="swimlane;html=1;startSize=30;horizontal=1;rounded=1;container=1;collapsible=0;recursiveResize=0;fillColor=#EAF2F8;strokeColor=#5B9BD5;fontStyle=1;fontColor=#25445E;" vertex="1" parent="vpc">
           <mxGeometry x="260" y="45" width="310" height="300" as="geometry"/>
         </mxCell>
-        <mxCell id="ecs" value="&lt;b&gt;ECS Fargate · MCP Runtime&lt;/b&gt;&lt;br&gt;Node.js 22 · non-root · read-only FS&lt;br&gt;정확히 3개 MCP tool&lt;br&gt;fixed SQL · memory-only tokens&lt;br&gt;&lt;i&gt;현재 bootstrap mode&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="app-subnets">
+        <mxCell id="ecs" value="&lt;b&gt;ECS Fargate · Chat Agent + MCP&lt;/b&gt;&lt;br&gt;Node.js 22 · non-root · read-only FS&lt;br&gt;bounded Agent → loopback /mcp&lt;br&gt;정확히 3개 MCP tool&lt;br&gt;user JWT 재검증 · fixed SQL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D9EAF7;strokeColor=#1261A0;strokeWidth=2;fontColor=#1F2937;" vertex="1" parent="app-subnets">
           <mxGeometry x="20" y="50" width="270" height="125" as="geometry"/>
         </mxCell>
         <mxCell id="kms-sign" value="&lt;b&gt;AWS KMS&lt;/b&gt;&lt;br&gt;RS256 Sign&lt;br&gt;private key 비노출" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EADCF8;strokeColor=#8E44AD;fontColor=#1F2937;" vertex="1" parent="app-subnets">
           <mxGeometry x="20" y="200" width="125" height="75" as="geometry"/>
         </mxCell>
-        <mxCell id="runtime-secrets" value="&lt;b&gt;Secrets + Logs&lt;/b&gt;&lt;br&gt;전송 token&lt;br&gt;CloudWatch audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F2F2;strokeColor=#7F8C8D;fontColor=#1F2937;" vertex="1" parent="app-subnets">
+        <mxCell id="runtime-secrets" value="&lt;b&gt;Secrets + Logs&lt;/b&gt;&lt;br&gt;session encryption key&lt;br&gt;CloudWatch audit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F2F2F2;strokeColor=#7F8C8D;fontColor=#1F2937;" vertex="1" parent="app-subnets">
           <mxGeometry x="165" y="200" width="125" height="75" as="geometry"/>
         </mxCell>
 
@@ -99,7 +99,7 @@
           <mxGeometry x="15" y="235" width="170" height="35" as="geometry"/>
         </mxCell>
 
-        <mxCell id="edge-bob-alb" value="① HTTPS MCP · Bearer token" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="bob-ide" target="alb">
+        <mxCell id="edge-bob-alb" value="① HTTPS chatbot · Verify session" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="bob-ide" target="alb">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
         <mxCell id="edge-browser-alb" value="Dashboard" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#70AD47;strokeWidth=1;endArrow=block;endFill=1;fontColor=#3A7D44;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="local-browser" target="alb">
@@ -114,13 +114,13 @@
         <mxCell id="edge-dns-alb" value="DNS + certificate" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#A5A5A5;endArrow=open;endFill=0;fontColor=#5E6C84;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="dns-tls" target="alb">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="edge-alb-ecs" value="② /mcp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="alb" target="ecs">
+        <mxCell id="edge-alb-ecs" value="② /auth/callback · /api/chat" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="alb" target="ecs">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="edge-ecs-kms" value="③ SHA-256 digest + Sign" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8E44AD;strokeWidth=2;endArrow=block;endFill=1;fontColor=#674EA7;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="kms-sign">
+        <mxCell id="edge-ecs-kms" value="④ Agent client assertion Sign" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8E44AD;strokeWidth=2;endArrow=block;endFill=1;fontColor=#674EA7;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="kms-sign">
           <mxGeometry relative="1" as="geometry"/>
         </mxCell>
-        <mxCell id="edge-ecs-verify" value="④ private_key_jwt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8E44AD;strokeWidth=2;endArrow=block;endFill=1;fontColor=#674EA7;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="verify">
+        <mxCell id="edge-ecs-verify" value="⑤ user subject_token + private_key_jwt" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8E44AD;strokeWidth=2;endArrow=block;endFill=1;fontColor=#674EA7;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="ecs" target="verify">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="820" y="255"/>
@@ -128,7 +128,7 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="edge-verify-ecs" value="⑤ NHI access JWT" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="verify" target="ecs">
+        <mxCell id="edge-verify-ecs" value="⑥ OBO JWT (user sub + Agent)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#1261A0;strokeWidth=2;endArrow=block;endFill=1;fontColor=#1261A0;labelBackgroundColor=#FFFFFF;" edge="1" parent="1" source="verify" target="ecs">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
               <mxPoint x="620" y="345"/>

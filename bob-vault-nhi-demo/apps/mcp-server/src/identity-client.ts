@@ -18,7 +18,12 @@ const tokenResponseSchema = z
   .loose();
 
 export interface IdentityProvider {
-  getVerifiedAccessToken(): Promise<string>;
+  getVerifiedAccessToken(context?: IdentityContext): Promise<string>;
+}
+
+export interface IdentityContext {
+  subjectToken: string;
+  subject: string;
 }
 
 interface IdentityClientConfig {
@@ -125,6 +130,130 @@ export class VerifyIdentityClient implements IdentityProvider {
         "IBM Verify access token validation failed",
         { cause: error },
       );
+    }
+
+    return tokenResponse.access_token;
+  }
+}
+
+interface OboIdentityClientConfig {
+  tokenUrl: string;
+  jwksUrl: string;
+  issuer: string;
+  audience: string;
+  clientId: string;
+  scope?: string;
+  actorClaim: string;
+  actorValue: string;
+}
+
+export class VerifyOboIdentityClient implements IdentityProvider {
+  readonly #config: OboIdentityClientConfig;
+  readonly #signer: KmsClientAssertionSigner;
+  readonly #jwks: ReturnType<typeof createRemoteJWKSet>;
+
+  public constructor(
+    config: OboIdentityClientConfig,
+    signer: KmsClientAssertionSigner,
+  ) {
+    this.#config = config;
+    this.#signer = signer;
+    this.#jwks = createRemoteJWKSet(new URL(config.jwksUrl), {
+      cooldownDuration: 30_000,
+      cacheMaxAge: 10 * 60_000,
+      timeoutDuration: 5_000,
+    });
+  }
+
+  public async getVerifiedAccessToken(
+    context?: IdentityContext,
+  ): Promise<string> {
+    if (!context) {
+      throw new AuthenticationError(
+        "A verified user token is required for the OBO exchange",
+      );
+    }
+    const assertion = await this.#signer.sign();
+    const body = new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:token-exchange",
+      client_id: this.#config.clientId,
+      client_assertion_type:
+        "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      client_assertion: assertion,
+      subject_token: context.subjectToken,
+      subject_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      requested_token_type: "urn:ietf:params:oauth:token-type:access_token",
+      audience: this.#config.audience,
+      ...(this.#config.scope ? { scope: this.#config.scope } : {}),
+    });
+
+    let response;
+    try {
+      response = await request(this.#config.tokenUrl, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+        bodyTimeout: 8_000,
+        headersTimeout: 8_000,
+      });
+    } catch (error) {
+      throw new ExternalServiceError(
+        "IBM Verify",
+        "OBO token exchange endpoint was unavailable",
+        { cause: error },
+      );
+    }
+
+    const responseText = await response.body.text();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new AuthenticationError(
+        `IBM Verify rejected the OBO token exchange (${String(response.statusCode)})`,
+      );
+    }
+    let tokenResponse: z.infer<typeof tokenResponseSchema>;
+    try {
+      tokenResponse = tokenResponseSchema.parse(JSON.parse(responseText));
+    } catch (error) {
+      throw new ExternalServiceError(
+        "IBM Verify",
+        "OBO token response was invalid",
+        { cause: error },
+      );
+    }
+
+    try {
+      const verification = await jwtVerify(
+        tokenResponse.access_token,
+        this.#jwks,
+        {
+          issuer: this.#config.issuer,
+          audience: this.#config.audience,
+          algorithms: ["RS256"],
+        },
+      );
+      if (verification.payload.sub !== context.subject) {
+        throw new AuthenticationError(
+          "IBM Verify OBO token did not preserve the user subject",
+        );
+      }
+      if (
+        verification.payload[this.#config.actorClaim] !==
+        this.#config.actorValue
+      ) {
+        throw new AuthenticationError(
+          "IBM Verify OBO token did not contain the required agent binding",
+        );
+      }
+    } catch (error) {
+      if (error instanceof AuthenticationError) {
+        throw error;
+      }
+      throw new AuthenticationError("IBM Verify OBO token validation failed", {
+        cause: error,
+      });
     }
 
     return tokenResponse.access_token;

@@ -68,57 +68,154 @@ data "aws_secretsmanager_secret" "transport_token" {
   name  = "${var.project_name}/mcp/transport-token"
 }
 
+data "aws_secretsmanager_secret" "chat_session" {
+  count = var.deploy_service && var.chatbot_enabled ? 1 : 0
+  name  = "${var.project_name}/chat/session-secret"
+}
+
 locals {
   fqdn                   = "${var.hostname}.${var.public_zone_name}"
   allowed_source_cidrs   = split(",", nonsensitive(data.aws_ssm_parameter.allowed_source_cidrs.value))
   verify_jwks_source_ips = { for index, cidr in var.verify_jwks_source_cidrs : cidr => index }
   full_identity_mode     = var.deploy_service && var.app_mode == "aws"
+  legacy_identity_mode   = local.full_identity_mode && !var.chatbot_enabled
+  chatbot_identity_mode  = local.full_identity_mode && var.chatbot_enabled
 }
 
 data "aws_ssm_parameter" "verify_token_url" {
-  count           = local.full_identity_mode ? 1 : 0
+  count           = local.legacy_identity_mode ? 1 : 0
   name            = "/${var.project_name}/verify/token-url"
   with_decryption = false
 }
 
 data "aws_ssm_parameter" "verify_jwks_url" {
-  count           = local.full_identity_mode ? 1 : 0
+  count           = local.legacy_identity_mode ? 1 : 0
   name            = "/${var.project_name}/verify/jwks-url"
   with_decryption = false
 }
 
 data "aws_ssm_parameter" "verify_issuer" {
-  count           = local.full_identity_mode ? 1 : 0
+  count           = local.legacy_identity_mode ? 1 : 0
   name            = "/${var.project_name}/verify/issuer"
   with_decryption = false
 }
 
 data "aws_ssm_parameter" "verify_audience" {
-  count           = local.full_identity_mode ? 1 : 0
+  count           = local.legacy_identity_mode ? 1 : 0
   name            = "/${var.project_name}/verify/audience"
   with_decryption = false
 }
 
 data "aws_ssm_parameter" "verify_client_id" {
-  count           = local.full_identity_mode ? 1 : 0
+  count           = local.legacy_identity_mode ? 1 : 0
   name            = "/${var.project_name}/verify/client-id"
   with_decryption = false
 }
 
 data "aws_ssm_parameter" "verify_scope" {
-  count           = local.full_identity_mode ? 1 : 0
+  count           = local.legacy_identity_mode ? 1 : 0
   name            = "/${var.project_name}/verify/scope"
   with_decryption = false
 }
 
 data "aws_ssm_parameter" "verify_nhi_claim" {
-  count           = local.full_identity_mode ? 1 : 0
+  count           = local.legacy_identity_mode ? 1 : 0
   name            = "/${var.project_name}/verify/nhi-claim"
   with_decryption = false
 }
 
 data "aws_ssm_parameter" "verify_nhi_value" {
-  count           = local.full_identity_mode ? 1 : 0
+  count           = local.legacy_identity_mode ? 1 : 0
   name            = "/${var.project_name}/verify/nhi-value"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_user_authorization_url" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/user/authorization-url"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_user_token_url" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/user/token-url"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_user_jwks_url" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/user/jwks-url"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_user_issuer" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/user/issuer"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_user_audience" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/user/audience"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_user_client_id" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/user/client-id"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_user_scopes" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/user/scopes"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_obo_token_url" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/obo/token-url"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_obo_jwks_url" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/obo/jwks-url"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_obo_issuer" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/obo/issuer"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_obo_audience" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/obo/audience"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_obo_client_id" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/obo/client-id"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_obo_scope" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/obo/scope"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_obo_actor_claim" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/obo/actor-claim"
+  with_decryption = false
+}
+
+data "aws_ssm_parameter" "verify_obo_actor_value" {
+  count           = local.chatbot_identity_mode ? 1 : 0
+  name            = "/${var.project_name}/verify/obo/actor-value"
   with_decryption = false
 }

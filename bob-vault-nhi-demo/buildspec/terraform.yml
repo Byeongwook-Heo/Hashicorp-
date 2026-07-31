@@ -30,6 +30,9 @@ phases:
           deploy-app)
             terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=aws"
             ;;
+          deploy-chatbot)
+            terraform apply -auto-approve -input=false -lock-timeout=5m -var="deploy_service=true" -var="app_mode=aws" -var="chatbot_enabled=true"
+            ;;
           event-access-plan)
             terraform plan \
               -input=false \

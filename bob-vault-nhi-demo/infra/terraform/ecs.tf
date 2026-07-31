@@ -41,9 +41,12 @@ resource "aws_iam_role_policy" "ecs_transport_secret" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["secretsmanager:GetSecretValue"]
-      Resource = data.aws_secretsmanager_secret.transport_token[0].arn
+      Effect = "Allow"
+      Action = ["secretsmanager:GetSecretValue"]
+      Resource = concat(
+        [data.aws_secretsmanager_secret.transport_token[0].arn],
+        var.chatbot_enabled ? [data.aws_secretsmanager_secret.chat_session[0].arn] : []
+      )
     }]
   })
 }
@@ -82,10 +85,15 @@ locals {
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "8080" },
     { name = "APP_MODE", value = var.app_mode },
+    { name = "CHATBOT_ENABLED", value = tostring(var.chatbot_enabled) },
+    { name = "IDENTITY_FLOW", value = var.chatbot_enabled ? "obo" : "client_credentials" },
+    { name = "MCP_AUTH_MODE", value = var.chatbot_enabled ? "user_jwt" : "static_bearer" },
     { name = "SERVICE_VERSION", value = var.service_version },
     { name = "AWS_REGION", value = var.aws_region },
     { name = "ALLOWED_ORIGINS", value = "https://${local.fqdn}" },
     { name = "TRUST_PROXY", value = "true" },
+    { name = "PUBLIC_BASE_URL", value = "https://${local.fqdn}" },
+    { name = "MCP_INTERNAL_URL", value = "http://127.0.0.1:8080/mcp" },
     { name = "VERIFY_KMS_KEY_ID", value = aws_kms_key.verify_signing.arn },
     { name = "VAULT_ADDR", value = "https://${aws_route53_record.vault_private.fqdn}:8200" },
     { name = "VAULT_JWT_AUTH_PATH", value = "jwt" },
@@ -98,7 +106,7 @@ locals {
     { name = "DB_CA_FILE", value = "/app/certs/rds-ca.pem" }
   ]
 
-  verify_environment = local.full_identity_mode ? [
+  verify_environment = local.legacy_identity_mode ? [
     { name = "VERIFY_TOKEN_URL", value = nonsensitive(data.aws_ssm_parameter.verify_token_url[0].value) },
     { name = "VERIFY_JWKS_URL", value = nonsensitive(data.aws_ssm_parameter.verify_jwks_url[0].value) },
     { name = "VERIFY_ISSUER", value = nonsensitive(data.aws_ssm_parameter.verify_issuer[0].value) },
@@ -108,6 +116,35 @@ locals {
     { name = "VERIFY_NHI_CLAIM", value = nonsensitive(data.aws_ssm_parameter.verify_nhi_claim[0].value) },
     { name = "VERIFY_NHI_VALUE", value = nonsensitive(data.aws_ssm_parameter.verify_nhi_value[0].value) }
   ] : []
+
+  chatbot_verify_environment = local.chatbot_identity_mode ? [
+    { name = "VERIFY_USER_AUTHORIZATION_URL", value = nonsensitive(data.aws_ssm_parameter.verify_user_authorization_url[0].value) },
+    { name = "VERIFY_USER_TOKEN_URL", value = nonsensitive(data.aws_ssm_parameter.verify_user_token_url[0].value) },
+    { name = "VERIFY_USER_JWKS_URL", value = nonsensitive(data.aws_ssm_parameter.verify_user_jwks_url[0].value) },
+    { name = "VERIFY_USER_ISSUER", value = nonsensitive(data.aws_ssm_parameter.verify_user_issuer[0].value) },
+    { name = "VERIFY_USER_AUDIENCE", value = nonsensitive(data.aws_ssm_parameter.verify_user_audience[0].value) },
+    { name = "VERIFY_USER_CLIENT_ID", value = nonsensitive(data.aws_ssm_parameter.verify_user_client_id[0].value) },
+    { name = "VERIFY_USER_SCOPES", value = nonsensitive(data.aws_ssm_parameter.verify_user_scopes[0].value) },
+    { name = "VERIFY_OBO_TOKEN_URL", value = nonsensitive(data.aws_ssm_parameter.verify_obo_token_url[0].value) },
+    { name = "VERIFY_OBO_JWKS_URL", value = nonsensitive(data.aws_ssm_parameter.verify_obo_jwks_url[0].value) },
+    { name = "VERIFY_OBO_ISSUER", value = nonsensitive(data.aws_ssm_parameter.verify_obo_issuer[0].value) },
+    { name = "VERIFY_OBO_AUDIENCE", value = nonsensitive(data.aws_ssm_parameter.verify_obo_audience[0].value) },
+    { name = "VERIFY_OBO_CLIENT_ID", value = nonsensitive(data.aws_ssm_parameter.verify_obo_client_id[0].value) },
+    { name = "VERIFY_OBO_SCOPE", value = nonsensitive(data.aws_ssm_parameter.verify_obo_scope[0].value) },
+    { name = "VERIFY_OBO_ACTOR_CLAIM", value = nonsensitive(data.aws_ssm_parameter.verify_obo_actor_claim[0].value) },
+    { name = "VERIFY_OBO_ACTOR_VALUE", value = nonsensitive(data.aws_ssm_parameter.verify_obo_actor_value[0].value) }
+  ] : []
+
+  app_secrets = concat(
+    [{
+      name      = "TRANSPORT_BEARER_TOKEN"
+      valueFrom = data.aws_secretsmanager_secret.transport_token[0].arn
+    }],
+    var.chatbot_enabled ? [{
+      name      = "SESSION_SECRET"
+      valueFrom = data.aws_secretsmanager_secret.chat_session[0].arn
+    }] : []
+  )
 }
 
 resource "aws_ecs_task_definition" "app" {
@@ -138,11 +175,8 @@ resource "aws_ecs_task_definition" "app" {
         hostPort      = 8080
         protocol      = "tcp"
       }]
-      environment = concat(local.base_environment, local.verify_environment)
-      secrets = [{
-        name      = "TRANSPORT_BEARER_TOKEN"
-        valueFrom = data.aws_secretsmanager_secret.transport_token[0].arn
-      }]
+      environment = concat(local.base_environment, local.verify_environment, local.chatbot_verify_environment)
+      secrets     = local.app_secrets
       linuxParameters = {
         initProcessEnabled = true
         capabilities = {

@@ -1,6 +1,11 @@
 output "public_url" {
-  description = "Bob MCP endpoint and operations dashboard."
+  description = "IBM Verify authenticated chatbot and operations dashboard."
   value       = "https://${local.fqdn}"
+}
+
+output "verify_redirect_uri" {
+  description = "Exact redirect URI to register on the IBM Verify OIDC application."
+  value       = "https://${local.fqdn}/auth/callback"
 }
 
 output "mcp_endpoint" {

@@ -87,6 +87,12 @@ variable "app_mode" {
   }
 }
 
+variable "chatbot_enabled" {
+  description = "Enable IBM Verify user login, OBO token exchange, and the sample chatbot."
+  type        = bool
+  default     = false
+}
+
 variable "service_version" {
   description = "Reader-facing release identifier."
   type        = string

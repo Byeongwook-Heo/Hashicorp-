@@ -27,7 +27,7 @@ RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /nonexistent app
 COPY --from=build --chown=app:app /workspace/node_modules ./node_modules
 COPY --from=build --chown=app:app /workspace/apps/mcp-server/dist ./dist
-COPY --from=build --chown=app:app /workspace/apps/mcp-server/public ./dist/public
+COPY --from=build --chown=app:app /workspace/apps/mcp-server/public ./public
 COPY --from=build --chown=app:app /tmp/rds-ca.pem ./certs/rds-ca.pem
 USER 10001:10001
 EXPOSE 8080

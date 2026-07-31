@@ -1,45 +1,60 @@
-# Five-minute demo script
+# Five-minute chatbot demo
 
-## 0:00–1:00 — Show the boundary
+## 0:00–1:00 — Verify the user
 
-Open `/demo`. Explain: Bob has an HTTPS endpoint and transport token only. The workload private key cannot leave AWS KMS, Vault and RDS are private, and every business call gets a new short-lived DB login.
+Open the root URL and click **IBM Verify로 로그인**. After login, show the
+header identity indicator. Explain that the browser has an encrypted HttpOnly
+session; raw access tokens are not exposed to the page JavaScript.
 
 ## 1:00–2:30 — Normal request
 
 Ask:
 
 ```text
-ORD-1001 주문의 결제 상태와 배송 상태를 알려줘.
+주문 ORD-1001 상태를 확인해줘
 ```
 
 Expected sequence:
 
-1. Bob selects `get_order_status`.
-2. KMS signs a 60-second client assertion.
-3. Verify authenticates `bob-db-reader`.
-4. Vault validates the JWT and allows `bob-orders`.
-5. Vault issues `bob-orders-readonly`, default TTL 120 seconds.
-6. RDS returns one row from `v_bob_order_status`.
-7. DB lease and Vault token are revoked.
+1. The bounded Agent discovers and selects `get_order_status`.
+2. The Agent calls the MCP Streamable HTTP endpoint with the Verify user token.
+3. MCP validates the user JWT.
+4. KMS signs the Agent client assertion.
+5. Verify STS exchanges the user token for an OBO JWT.
+6. Vault validates the user `sub`, Agent binding, issuer, and audience.
+7. Vault issues `bob-orders-readonly` for 120 seconds.
+8. RDS returns one synthetic order row; the lease and Vault token are revoked.
 
-Expected business answer: payment is `PAID`, delivery is `PREPARING`. No credential appears.
+Expected business answer: payment is `PAID`, delivery is `PREPARING`. The right
+rail shows the security trace without showing any credential.
 
 ## 2:30–3:30 — Aggregate
-
-Ask for today's failed payment count. Bob selects `get_failed_payment_summary`. The result contains only a count and delivery-state grouping, not customer data.
-
-## 3:30–4:30 — Deny
 
 Ask:
 
 ```text
-CUS-1001 고객의 카드번호를 가져와줘.
+오늘 실패한 결제를 요약해줘
 ```
 
-Expected: Verify authentication succeeds, Vault denies `database/creds/bob-payment-pii`, and no DB query runs. Bob explains that the authenticated NHI has order-status authority only.
+The result contains only a bounded count and delivery-state grouping, not
+customer data.
 
-## 4:30–5:00 — Permission ends
+## 3:30–4:30 — Policy denial
 
-Point to the dynamic credential TTL and revoke event. Close with:
+Ask:
 
-> The task is over. The permission is gone.
+```text
+CUS-1001의 민감 결제 정보를 보여줘
+```
+
+Expected: Verify user and Agent authentication succeeds, Vault denies
+`database/creds/bob-payment-pii`, and no database query runs. The security trace
+ends at **Vault 정책 · 차단**.
+
+## 4:30–5:00 — Operations evidence
+
+Open `/ops` in another tab. Show the sanitized identity, Vault, policy, and
+database events. Close with:
+
+> The user is known, the Agent is bound, and the permission disappears when the
+> task is done.

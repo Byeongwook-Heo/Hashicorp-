@@ -2,7 +2,7 @@ import { performance } from "node:perf_hooks";
 
 import { AuthorizationError, ExternalServiceError } from "./errors.js";
 import type { SecurityEventStore } from "./event-store.js";
-import type { IdentityProvider } from "./identity-client.js";
+import type { IdentityContext, IdentityProvider } from "./identity-client.js";
 import type { OrdersDatabase } from "./database.js";
 import type { VaultCredentialBroker } from "./vault-client.js";
 import type {
@@ -26,19 +26,25 @@ export class ToolService {
   public async getOrderStatus(
     requestId: string,
     orderId: string,
+    identityContext?: IdentityContext,
   ): Promise<OrderStatusResult> {
-    return this.#runAuthorized(requestId, "get_order_status", (credentials) =>
-      this.database.getOrderStatus(credentials, orderId),
+    return this.#runAuthorized(
+      requestId,
+      "get_order_status",
+      identityContext,
+      (credentials) => this.database.getOrderStatus(credentials, orderId),
     );
   }
 
   public async getFailedPaymentSummary(
     requestId: string,
     date: string,
+    identityContext?: IdentityContext,
   ): Promise<FailedPaymentSummaryResult> {
     return this.#runAuthorized(
       requestId,
       "get_failed_payment_summary",
+      identityContext,
       (credentials) => this.database.getFailedPaymentSummary(credentials, date),
     );
   }
@@ -46,13 +52,17 @@ export class ToolService {
   public async getSensitivePaymentData(
     requestId: string,
     customerId: string,
+    identityContext?: IdentityContext,
   ): Promise<SensitivePaymentDenial> {
     void customerId;
-    const accessToken = await this.identity.getVerifiedAccessToken();
+    const accessToken =
+      await this.identity.getVerifiedAccessToken(identityContext);
     this.events.record({
       stage: "identity",
       status: "allowed",
-      action: "verify_jwt_validated",
+      action: identityContext
+        ? "verify_obo_jwt_validated"
+        : "verify_jwt_validated",
       requestId,
     });
     try {
@@ -87,15 +97,19 @@ export class ToolService {
   async #runAuthorized<T extends OrderStatus | FailedPaymentSummary>(
     requestId: string,
     action: string,
+    identityContext: IdentityContext | undefined,
     databaseOperation: (credentials: DynamicDatabaseCredentials) => Promise<T>,
   ): Promise<T & { access: OrderStatusResult["access"] }> {
     const startedAt = performance.now();
     try {
-      const accessToken = await this.identity.getVerifiedAccessToken();
+      const accessToken =
+        await this.identity.getVerifiedAccessToken(identityContext);
       this.events.record({
         stage: "identity",
         status: "allowed",
-        action: "verify_jwt_validated",
+        action: identityContext
+          ? "verify_obo_jwt_validated"
+          : "verify_jwt_validated",
         requestId,
       });
 
@@ -120,6 +134,9 @@ export class ToolService {
           ...databaseResult,
           access: {
             nhi: this.nhiName,
+            ...(identityContext
+              ? { user_subject: identityContext.subject }
+              : {}),
             verify: "authenticated",
             vault: "authorized",
             credential_type: "dynamic",

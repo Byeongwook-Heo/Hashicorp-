@@ -41,4 +41,39 @@ describe("loadConfig", () => {
     expect(config.vault.caPem).toBe("first\nsecond");
     expect(config.database.caPem).toBe("db-first\ndb-second");
   });
+
+  it("requires OBO and user OIDC boundaries when the chatbot is enabled", () => {
+    expect(() =>
+      loadConfig({
+        ...baseEnvironment,
+        CHATBOT_ENABLED: "true",
+      }),
+    ).toThrow(/IDENTITY_FLOW must be obo/);
+  });
+
+  it("loads a complete Verify chatbot configuration", () => {
+    const config = loadConfig({
+      ...baseEnvironment,
+      CHATBOT_ENABLED: "true",
+      IDENTITY_FLOW: "obo",
+      MCP_AUTH_MODE: "user_jwt",
+      SESSION_SECRET: "s".repeat(48),
+      PUBLIC_BASE_URL: "https://chat.example.test",
+      VERIFY_USER_AUTHORIZATION_URL: "https://verify.example.test/authorize",
+      VERIFY_USER_TOKEN_URL: "https://verify.example.test/token",
+      VERIFY_USER_JWKS_URL: "https://verify.example.test/jwks",
+      VERIFY_USER_ISSUER: "https://verify.example.test/issuer",
+      VERIFY_USER_CLIENT_ID: "chatbot-client",
+      VERIFY_OBO_TOKEN_URL: "https://verify.example.test/oauth2/token",
+      VERIFY_OBO_JWKS_URL: "https://verify.example.test/oauth2/jwks",
+      VERIFY_OBO_ISSUER: "https://verify.example.test/oauth2",
+      VERIFY_OBO_AUDIENCE: "vault-orders",
+      VERIFY_OBO_CLIENT_ID: "agent-sts-client",
+      VERIFY_OBO_ACTOR_VALUE: "agent-sts-client",
+    });
+
+    expect(config.chatbotEnabled).toBe(true);
+    expect(config.mcpAuthMode).toBe("user_jwt");
+    expect(config.verify.obo.clientId).toBe("agent-sts-client");
+  });
 });

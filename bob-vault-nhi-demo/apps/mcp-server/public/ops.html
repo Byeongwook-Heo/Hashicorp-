@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Operational view of the Bob to IBM Verify to Vault NHI security path."
+    />
+    <title>NHI Access Flight Recorder</title>
+    <link rel="stylesheet" href="/ops.css" />
+    <script src="/ops.js" type="module"></script>
+  </head>
+  <body>
+    <div class="ambient ambient-a" aria-hidden="true"></div>
+    <div class="ambient ambient-b" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="NHI Access Flight Recorder home">
+        <span class="brand-mark" aria-hidden="true">N</span>
+        <span>
+          <strong>NHI Access</strong>
+          <small>Flight Recorder</small>
+        </span>
+      </a>
+      <div class="topbar-meta">
+        <span class="environment">AWS · Seoul</span>
+        <span class="live"><i aria-hidden="true"></i> LIVE</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <p class="eyebrow">BOB → VAULT / SECURITY CONTROL PLANE</p>
+          <h1>Every credential is<br /><span>earned, then erased.</span></h1>
+          <p class="lede">
+            A live, sanitized record of machine identity checks. No private key,
+            access token, or database password enters the agent context.
+          </p>
+        </div>
+        <div class="hero-state" aria-label="System readiness">
+          <span class="hero-state-label">CONTROL STATE</span>
+          <strong id="readiness">Checking</strong>
+          <span id="mode">—</span>
+        </div>
+      </section>
+
+      <section class="flow-section" aria-labelledby="flow-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">IDENTITY PATH</p>
+            <h2 id="flow-title">One request. Five controls.</h2>
+          </div>
+          <p>Trust is re-established at every boundary.</p>
+        </div>
+        <ol class="flow">
+          <li>
+            <span class="step">01</span>
+            <strong>Bob IDE</strong>
+            <small>Bearer + source CIDR</small>
+          </li>
+          <li>
+            <span class="step">02</span>
+            <strong>AWS KMS</strong>
+            <small>Non-exportable RSA signing</small>
+          </li>
+          <li>
+            <span class="step">03</span>
+            <strong>IBM Verify</strong>
+            <small>Bound NHI JWT</small>
+          </li>
+          <li>
+            <span class="step">04</span>
+            <strong>Vault</strong>
+            <small>Policy + short TTL lease</small>
+          </li>
+          <li>
+            <span class="step">05</span>
+            <strong>PostgreSQL</strong>
+            <small>Read-only fixed queries</small>
+          </li>
+        </ol>
+      </section>
+
+      <section class="operations" aria-labelledby="events-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">SANITIZED TELEMETRY</p>
+            <h2 id="events-title">Recent decisions</h2>
+          </div>
+          <button id="refresh" type="button">Refresh events</button>
+        </div>
+        <div class="event-header" aria-hidden="true">
+          <span>TIME</span><span>CONTROL</span><span>DECISION</span
+          ><span>ACTION</span>
+        </div>
+        <ol id="events" class="event-list" aria-live="polite">
+          <li class="empty">Waiting for a security decision…</li>
+        </ol>
+      </section>
+
+      <section class="guardrails" aria-labelledby="guardrails-title">
+        <div>
+          <p class="eyebrow">ENFORCED GUARDRAILS</p>
+          <h2 id="guardrails-title">The agent never holds the keys.</h2>
+        </div>
+        <dl>
+          <div>
+            <dt>Private signing key</dt>
+            <dd>KMS only · never exportable</dd>
+          </div>
+          <div>
+            <dt>Database credential</dt>
+            <dd>Dynamic · revoked after each call</dd>
+          </div>
+          <div>
+            <dt>SQL surface</dt>
+            <dd>2 parameterized read-only queries</dd>
+          </div>
+          <div>
+            <dt>Sensitive request</dt>
+            <dd>Denied before Vault is contacted</dd>
+          </div>
+        </dl>
+      </section>
+    </main>
+
+    <footer>
+      <span>bob-vault-nhi-demo</span>
+      <span id="version">version —</span>
+      <span>MCP 2025-11-25</span>
+    </footer>
+  </body>
+</html>

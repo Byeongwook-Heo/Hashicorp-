@@ -15,7 +15,8 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: build-image push-image deploy-mcp-bootstrap verify-preflight
 .PHONY: verify-client-jwt-plan verify-client-enable-jwt
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
-.PHONY: configure-verify copy-bob-token smoke demo-reset demo-status security-check
+.PHONY: configure-verify configure-chatbot-verify bootstrap-chat-session-secret
+.PHONY: deploy-chatbot copy-bob-token smoke demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
 .PHONY: event-ssh-plan event-ssh-apply
 .PHONY: verify-jwks-plan verify-jwks-apply
@@ -78,6 +79,12 @@ verify-client-enable-jwt: ## Issue JWT access tokens and remove temporary Verify
 configure-verify: ## Store IBM Verify public integration values from VERIFY_* environment variables.
 	@./scripts/configure-verify.sh
 
+configure-chatbot-verify: ## Store Verify OIDC user-login and OBO STS public metadata.
+	@./scripts/configure-chatbot-verify.sh
+
+bootstrap-chat-session-secret: ## Create the encrypted chatbot session key without printing it.
+	@./bootstrap/aws/bootstrap-chat-session-secret.sh
+
 copy-bob-token: ## Copy the MCP transport token to the macOS clipboard without printing it.
 	@./scripts/copy-bob-token.sh
 
@@ -95,6 +102,9 @@ vault-bootstrap: ## Configure namespace, audit, JWT auth, policy, and database s
 
 deploy-app: ## Deploy the full MCP task using the ECR image digest.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-app"
+
+deploy-chatbot: ## Deploy the Verify-authenticated chatbot, OBO agent, and MCP service.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-chatbot"
 
 event-access-plan: ## Plan time-bounded, audited SSM access for event operators.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-access-plan"

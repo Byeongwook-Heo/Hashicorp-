@@ -14,17 +14,26 @@ import helmet from "helmet";
 import type { Logger } from "pino";
 import { z } from "zod";
 
+import type { ChatAgent } from "./agent.js";
 import type { AppConfig } from "./config.js";
 import { AppError, AuthenticationError } from "./errors.js";
 import type { SecurityEventStore } from "./event-store.js";
+import type { IdentityContext } from "./identity-client.js";
 import type { KmsClientAssertionSigner } from "./kms-signer.js";
 import type { ToolService } from "./tool-service.js";
+import type {
+  UserAuthenticator,
+  UserPrincipal,
+  UserSession,
+} from "./user-auth.js";
 
 interface AppDependencies {
   config: AppConfig;
   logger: Logger;
   events: SecurityEventStore;
   tools: ToolService;
+  userAuth: UserAuthenticator;
+  agent?: ChatAgent;
   signer?: KmsClientAssertionSigner;
 }
 
@@ -44,10 +53,13 @@ const summaryDateSchema = z
     (value) => !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)),
     "Invalid date",
   );
-const publicDirectory = fileURLToPath(new URL("../public", import.meta.url));
+const chatMessageSchema = z.object({
+  message: z.string().trim().min(1).max(500),
+});
+const publicDirectory = fileURLToPath(new URL("../../public", import.meta.url));
 
 export function createHttpApp(dependencies: AppDependencies): express.Express {
-  const { config, events, logger } = dependencies;
+  const { config, events, logger, userAuth } = dependencies;
   const app = express();
   app.disable("x-powered-by");
   if (config.trustProxy) {
@@ -89,6 +101,28 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     response.json({ status: "ready", mode: config.appMode });
   });
 
+  app.get("/auth/login", async (_request, response, next) => {
+    try {
+      const login = await userAuth.beginLogin();
+      response.setHeader("set-cookie", login.setCookie);
+      response.redirect(302, login.redirectUrl);
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.get("/auth/callback", async (request, response, next) => {
+    try {
+      const result = await userAuth.completeLogin(
+        request.query,
+        request.header("cookie"),
+      );
+      response.setHeader("set-cookie", result.setCookies);
+      response.redirect(302, result.redirectUrl);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.use(
     "/api",
     rateLimit({
@@ -102,16 +136,85 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     response.json({
       mode: config.appMode,
       configured: config.appMode === "aws",
+      chatbot: {
+        enabled: config.chatbotEnabled,
+        identityFlow: config.identityFlow,
+        agent: "bounded-mcp",
+      },
       version: config.serviceVersion,
       protocol: "2025-11-25",
       controls: {
-        transport: "bearer + source CIDR",
-        workloadIdentity: "AWS KMS private_key_jwt",
-        authorization: "IBM Verify JWT → Vault JWT role",
+        transport:
+          config.mcpAuthMode === "user_jwt"
+            ? "IBM Verify user JWT + source CIDR"
+            : "bearer + source CIDR",
+        workloadIdentity: "AWS KMS private_key_jwt + OBO",
+        authorization: "IBM Verify OBO JWT → Vault JWT role",
         credentials: "dynamic PostgreSQL, short TTL",
       },
     });
   });
+  app.get("/api/me", async (request, response, next) => {
+    try {
+      const session = await requireUserSession(
+        userAuth,
+        request.header("cookie"),
+      );
+      response.setHeader("cache-control", "no-store");
+      response.json({
+        user: {
+          displayName: session.displayName,
+          ...(session.email ? { email: session.email } : {}),
+        },
+        csrfToken: session.csrfToken,
+        expiresAt: session.expiresAt,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/logout", async (request, response, next) => {
+    try {
+      const session = await requireUserSession(
+        userAuth,
+        request.header("cookie"),
+      );
+      requireCsrf(request, session);
+      response.setHeader("set-cookie", userAuth.clearSessionCookies());
+      response.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post(
+    "/api/chat",
+    express.json({ limit: "16kb", strict: true }),
+    async (request, response, next) => {
+      try {
+        if (!dependencies.agent) {
+          throw new AppError(
+            "The chatbot agent is not configured",
+            503,
+            "CHATBOT_UNAVAILABLE",
+          );
+        }
+        const session = await requireUserSession(
+          userAuth,
+          request.header("cookie"),
+        );
+        requireCsrf(request, session);
+        const input = chatMessageSchema.parse(request.body);
+        const reply = await dependencies.agent.respond(input.message, session);
+        response.setHeader("cache-control", "no-store");
+        response.json({
+          ...reply,
+          requestId: response.locals["requestId"] as string,
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
   const listEvents = (
     request: Request,
     response: Response,
@@ -145,8 +248,8 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     }
   });
 
-  app.get("/demo", (_request, response) => {
-    response.sendFile(`${publicDirectory}/index.html`);
+  app.get(["/ops", "/demo"], (_request, response) => {
+    response.sendFile(`${publicDirectory}/ops.html`);
   });
   app.use(
     express.static(publicDirectory, { index: "index.html", maxAge: "5m" }),
@@ -162,11 +265,11 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     "/mcp",
     mcpRateLimiter,
     enforceAllowedOrigin(config),
-    authenticateTransport(config, events),
+    authenticateTransport(config, events, userAuth),
   );
   app.post(
     "/api/demo/reset",
-    authenticateTransport(config, events),
+    authenticateTransport(config, events, userAuth),
     (_request, response) => {
       events.clear();
       response.status(204).end();
@@ -179,7 +282,9 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     enforceFixedToolContract,
     async (request, response, next) => {
       const requestId = response.locals["requestId"] as string;
-      const server = createMcpServer(dependencies, requestId);
+      const principal = response.locals["principal"] as
+        UserPrincipal | undefined;
+      const server = createMcpServer(dependencies, requestId, principal);
       const statelessOptions = {
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
@@ -221,25 +326,34 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     void next;
     const requestId = response.locals["requestId"] as string | undefined;
     const appError = error instanceof AppError ? error : undefined;
-    logger.error(
-      {
-        err: error,
-        requestId,
-        method: request.method,
-        path: request.path,
-      },
-      "request failed",
-    );
+    const validationError = error instanceof z.ZodError;
+    const logContext = {
+      err: error as unknown,
+      requestId,
+      method: request.method,
+      path: request.path,
+    };
+    if ((appError?.statusCode ?? 500) < 500 || validationError) {
+      logger.warn(logContext, "request rejected");
+    } else {
+      logger.error(logContext, "request failed");
+    }
     if (response.headersSent) {
       return;
     }
-    response.status(appError?.statusCode ?? 500).json({
-      error: {
-        code: appError?.code ?? "INTERNAL_ERROR",
-        message: appError?.message ?? "Unexpected server error",
-        requestId,
-      },
-    });
+    response
+      .status(validationError ? 400 : (appError?.statusCode ?? 500))
+      .json({
+        error: {
+          code: validationError
+            ? "INVALID_REQUEST"
+            : (appError?.code ?? "INTERNAL_ERROR"),
+          message: validationError
+            ? "The request payload is invalid"
+            : (appError?.message ?? "Unexpected server error"),
+          requestId,
+        },
+      });
   };
   app.use(errorHandler);
 
@@ -249,6 +363,7 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
 function createMcpServer(
   dependencies: AppDependencies,
   requestId: string,
+  principal?: UserPrincipal,
 ): McpServer {
   const server = new McpServer(
     {
@@ -276,6 +391,7 @@ function createMcpServer(
         updated_at: z.string(),
         access: z.object({
           nhi: z.string(),
+          user_subject: z.string().optional(),
           verify: z.literal("authenticated"),
           vault: z.literal("authorized"),
           credential_type: z.literal("dynamic"),
@@ -284,7 +400,13 @@ function createMcpServer(
       },
     },
     async ({ order_id }) =>
-      toolResult(() => dependencies.tools.getOrderStatus(requestId, order_id)),
+      toolResult(() =>
+        dependencies.tools.getOrderStatus(
+          requestId,
+          order_id,
+          toIdentityContext(principal),
+        ),
+      ),
   );
 
   server.registerTool(
@@ -307,6 +429,7 @@ function createMcpServer(
         ),
         access: z.object({
           nhi: z.string(),
+          user_subject: z.string().optional(),
           verify: z.literal("authenticated"),
           vault: z.literal("authorized"),
           credential_type: z.literal("dynamic"),
@@ -316,7 +439,11 @@ function createMcpServer(
     },
     async ({ date }) =>
       toolResult(() =>
-        dependencies.tools.getFailedPaymentSummary(requestId, date),
+        dependencies.tools.getFailedPaymentSummary(
+          requestId,
+          date,
+          toIdentityContext(principal),
+        ),
       ),
   );
 
@@ -338,7 +465,11 @@ function createMcpServer(
     },
     async ({ customer_id }) =>
       toolResult(() =>
-        dependencies.tools.getSensitivePaymentData(requestId, customer_id),
+        dependencies.tools.getSensitivePaymentData(
+          requestId,
+          customer_id,
+          toIdentityContext(principal),
+        ),
       ),
   );
 
@@ -372,32 +503,102 @@ async function toolResult<T extends object>(operation: () => Promise<T>) {
 function authenticateTransport(
   config: AppConfig,
   events: SecurityEventStore,
+  userAuth: UserAuthenticator,
 ): (request: Request, response: Response, next: NextFunction) => void {
   const expectedDigest = createHash("sha256")
     .update(config.transportBearerToken)
     .digest();
   return (request, response, next) => {
-    const header = request.header("authorization") ?? "";
-    const suppliedToken = header.startsWith("Bearer ") ? header.slice(7) : "";
-    const suppliedDigest = createHash("sha256").update(suppliedToken).digest();
-    if (!timingSafeEqual(expectedDigest, suppliedDigest)) {
-      events.record({
-        stage: "transport",
-        status: "denied",
-        action: "invalid_bearer_token",
-        requestId: response.locals["requestId"] as string,
-      });
-      next(new AuthenticationError());
-      return;
+    void authenticate();
+
+    async function authenticate(): Promise<void> {
+      try {
+        const header = request.header("authorization") ?? "";
+        const suppliedToken = header.startsWith("Bearer ")
+          ? header.slice(7)
+          : "";
+        if (config.mcpAuthMode === "user_jwt") {
+          if (!suppliedToken) {
+            throw new AuthenticationError();
+          }
+          response.locals["principal"] =
+            await userAuth.verifyAccessToken(suppliedToken);
+          events.record({
+            stage: "transport",
+            status: "allowed",
+            action: "mcp_user_jwt_authenticated",
+            requestId: response.locals["requestId"] as string,
+          });
+          next();
+          return;
+        }
+
+        const suppliedDigest = createHash("sha256")
+          .update(suppliedToken)
+          .digest();
+        if (!timingSafeEqual(expectedDigest, suppliedDigest)) {
+          events.record({
+            stage: "transport",
+            status: "denied",
+            action: "invalid_bearer_token",
+            requestId: response.locals["requestId"] as string,
+          });
+          throw new AuthenticationError();
+        }
+        events.record({
+          stage: "transport",
+          status: "allowed",
+          action: "mcp_request_authenticated",
+          requestId: response.locals["requestId"] as string,
+        });
+        next();
+      } catch (error) {
+        if (config.mcpAuthMode === "user_jwt") {
+          events.record({
+            stage: "transport",
+            status: "denied",
+            action: "invalid_user_jwt",
+            requestId: response.locals["requestId"] as string,
+          });
+        }
+        next(error);
+      }
     }
-    events.record({
-      stage: "transport",
-      status: "allowed",
-      action: "mcp_request_authenticated",
-      requestId: response.locals["requestId"] as string,
-    });
-    next();
   };
+}
+
+async function requireUserSession(
+  userAuth: UserAuthenticator,
+  cookieHeader: string | undefined,
+): Promise<UserSession> {
+  const session = await userAuth.readSession(cookieHeader);
+  if (!session) {
+    throw new AuthenticationError("IBM Verify login is required");
+  }
+  return session;
+}
+
+function requireCsrf(request: Request, session: UserSession): void {
+  const supplied = request.header("x-csrf-token") ?? "";
+  const suppliedBuffer = Buffer.from(supplied, "utf8");
+  const expectedBuffer = Buffer.from(session.csrfToken, "utf8");
+  if (
+    suppliedBuffer.length !== expectedBuffer.length ||
+    !timingSafeEqual(suppliedBuffer, expectedBuffer)
+  ) {
+    throw new AuthenticationError("The request CSRF token is invalid");
+  }
+}
+
+function toIdentityContext(
+  principal: UserPrincipal | undefined,
+): IdentityContext | undefined {
+  return principal
+    ? {
+        subject: principal.subject,
+        subjectToken: principal.accessToken,
+      }
+    : undefined;
 }
 
 function enforceAllowedOrigin(

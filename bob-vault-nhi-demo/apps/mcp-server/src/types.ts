@@ -22,6 +22,7 @@ export interface OrderStatus {
 export interface OrderStatusResult extends OrderStatus {
   access: {
     nhi: string;
+    user_subject?: string;
     verify: "authenticated";
     vault: "authorized";
     credential_type: "dynamic";
@@ -41,6 +42,7 @@ export interface FailedPaymentSummary {
 export interface FailedPaymentSummaryResult extends FailedPaymentSummary {
   access: {
     nhi: string;
+    user_subject?: string;
     verify: "authenticated";
     vault: "authorized";
     credential_type: "dynamic";

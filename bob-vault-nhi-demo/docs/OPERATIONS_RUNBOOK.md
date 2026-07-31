@@ -5,7 +5,7 @@
 - AWS account: `063455554839`
 - Region: `ap-northeast-2`
 - URL: `https://bob-vault-demo.byeongwook-heo.sbx.hashidemos.io`
-- Mode: `bootstrap` until IBM Verify values are supplied
+- Mode: chatbot after the Verify OIDC application and STS client are supplied
 - Vault: Enterprise 2.0.3+ent, Raft, KMS auto-unseal
 - RDS: PostgreSQL 16.14, private and encrypted
 - Container: immutable ECR digest
@@ -25,13 +25,13 @@ make db-bootstrap
 make deploy-mcp-bootstrap
 ```
 
-After IBM Verify setup:
+After IBM Verify chatbot setup:
 
 ```bash
-make configure-verify
-make verify-preflight
+make configure-chatbot-verify
+make bootstrap-chat-session-secret
 make vault-bootstrap
-make deploy-app
+make deploy-chatbot
 make smoke
 make demo-status
 ```
@@ -44,7 +44,10 @@ make demo-status
 make smoke
 ```
 
-Confirm ECS has one healthy task, the target group is healthy, Vault is initialized and unsealed, and RDS is available. The dashboard contains sanitized in-memory decisions for 30 minutes, maximum 100 events.
+Confirm ECS has one healthy task, the target group is healthy, Verify login
+redirects correctly, Vault is initialized and unsealed, and RDS is available.
+The `/ops` dashboard contains sanitized in-memory decisions for 30 minutes,
+maximum 100 events.
 
 ## Source CIDR change
 
@@ -56,11 +59,15 @@ make upload-source
 make tf-apply-base
 ```
 
-Set `BOB_SOURCE_CIDRS` to a comma-separated allowlist when the event uses known VPN ranges.
+Set `BOB_SOURCE_CIDRS` to a comma-separated allowlist for the known event/VPN
+egress ranges.
 
 ## Secret rotation
 
-- Transport token: create a new Secrets Manager version, force a new ECS deployment, update Bob, then retire the old version.
+- Chat session key: create a new Secrets Manager version and force a new ECS
+  deployment. Existing sessions become invalid.
+- Legacy transport token: retained only for bootstrap compatibility and not
+  accepted by the chatbot MCP mode.
 - Verify signing key: create/register a second KMS public JWK before changing the task key.
 - Dynamic DB users: revoked after each call; maximum TTL five minutes.
 - Vault TLS certificate: 90-day lab certificate generated on the instance; rotate before reuse beyond the event.
