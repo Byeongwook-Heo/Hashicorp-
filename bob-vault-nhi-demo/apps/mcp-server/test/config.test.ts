@@ -100,7 +100,7 @@ describe("loadConfig", () => {
       mode: "private",
       baseUrl: "http://10.70.20.182:11434",
       model: "private-model",
-      timeoutMs: 12_000,
+      timeoutMs: 30_000,
     });
   });
 });

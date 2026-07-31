@@ -208,6 +208,31 @@ describe("BoundedChatAgent", () => {
     expect(onFallback).toHaveBeenCalledOnce();
     expect(agent.getStatus().mode).toBe("safe-fallback");
   });
+
+  it("uses the fallback immediately while the primary retry circuit is open", async () => {
+    const primary: MessagePlanner = {
+      plan: vi.fn().mockRejectedValue(new Error("planning unavailable")),
+    };
+    const mcp: McpToolCaller = {
+      callTool: vi.fn().mockResolvedValue({
+        order_id: "ORD-1001",
+        payment_status: "PAID",
+        delivery_status: "DELIVERED",
+        updated_at: "2026-07-30T00:00:00.000Z",
+        access: accessResult(),
+      }),
+    };
+    const agent = new BoundedChatAgent(
+      mcp,
+      new ResilientPlanner(primary, new RuleBasedPlanner(), undefined, 60_000),
+    );
+
+    await agent.respond("ORD-1001 상태를 알려줘", principal);
+    await agent.respond("ORD-1001 상태를 알려줘", principal);
+
+    expect(primary.plan).toHaveBeenCalledOnce();
+    expect(mcp.callTool).toHaveBeenCalledTimes(2);
+  });
 });
 
 function accessResult() {

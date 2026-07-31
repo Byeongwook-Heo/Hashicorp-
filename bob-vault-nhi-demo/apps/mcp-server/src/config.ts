@@ -31,7 +31,7 @@ const environmentSchema = z
       .int()
       .min(1000)
       .max(30_000)
-      .default(12_000),
+      .default(30_000),
     INFERENCE_KEEP_ALIVE: z.string().min(1).max(32).default("30m"),
     SERVICE_VERSION: z.string().min(1).max(80).default("dev"),
     AWS_REGION: z.string().min(1).default("ap-northeast-2"),

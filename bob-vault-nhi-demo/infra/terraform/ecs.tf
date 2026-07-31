@@ -92,7 +92,7 @@ locals {
     { name = "AGENT_PLANNING_MODE", value = var.chatbot_enabled && var.inference_enabled ? "private" : "bounded" },
     { name = "INFERENCE_BASE_URL", value = var.inference_enabled ? var.inference_base_url : "" },
     { name = "INFERENCE_MODEL", value = var.inference_enabled ? nonsensitive(var.inference_model) : "" },
-    { name = "INFERENCE_TIMEOUT_MS", value = "12000" },
+    { name = "INFERENCE_TIMEOUT_MS", value = "30000" },
     { name = "INFERENCE_KEEP_ALIVE", value = "30m" },
     { name = "SERVICE_VERSION", value = var.service_version },
     { name = "AWS_REGION", value = var.aws_region },

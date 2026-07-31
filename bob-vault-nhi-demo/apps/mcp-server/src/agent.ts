@@ -285,17 +285,23 @@ export class RuleBasedPlanner implements MessagePlanner {
 
 export class ResilientPlanner implements MessagePlanner {
   #lastMode: AgentPlanningStatus["mode"] = "safe-fallback";
+  #retryAfter = 0;
 
   public constructor(
     private readonly primary: MessagePlanner,
     private readonly fallback: MessagePlanner,
     private readonly onFallback?: (error: unknown) => void,
+    private readonly retryDelayMs = 30_000,
   ) {}
 
   public async plan(message: string): Promise<AgentPlan> {
+    if (Date.now() < this.#retryAfter) {
+      return this.fallback.plan(message);
+    }
     try {
       const primaryPlan = await this.primary.plan(message);
       this.#lastMode = "enhanced";
+      this.#retryAfter = 0;
       if (primaryPlan.intent !== "unsupported") {
         return primaryPlan;
       }
@@ -303,6 +309,7 @@ export class ResilientPlanner implements MessagePlanner {
       return fallbackPlan.intent === "unsupported" ? primaryPlan : fallbackPlan;
     } catch (error) {
       this.#lastMode = "safe-fallback";
+      this.#retryAfter = Date.now() + this.retryDelayMs;
       this.onFallback?.(error);
       return this.fallback.plan(message);
     }
@@ -316,8 +323,10 @@ export class ResilientPlanner implements MessagePlanner {
     try {
       await this.primary.prewarm();
       this.#lastMode = "enhanced";
+      this.#retryAfter = 0;
     } catch (error) {
       this.#lastMode = "safe-fallback";
+      this.#retryAfter = Date.now() + this.retryDelayMs;
       this.onFallback?.(error);
     }
   }

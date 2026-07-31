@@ -272,7 +272,7 @@ async function runPreflight() {
           accept: "application/json",
           "x-csrf-token": csrfToken,
         },
-        signal: window.AbortSignal.timeout(15_000),
+        signal: window.AbortSignal.timeout(35_000),
       });
       if (response.status === 401) {
         window.location.assign("/auth/login");
