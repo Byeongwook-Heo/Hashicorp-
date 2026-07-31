@@ -3,255 +3,583 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="IBM Verify 사용자 인증과 MCP, Vault 동적 자격증명을 시연하는 안전한 Agent 챗봇"
+      content="IBM Verify 사용자 인증, MCP 요청 제어, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 통합 챗봇 데모"
     />
-    <title>Agentic Security Lab | 안전한 AI 에이전트</title>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-ibm2" />
-    <link rel="stylesheet" href="/styles.css?v=20260731-ibm2" />
-    <script src="/app.js?v=20260731-ibm2" type="module"></script>
+    <title>Agentic Security Lab | 통합 챗봇 · NHI 접근 제어 센터</title>
+    <script src="/theme.js?v=20260731-unified4"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-unified4" />
+    <link rel="stylesheet" href="/styles.css?v=20260731-unified4" />
+    <script src="/app.js?v=20260731-unified4" type="module"></script>
   </head>
   <body>
     <header class="topbar">
       <a class="brand" href="/" aria-label="Agentic Security Lab 홈">
-        <span class="brand-mark" aria-hidden="true">
-          <span class="carbon-icon icon-security-services"></span>
-        </span>
-        <span>
+        <img
+          class="brand-avatar"
+          src="/images/bob-head.png"
+          alt=""
+          width="40"
+          height="40"
+        />
+        <span class="brand-copy">
           <strong>Agentic Security Lab</strong>
-          <small>IBM Verify · MCP · Vault 최소 권한 데모</small>
+          <small>챗봇 · NHI 접근 제어 센터 통합 화면</small>
         </span>
       </a>
-      <div class="identity" id="identity" hidden>
-        <span class="verified-dot" aria-hidden="true"></span>
-        <span class="identity-copy">
-          <small>사용자 인증 완료</small>
-          <strong id="user-name">—</strong>
-        </span>
-        <button class="text-button" id="logout" type="button">
-          <span class="carbon-icon icon-logout" aria-hidden="true"></span>
-          로그아웃
+
+      <nav class="topnav" id="topnav" aria-label="주요 영역" hidden>
+        <a href="#chat-section">챗봇</a>
+        <a href="#control-center">접근 제어</a>
+        <a href="#guardrails">가드레일</a>
+      </nav>
+
+      <div class="topbar-actions">
+        <button
+          class="theme-toggle"
+          id="theme-toggle"
+          type="button"
+          aria-pressed="false"
+        >
+          <span class="theme-toggle-dot" aria-hidden="true"></span>
+          <span id="theme-toggle-label">다크 모드</span>
         </button>
+
+        <a class="header-login" id="header-login" href="/auth/login">
+          IBM Verify 로그인
+        </a>
+
+        <div class="identity" id="identity" hidden>
+          <span class="verified-dot" aria-hidden="true"></span>
+          <span class="identity-copy">
+            <small>사용자 인증 완료</small>
+            <strong id="user-name">—</strong>
+          </span>
+          <button class="text-button" id="logout" type="button">
+            <span class="carbon-icon icon-logout" aria-hidden="true"></span>
+            로그아웃
+          </button>
+        </div>
       </div>
-      <a class="ops-link" href="/ops">
-        <span class="carbon-icon icon-launch" aria-hidden="true"></span>
-        NHI 접근 제어 센터
-      </a>
     </header>
 
     <main>
-      <section class="login-panel" id="login-panel" hidden>
-        <div class="login-icon" aria-hidden="true">
-          <img
-            src="/icons/ibm-security-verify.svg"
-            alt=""
-            width="56"
-            height="56"
-          />
-        </div>
-        <p class="eyebrow">신원 확인 우선</p>
-        <h1>안전한 대화는 신원 확인에서 시작됩니다.</h1>
-        <p>
-          IBM Verify가 사용자를 인증하고, 챗봇은 필요한 권한만 요청합니다.
-          비밀번호와 토큰은 화면이나 에이전트 컨텍스트에 노출되지 않습니다.
-        </p>
-        <ul class="login-points" aria-label="로그인 후 적용되는 보안 제어">
-          <li>사용자 세션은 IBM Verify가 유지합니다.</li>
-          <li>에이전트는 OBO 토큰으로만 권한을 위임받습니다.</li>
-          <li>데이터베이스 자격증명은 요청 직후 폐기됩니다.</li>
-        </ul>
-        <a class="primary-action" href="/auth/login">
-          IBM Verify로 로그인
-          <span class="carbon-icon icon-launch" aria-hidden="true"></span>
-        </a>
-        <p class="login-error" id="login-error" role="alert" hidden>
-          로그인을 완료하지 못했습니다. 다시 시도해 주세요.
-        </p>
-      </section>
+      <section class="landing-shell" id="login-panel" hidden>
+        <div class="landing-copy">
+          <p class="eyebrow">검증된 사용자만, 필요한 권한만</p>
+          <h1>챗봇과 NHI 접근 제어를 하나의 작업 화면으로 통합했습니다</h1>
+          <p class="landing-body">
+            IBM Verify가 사용자를 인증하고, 에이전트는 OBO JWT로만 Vault 정책을
+            통과한 뒤 짧은 TTL의 PostgreSQL 자격증명을 사용합니다. 민감값은
+            에이전트 컨텍스트에 남기지 않습니다.
+          </p>
 
-      <section class="workspace" id="workspace" hidden>
-        <div class="chat-column">
-          <div class="intro">
-            <div>
-              <p class="eyebrow">검증된 대화 공간</p>
-              <h1>신원을 검증한 뒤, 필요한 권한으로만 대화합니다</h1>
-              <p>
-                에이전트는 허용된 MCP 도구만 사용하고, Vault가 요청마다 최종
-                권한을 결정합니다.
-              </p>
-            </div>
-            <div class="intro-side">
-              <div class="trust-summary" aria-label="적용된 보안 제어">
-                <div>
-                  <small>사용자</small>
-                  <strong>Verify 로그인</strong>
-                </div>
-                <div>
-                  <small>권한 모델</small>
-                  <strong>최소 권한</strong>
-                </div>
-                <div>
-                  <small>데이터 접근</small>
-                  <strong>동적 자격증명</strong>
-                </div>
+          <div class="landing-points" aria-label="적용되는 핵심 보안 제어">
+            <article>
+              <img
+                src="/icons/ibm-security-verify.svg"
+                alt=""
+                width="24"
+                height="24"
+              />
+              <div>
+                <strong>사용자 신원 검증</strong>
+                <p>IBM Verify 로그인 세션과 사용자 JWT를 분리 관리합니다.</p>
               </div>
-              <div class="session-card" aria-label="현재 세션 보안 설명">
-                <small>현재 세션 보호</small>
-                <strong>IBM Verify 인증 + Vault 최소 권한</strong>
-                <p>
-                  사용자 JWT와 OBO JWT를 분리해 검증하고, DB 자격증명은 요청
-                  단위로만 발급합니다.
-                </p>
+            </article>
+            <article>
+              <img
+                src="/icons/custom/vault-mark.png"
+                alt=""
+                width="24"
+                height="24"
+              />
+              <div>
+                <strong>Vault 최소 권한 승인</strong>
+                <p>사용자·에이전트 클레임을 기준으로 DB 역할을 제한합니다.</p>
               </div>
-            </div>
-          </div>
-
-          <div
-            class="conversation"
-            id="conversation"
-            role="log"
-            aria-live="polite"
-            aria-relevant="additions"
-            aria-label="Agent 대화"
-          >
-            <article class="message agent-message">
-              <div class="message-avatar agent-avatar" aria-hidden="true">
-                <span class="carbon-icon icon-bot"></span>
-              </div>
-              <div class="message-body">
-                <span class="message-label">보안 에이전트</span>
-                <p>
-                  안녕하세요. 검증된 보안 경로로 주문 상태를 조회하거나, 실패한
-                  결제를 요약하고, 민감 정보 차단 정책을 확인할 수 있습니다.
-                </p>
+            </article>
+            <article>
+              <span
+                class="carbon-icon icon-postgresql"
+                aria-hidden="true"
+              ></span>
+              <div>
+                <strong>동적 PostgreSQL 접근</strong>
+                <p>읽기 전용 쿼리만 짧은 TTL 계정으로 실행합니다.</p>
               </div>
             </article>
           </div>
 
-          <div class="suggestions" aria-label="빠른 요청">
-            <span class="suggestions-label">빠른 요청</span>
-            <button type="button" data-prompt="주문 ORD-1001 상태를 확인해줘">
-              <span class="suggestion-icon" aria-hidden="true">
-                <span class="carbon-icon icon-delivery"></span>
-              </span>
-              <span>주문 상태 확인</span>
-              <small>ORD-1001</small>
-            </button>
-            <button type="button" data-prompt="오늘 실패한 결제를 요약해줘">
-              <span class="suggestion-icon" aria-hidden="true">
-                <span class="carbon-icon icon-chart-bar"></span>
-              </span>
-              <span>실패 결제 요약</span>
-              <small>오늘</small>
-            </button>
-            <button
-              type="button"
-              data-prompt="CUS-1001의 민감 결제 정보를 보여줘"
-            >
-              <span class="suggestion-icon" aria-hidden="true">
-                <span class="carbon-icon icon-locked"></span>
-              </span>
-              <span>정책 차단 확인</span>
-              <small>CUS-1001</small>
-            </button>
-          </div>
-
-          <form class="composer" id="chat-form">
-            <label for="chat-input">에이전트에게 요청하기</label>
-            <div class="composer-row">
-              <textarea
-                id="chat-input"
-                name="message"
-                rows="1"
-                maxlength="500"
-                aria-describedby="chat-input-constraint"
-                placeholder="예: 주문 ORD-1001 상태를 확인해줘"
-                required
-              ></textarea>
-              <button id="send" type="submit" aria-label="메시지 보내기">
-                <span class="carbon-icon icon-send" aria-hidden="true"></span>
-              </button>
-            </div>
-            <span id="chat-input-constraint">
-              입력은 허용된 도구 스키마와 읽기 전용 고정 쿼리로 제한됩니다.
-            </span>
-          </form>
-        </div>
-
-        <aside class="security-panel" aria-labelledby="security-title">
-          <div class="security-heading">
-            <span class="shield" aria-hidden="true">
-              <span class="carbon-icon icon-security"></span>
-            </span>
-            <div>
-              <p class="eyebrow">실시간 보안 추적</p>
-              <h2 id="security-title">이번 요청의 보안 흐름</h2>
-            </div>
-            <span class="live-state waiting" id="trace-live-state">대기</span>
-          </div>
-          <div class="security-summary" aria-label="적용된 제어 원칙">
-            <div>
-              <small>보안 원칙</small>
-              <strong>상시 권한 없음</strong>
-            </div>
-            <div>
-              <small>토큰 위임</small>
-              <strong>OBO JWT</strong>
-            </div>
-            <div>
-              <small>비밀값 노출</small>
-              <strong>에이전트 밖 유지</strong>
-            </div>
-          </div>
-          <ol class="trace" id="trace">
-            <li>
-              <span class="trace-index">01</span>
-              <div>
-                <strong>사용자 JWT</strong>
-                <small>요청을 보내면 Verify 검증 결과가 표시됩니다.</small>
-              </div>
-              <span class="trace-state waiting">대기</span>
-            </li>
-            <li>
-              <span class="trace-index">02</span>
-              <div>
-                <strong>에이전트 OBO JWT</strong>
-                <small>사용자와 에이전트 신원을 함께 증명합니다.</small>
-              </div>
-              <span class="trace-state waiting">대기</span>
-            </li>
-            <li>
-              <span class="trace-index">03</span>
-              <div>
-                <strong>Vault 정책</strong>
-                <small>요청한 데이터베이스 역할과 권한을 평가합니다.</small>
-              </div>
-              <span class="trace-state waiting">대기</span>
-            </li>
-            <li>
-              <span class="trace-index">04</span>
-              <div>
-                <strong>동적 DB 자격증명</strong>
-                <small>허용 시 짧은 TTL로 발급한 뒤 즉시 폐기합니다.</small>
-              </div>
-              <span class="trace-state waiting">대기</span>
-            </li>
-          </ol>
-          <div class="boundary-note">
-            <strong>상시 권한 없음</strong>
-            <p>
-              에이전트 컨텍스트에는 Verify 토큰, Vault 토큰, DB 비밀번호가
-              포함되지 않습니다.
+          <div class="landing-actions">
+            <a class="primary-action" href="/auth/login">
+              IBM Verify로 로그인
+              <span class="carbon-icon icon-launch" aria-hidden="true"></span>
+            </a>
+            <p id="preview-status" class="preview-status" role="status">
+              서비스 구성을 확인하는 중입니다.
             </p>
           </div>
-        </aside>
+
+          <p class="login-error" id="login-error" role="alert" hidden>
+            로그인을 완료하지 못했습니다. 다시 시도해 주세요.
+          </p>
+        </div>
+
+        <div class="landing-visual" aria-label="통합 보안 흐름 미리보기">
+          <div class="hero-art">
+            <img
+              class="hero-bob"
+              src="/images/bob-agent.png"
+              alt=""
+              width="320"
+              height="500"
+            />
+            <div class="hero-glow" aria-hidden="true"></div>
+          </div>
+
+          <div class="preview-flow">
+            <div class="preview-step">
+              <img
+                src="/icons/ibm-security-verify.svg"
+                alt=""
+                width="28"
+                height="28"
+              />
+              <div>
+                <strong>Verify</strong>
+                <small>사용자 인증 · 세션 유지</small>
+              </div>
+            </div>
+            <div class="preview-step">
+              <img src="/images/bob-head.png" alt="" width="28" height="28" />
+              <div>
+                <strong>AI 에이전트</strong>
+                <small>고정 도구 스키마 · 제한된 입력</small>
+              </div>
+            </div>
+            <div class="preview-step">
+              <span class="carbon-icon icon-network" aria-hidden="true"></span>
+              <div>
+                <strong>MCP 서버</strong>
+                <small>Bearer 검증 · 요청 경계 확인</small>
+              </div>
+            </div>
+            <div class="preview-step">
+              <img
+                src="/icons/custom/vault-mark.png"
+                alt=""
+                width="28"
+                height="28"
+              />
+              <div>
+                <strong>Vault</strong>
+                <small>정책 평가 · 동적 자격증명 발급</small>
+              </div>
+            </div>
+            <div class="preview-step">
+              <span
+                class="carbon-icon icon-postgresql"
+                aria-hidden="true"
+              ></span>
+              <div>
+                <strong>PostgreSQL</strong>
+                <small>읽기 전용 접근 · 호출 후 폐기</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace" id="workspace" hidden>
+        <section class="workspace-grid">
+          <section
+            class="chat-surface"
+            id="chat-section"
+            aria-labelledby="chat-title"
+          >
+            <div class="surface-header">
+              <div>
+                <p class="eyebrow">AI 챗봇</p>
+                <h2 id="chat-title">검증된 요청 작업 공간</h2>
+              </div>
+              <div class="surface-note">
+                <img src="/images/bob-head.png" alt="" width="28" height="28" />
+                <span>에이전트 컨텍스트에 비밀값 저장 안 함</span>
+              </div>
+            </div>
+
+            <div
+              class="conversation"
+              id="conversation"
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-label="Agent 대화"
+            >
+              <article class="message agent-message">
+                <div class="message-avatar agent-avatar" aria-hidden="true">
+                  <img
+                    src="/images/bob-head.png"
+                    alt=""
+                    width="32"
+                    height="32"
+                  />
+                </div>
+                <div class="message-body">
+                  <span class="message-label">보안 에이전트</span>
+                  <p>
+                    안녕하세요. 주문 상태 조회, 실패 결제 요약, 정책 차단 여부를
+                    이 화면에서 바로 확인할 수 있습니다.
+                  </p>
+                </div>
+              </article>
+            </div>
+
+            <div class="suggestions" aria-label="빠른 요청">
+              <span class="suggestions-label">빠른 요청</span>
+              <button type="button" data-prompt="주문 ORD-1001 상태를 확인해줘">
+                <span class="suggestion-icon" aria-hidden="true">
+                  <span class="carbon-icon icon-delivery"></span>
+                </span>
+                <span>주문 상태 확인</span>
+                <small>ORD-1001</small>
+              </button>
+              <button type="button" data-prompt="오늘 실패한 결제를 요약해줘">
+                <span class="suggestion-icon" aria-hidden="true">
+                  <span class="carbon-icon icon-chart-bar"></span>
+                </span>
+                <span>실패 결제 요약</span>
+                <small>오늘</small>
+              </button>
+              <button
+                type="button"
+                data-prompt="CUS-1001의 민감 결제 정보를 보여줘"
+              >
+                <span class="suggestion-icon" aria-hidden="true">
+                  <span class="carbon-icon icon-locked"></span>
+                </span>
+                <span>정책 차단 확인</span>
+                <small>CUS-1001</small>
+              </button>
+            </div>
+
+            <form class="composer" id="chat-form">
+              <label for="chat-input">에이전트에게 요청하기</label>
+              <div class="composer-row">
+                <textarea
+                  id="chat-input"
+                  name="message"
+                  rows="1"
+                  maxlength="500"
+                  aria-describedby="chat-input-constraint"
+                  placeholder="예: 주문 ORD-1001 상태를 확인해줘"
+                  required
+                ></textarea>
+                <button id="send" type="submit" aria-label="메시지 보내기">
+                  <span class="carbon-icon icon-send" aria-hidden="true"></span>
+                </button>
+              </div>
+              <span id="chat-input-constraint">
+                입력은 허용된 도구 스키마와 읽기 전용 고정 쿼리로 제한됩니다.
+              </span>
+            </form>
+          </section>
+
+          <aside
+            class="control-surface"
+            id="control-center"
+            aria-labelledby="control-title"
+          >
+            <div class="surface-header">
+              <div>
+                <p class="eyebrow">NHI 접근 제어 센터</p>
+                <h2 id="control-title">같은 요청의 보안 결정을 실시간 추적</h2>
+              </div>
+              <span class="live-state waiting" id="trace-live-state">대기</span>
+            </div>
+
+            <section
+              class="identity-path"
+              aria-labelledby="identity-path-title"
+            >
+              <div class="section-label-row">
+                <h3 id="identity-path-title">NHI 신원·권한 경로</h3>
+                <span>JWT → OBO → 동적 자격증명</span>
+              </div>
+              <ol>
+                <li>
+                  <span class="path-icon">
+                    <img
+                      src="/icons/ibm-security-verify.svg"
+                      alt=""
+                      width="30"
+                      height="30"
+                    />
+                  </span>
+                  <span
+                    ><strong>IBM Verify</strong
+                    ><small>사용자 신원 인증</small></span
+                  >
+                  <b>검증</b>
+                </li>
+                <li>
+                  <span class="path-icon bob-path-icon">
+                    <img
+                      src="/images/bob-head.png"
+                      alt=""
+                      width="32"
+                      height="32"
+                    />
+                  </span>
+                  <span
+                    ><strong>Bob AI 에이전트</strong
+                    ><small>사용자 위임 요청 수립</small></span
+                  >
+                  <b>활성</b>
+                </li>
+                <li>
+                  <span class="path-icon">
+                    <span
+                      class="carbon-icon icon-network"
+                      aria-hidden="true"
+                    ></span>
+                  </span>
+                  <span
+                    ><strong>MCP 서버</strong
+                    ><small>도구 스키마·요청 경계 검증</small></span
+                  >
+                  <b>연결</b>
+                </li>
+                <li>
+                  <span class="path-icon vault-path-icon">
+                    <img
+                      src="/icons/custom/vault-mark.png"
+                      alt=""
+                      width="32"
+                      height="32"
+                    />
+                  </span>
+                  <span
+                    ><strong>HashiCorp Vault</strong
+                    ><small>OBO JWT 정책 평가</small></span
+                  >
+                  <b>정책</b>
+                </li>
+                <li>
+                  <span class="path-icon postgresql-path-icon">
+                    <span
+                      class="carbon-icon icon-postgresql"
+                      aria-hidden="true"
+                    ></span>
+                  </span>
+                  <span
+                    ><strong>PostgreSQL</strong
+                    ><small>짧은 TTL 읽기 전용 접근</small></span
+                  >
+                  <b>대기</b>
+                </li>
+              </ol>
+            </section>
+
+            <div class="status-board" aria-label="현재 시스템 상태">
+              <article>
+                <small>제어 상태</small>
+                <strong id="readiness" role="status" aria-live="polite"
+                  >확인 중</strong
+                >
+                <p id="mode">구성 상태를 확인하고 있습니다</p>
+              </article>
+              <article>
+                <small>최신 갱신</small>
+                <strong id="last-updated">아직 업데이트되지 않았습니다</strong>
+                <button id="refresh" type="button">
+                  <span class="refresh-label">새로고침</span>
+                </button>
+              </article>
+            </div>
+
+            <div class="section-label-row request-label-row">
+              <h3>현재 요청 검증</h3>
+              <span>챗봇 요청과 동기화</span>
+            </div>
+            <ol class="trace" id="trace">
+              <li>
+                <span class="trace-index">01</span>
+                <div>
+                  <strong>사용자 JWT</strong>
+                  <small>IBM Verify가 사용자 세션과 JWT를 검증합니다.</small>
+                </div>
+                <span class="trace-state waiting">대기</span>
+              </li>
+              <li>
+                <span class="trace-index">02</span>
+                <div>
+                  <strong>에이전트 OBO JWT</strong>
+                  <small>사용자와 에이전트 신원을 함께 증명합니다.</small>
+                </div>
+                <span class="trace-state waiting">대기</span>
+              </li>
+              <li>
+                <span class="trace-index">03</span>
+                <div>
+                  <strong>Vault 정책</strong>
+                  <small
+                    >요청한 역할과 클레임을 기준으로 권한을 평가합니다.</small
+                  >
+                </div>
+                <span class="trace-state waiting">대기</span>
+              </li>
+              <li>
+                <span class="trace-index">04</span>
+                <div>
+                  <strong>동적 DB 자격증명</strong>
+                  <small
+                    >허용 시 짧은 TTL로 발급하고 호출 후 즉시 폐기합니다.</small
+                  >
+                </div>
+                <span class="trace-state waiting">대기</span>
+              </li>
+            </ol>
+
+            <div class="decision-panel">
+              <div class="decision-header">
+                <div>
+                  <small>최근 20건 결정</small>
+                  <strong id="decision-total">0건</strong>
+                </div>
+                <div class="decision-counts" id="decision-counts">
+                  <span><b id="count-allowed">0</b> 정상·허용</span>
+                  <span><b id="count-denied">0</b> 차단</span>
+                  <span><b id="count-error">0</b> 오류</span>
+                </div>
+              </div>
+              <p class="chart-caption" id="decision-caption">
+                보안 결정 데이터를 기다리는 중입니다.
+              </p>
+              <div class="decision-bar" aria-hidden="true">
+                <span
+                  class="decision-segment allowed"
+                  id="segment-allowed"
+                ></span>
+                <span
+                  class="decision-segment denied"
+                  id="segment-denied"
+                ></span>
+                <span class="decision-segment error" id="segment-error"></span>
+              </div>
+            </div>
+
+            <div class="event-ledger">
+              <div class="event-header" aria-hidden="true">
+                <span>시각</span><span>통제 단계</span><span>결정</span
+                ><span>조치</span>
+              </div>
+              <ol
+                id="events"
+                class="event-list"
+                aria-live="polite"
+                aria-busy="true"
+              >
+                <li class="state loading">보안 결정을 불러오는 중…</li>
+              </ol>
+            </div>
+          </aside>
+        </section>
+
+        <section class="insight-grid" aria-label="보안 분포 요약">
+          <article class="insight-card" aria-labelledby="stage-chart-title">
+            <div class="insight-head">
+              <div>
+                <p class="eyebrow">통제 단계 분포</p>
+                <h2 id="stage-chart-title">요청이 집중된 검증 구간</h2>
+              </div>
+              <span
+                class="insight-symbol carbon-icon icon-chart-bar"
+                aria-hidden="true"
+              ></span>
+            </div>
+            <p class="chart-caption" id="stage-caption">
+              단계별 이벤트를 집계하는 중입니다.
+            </p>
+            <div id="stage-chart" class="stage-chart" aria-live="polite"></div>
+          </article>
+
+          <article class="insight-card" aria-labelledby="activity-chart-title">
+            <div class="insight-head">
+              <div>
+                <p class="eyebrow">최근 요청 흐름</p>
+                <h2 id="activity-chart-title">최신 이벤트 시퀀스</h2>
+              </div>
+              <span
+                class="insight-symbol carbon-icon icon-network"
+                aria-hidden="true"
+              ></span>
+            </div>
+            <p class="chart-caption" id="activity-caption">
+              최근 이벤트를 불러오는 중입니다.
+            </p>
+            <div
+              id="activity-chart"
+              class="activity-chart"
+              aria-live="polite"
+            ></div>
+          </article>
+        </section>
+
+        <section
+          class="guardrails"
+          id="guardrails"
+          aria-labelledby="guardrails-title"
+        >
+          <div class="guardrails-copy">
+            <p class="eyebrow">강제 보안 가드레일</p>
+            <h2 id="guardrails-title">
+              비밀값은 에이전트 컨텍스트 밖에 둡니다
+            </h2>
+            <p>
+              KMS 서명, Vault 동적 권한, 제한된 SQL 범위, 민감 정보 사전 차단을
+              고정 제어로 유지합니다.
+            </p>
+          </div>
+          <div class="guardrail-grid">
+            <article>
+              <img
+                src="/icons/custom/vault-mark.png"
+                alt=""
+                width="28"
+                height="28"
+              />
+              <strong>Vault 토큰</strong>
+              <span>에이전트 화면에 노출하지 않음</span>
+            </article>
+            <article>
+              <span class="carbon-icon icon-security" aria-hidden="true"></span>
+              <strong>KMS 서명 키</strong>
+              <span>private_key_jwt 용도로만 사용</span>
+            </article>
+            <article>
+              <span
+                class="carbon-icon icon-postgresql"
+                aria-hidden="true"
+              ></span>
+              <strong>DB 자격증명</strong>
+              <span>짧은 TTL · 사용 후 자동 폐기</span>
+            </article>
+            <article>
+              <span class="carbon-icon icon-locked" aria-hidden="true"></span>
+              <strong>민감 정보 요청</strong>
+              <span>Vault 발급 전 정책 차단</span>
+            </article>
+          </div>
+        </section>
       </section>
     </main>
 
     <footer>
-      <span>Agentic Security Lab</span>
+      <span>bob-vault-nhi-demo</span>
       <span id="service-version">버전 —</span>
       <span>MCP 프로토콜 2025-11-25</span>
     </footer>

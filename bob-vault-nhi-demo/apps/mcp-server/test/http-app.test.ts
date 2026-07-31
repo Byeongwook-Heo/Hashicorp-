@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import pino from "pino";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
@@ -123,6 +125,36 @@ const toolsListRequest = {
 };
 
 describe("HTTP security boundary", () => {
+  it("serves the unified chatbot and NHI control center", async () => {
+    const { app } = buildApp();
+
+    const response = await request(app).get("/");
+    const html =
+      response.status === 200
+        ? response.text
+        : await readFile(
+            new URL("../public/index.html", import.meta.url),
+            "utf8",
+          );
+
+    expect(html).toContain('id="chat-section"');
+    expect(html).toContain('id="control-center"');
+    expect(html).toContain("Bob AI 에이전트");
+  });
+
+  it("redirects legacy operations routes to the unified control center", async () => {
+    const { app } = buildApp();
+
+    await request(app)
+      .get("/ops")
+      .expect(302)
+      .expect("location", "/#control-center");
+    await request(app)
+      .get("/demo")
+      .expect(302)
+      .expect("location", "/#control-center");
+  });
+
   it("returns health without exposing configuration", async () => {
     const { app } = buildApp();
     const response = await request(app).get("/healthz").expect(200);

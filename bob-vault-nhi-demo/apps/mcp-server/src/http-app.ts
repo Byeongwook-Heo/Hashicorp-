@@ -249,7 +249,7 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
   });
 
   app.get(["/ops", "/demo"], (_request, response) => {
-    response.sendFile(`${publicDirectory}/ops.html`);
+    response.redirect(302, "/#control-center");
   });
   app.use(
     express.static(publicDirectory, { index: "index.html", maxAge: "5m" }),
