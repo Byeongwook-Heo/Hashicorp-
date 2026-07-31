@@ -17,7 +17,7 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
 .PHONY: configure-verify configure-chatbot-verify bootstrap-chat-session-secret
 .PHONY: bootstrap-agent-runtime-secret agent-runtime-start agent-runtime-stop
-.PHONY: deploy-chatbot copy-bob-token smoke demo-reset demo-status security-check
+.PHONY: chatbot-plan deploy-chatbot copy-bob-token smoke demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
 .PHONY: event-ssh-plan event-ssh-apply
 .PHONY: verify-jwks-plan verify-jwks-apply
@@ -112,6 +112,9 @@ vault-bootstrap: ## Configure namespace, audit, JWT auth, policy, and database s
 
 deploy-app: ## Deploy the full MCP task using the ECR image digest.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-app"
+
+chatbot-plan: ## Plan the full chatbot and private planning runtime integration.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=chatbot-plan"
 
 deploy-chatbot: ## Deploy the Verify-authenticated chatbot, OBO agent, and MCP service.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-chatbot"
