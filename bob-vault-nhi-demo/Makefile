@@ -13,6 +13,7 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: local-up local-down local-smoke aws-preflight bootstrap-aws upload-source ci
 .PHONY: tf-init tf-validate tf-plan tf-apply-base bootstrap-mcp-token
 .PHONY: build-image push-image deploy-mcp-bootstrap verify-preflight
+.PHONY: verify-client-jwt-plan verify-client-enable-jwt
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
 .PHONY: configure-verify copy-bob-token smoke demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
@@ -64,6 +65,13 @@ deploy-mcp-bootstrap: ## Deploy MCP health/JWKS/dashboard before Verify configur
 
 verify-preflight: ## Validate the real Verify client assertion and issued JWT without printing tokens.
 	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-preflight"
+
+verify-client-jwt-plan: ## Inspect the Verify API client and show the sanitized JWT conversion plan.
+	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-client-jwt-plan"
+
+verify-client-enable-jwt: ## Issue JWT access tokens and remove temporary Verify client admin access.
+	@test "$(CONFIRM_VERIFY_CLIENT_UPDATE)" = "$(PROJECT)" || { echo "Set CONFIRM_VERIFY_CLIENT_UPDATE=$(PROJECT)"; exit 2; }
+	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-client-enable-jwt,CONFIRM_VERIFY_CLIENT_UPDATE=$(CONFIRM_VERIFY_CLIENT_UPDATE)"
 
 configure-verify: ## Store IBM Verify public integration values from VERIFY_* environment variables.
 	@./scripts/configure-verify.sh

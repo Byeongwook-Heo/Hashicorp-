@@ -16,7 +16,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test:bootstrap && npm run test --workspaces --if-present",
+    "test:bootstrap": "node --test bootstrap/aws/*.test.mjs",
     "test:unit": "npm run test --workspace @bob-vault-nhi-demo/mcp-server -- --exclude test/integration/**",
     "test:integration": "npm run test --workspace @bob-vault-nhi-demo/mcp-server -- test/integration",
     "security:deps": "npm audit --audit-level=high --omit=dev"

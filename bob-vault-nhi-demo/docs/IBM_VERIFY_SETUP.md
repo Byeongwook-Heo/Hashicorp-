@@ -78,6 +78,29 @@ make smoke
 
 The preflight prints only validation outcomes. It never prints the assertion or access token.
 
+## One-time opaque-to-JWT conversion
+
+Some Verify tenants expose `Private key JWT` and custom scopes in the Admin UI
+but do not expose the API client's access-token format. If preflight reaches
+JWT verification and fails because Verify issued an opaque token, temporarily
+grant only `Manage API clients` to the same client. Do not add the setting to
+Additional properties.
+
+Commit and upload the source before invoking the CodeBuild-only workflow:
+
+```bash
+make upload-source
+make verify-client-jwt-plan
+CONFIRM_VERIFY_CLIENT_UPDATE=bob-vault-nhi-demo make verify-client-enable-jwt
+make verify-preflight
+```
+
+The plan is read-only and prints no token or client secret. The guarded update
+reads the complete client definition, refuses to continue if the response
+omits the existing client secret, changes `accessTokenType` to `jwt`, and
+removes `manageAPIClients` in the same request. The update is intentionally
+one-shot because the client no longer has management access afterward.
+
 ## Vault claim mapping
 
 The bootstrap creates Vault namespace `demo`, JWT role `bob-orders`, and policy `bob-orders`. The role binds the Verify issuer, audience, and NHI claim and grants only `read` on `database/creds/bob-orders-readonly`.
