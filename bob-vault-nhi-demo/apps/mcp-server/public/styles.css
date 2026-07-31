@@ -320,6 +320,7 @@ main {
   font-weight: 600;
   line-height: 1.08;
   letter-spacing: -0.055em;
+  word-break: keep-all;
 }
 
 .landing-body {
