@@ -522,6 +522,25 @@ h2 {
   font: 10px/1.45 var(--mono);
 }
 
+.activity-point .activity-status {
+  margin-top: 8px;
+  color: var(--muted-strong);
+  font-weight: 600;
+}
+
+.activity-point.allowed .activity-status,
+.activity-point.ok .activity-status {
+  color: var(--green);
+}
+
+.activity-point.denied .activity-status {
+  color: var(--amber);
+}
+
+.activity-point.error .activity-status {
+  color: var(--red);
+}
+
 .activity-point.allowed span,
 .activity-point.ok span {
   background: var(--green);

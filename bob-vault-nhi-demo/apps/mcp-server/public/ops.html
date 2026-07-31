@@ -9,9 +9,9 @@
       content="챗봇부터 IBM Verify, MCP, Vault, PostgreSQL까지 NHI 접근 결정을 확인하는 보안 관제 화면입니다."
     />
     <title>NHI 접근 제어 센터 | MCP 보안 관제</title>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-ibm" />
-    <link rel="stylesheet" href="/ops.css?v=20260731-ibm" />
-    <script src="/ops.js?v=20260731-ibm" type="module"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-ibm2" />
+    <link rel="stylesheet" href="/ops.css?v=20260731-ibm2" />
+    <script src="/ops.js?v=20260731-ibm2" type="module"></script>
   </head>
   <body>
     <header class="topbar">
@@ -100,7 +100,7 @@
         <article
           class="insight-card"
           aria-labelledby="decision-overview-title"
-          role="img"
+          aria-describedby="decision-caption decision-counts"
         >
           <div class="insight-head">
             <div>
@@ -116,7 +116,11 @@
           <p class="chart-caption" id="decision-caption">
             보안 결정 데이터를 기다리는 중입니다.
           </p>
-          <div class="decision-counts" aria-label="결정별 건수">
+          <div
+            class="decision-counts"
+            id="decision-counts"
+            aria-label="결정별 건수"
+          >
             <span><b id="count-allowed">0</b> 정상·허용</span>
             <span><b id="count-denied">0</b> 차단</span>
             <span><b id="count-error">0</b> 오류</span>

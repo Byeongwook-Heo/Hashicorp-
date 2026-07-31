@@ -9,9 +9,9 @@
       content="IBM Verify 사용자 인증과 MCP, Vault 동적 자격증명을 시연하는 안전한 Agent 챗봇"
     />
     <title>Agentic Security Lab | 안전한 AI 에이전트</title>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-ibm" />
-    <link rel="stylesheet" href="/styles.css?v=20260731-ibm" />
-    <script src="/app.js?v=20260731-ibm" type="module"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-ibm2" />
+    <link rel="stylesheet" href="/styles.css?v=20260731-ibm2" />
+    <script src="/app.js?v=20260731-ibm2" type="module"></script>
   </head>
   <body>
     <header class="topbar">
@@ -166,6 +166,7 @@
                 name="message"
                 rows="1"
                 maxlength="500"
+                aria-describedby="chat-input-constraint"
                 placeholder="예: 주문 ORD-1001 상태를 확인해줘"
                 required
               ></textarea>
@@ -173,7 +174,7 @@
                 <span class="carbon-icon icon-send" aria-hidden="true"></span>
               </button>
             </div>
-            <span>
+            <span id="chat-input-constraint">
               입력은 허용된 도구 스키마와 읽기 전용 고정 쿼리로 제한됩니다.
             </span>
           </form>
