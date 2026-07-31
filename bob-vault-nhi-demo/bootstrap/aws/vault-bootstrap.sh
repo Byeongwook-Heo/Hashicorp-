@@ -14,14 +14,15 @@ verify_audience="$(parameter_value "/${PROJECT_NAME}/verify/audience")"
 verify_nhi_claim="$(parameter_value "/${PROJECT_NAME}/verify/nhi-claim")"
 verify_nhi_value="$(parameter_value "/${PROJECT_NAME}/verify/nhi-value")"
 
+unset VAULT_NAMESPACE
 if ! vault namespace lookup demo >/dev/null 2>&1; then
   vault namespace create demo >/dev/null
 fi
-export VAULT_NAMESPACE="demo"
-
 if ! vault audit list -format=json | jq -e 'has("file/")' >/dev/null; then
   vault audit enable file file_path=/var/log/vault/audit.log >/dev/null
 fi
+
+export VAULT_NAMESPACE="demo"
 if ! vault auth list -format=json | jq -e 'has("jwt/")' >/dev/null; then
   vault auth enable -path=jwt jwt >/dev/null
 fi
