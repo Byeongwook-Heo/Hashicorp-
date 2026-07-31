@@ -427,7 +427,7 @@ body.authenticated {
   overflow: hidden;
 }
 
-body.authenticated footer {
+body.authenticated > .site-footer {
   display: none;
 }
 
@@ -1606,7 +1606,7 @@ body.authenticated footer {
   color: var(--amber-text);
 }
 
-footer {
+.site-footer {
   display: flex;
   min-height: 48px;
   align-items: center;
