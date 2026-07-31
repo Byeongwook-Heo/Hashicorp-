@@ -212,11 +212,22 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
         );
         requireCsrf(request, session);
         const input = chatMessageSchema.parse(request.body);
-        const reply = await dependencies.agent.respond(input.message, session);
+        const requestId = response.locals["requestId"] as string;
+        events.record({
+          stage: "identity",
+          status: "allowed",
+          action: "user_session_authenticated",
+          requestId,
+        });
+        const reply = await dependencies.agent.respond(
+          input.message,
+          session,
+          requestId,
+        );
         response.setHeader("cache-control", "no-store");
         response.json({
           ...reply,
-          requestId: response.locals["requestId"] as string,
+          requestId,
         });
       } catch (error) {
         next(error);

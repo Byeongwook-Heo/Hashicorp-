@@ -23,6 +23,37 @@ function buildAgent(result: Record<string, unknown>) {
 }
 
 describe("BoundedChatAgent", () => {
+  it("reports the selected plan and propagates the request ID to MCP", async () => {
+    const mcp: McpToolCaller = {
+      callTool: vi.fn().mockResolvedValue({
+        orders: [],
+        access: accessResult(),
+      }),
+    };
+    const reportProgress = vi.fn();
+    const agent = new BoundedChatAgent(
+      mcp,
+      new RuleBasedPlanner(),
+      reportProgress,
+    );
+    const requestId = "demo-request-123";
+
+    await agent.respond("최근 주문 5건을 요약해줘", principal, requestId);
+
+    expect(reportProgress).toHaveBeenCalledWith({
+      stage: "policy",
+      status: "allowed",
+      action: "agent_plan_recent_orders",
+      requestId,
+    });
+    expect(mcp.callTool).toHaveBeenCalledWith(
+      "get_recent_orders",
+      { limit: 5 },
+      principal.accessToken,
+      requestId,
+    );
+  });
+
   it("routes a validated order identifier to the MCP order tool", async () => {
     const { agent, mcp } = buildAgent({
       order_id: "ORD-1001",

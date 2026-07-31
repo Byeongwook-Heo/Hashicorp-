@@ -20,6 +20,10 @@ const serviceVersion = document.querySelector("#service-version");
 const conversation = document.querySelector("#conversation");
 const trace = document.querySelector("#trace");
 const traceLiveState = document.querySelector("#trace-live-state");
+const traceStageCount = document.querySelector("#trace-stage-count");
+const traceStageDetail = document.querySelector("#trace-stage-detail");
+const pathProgress = document.querySelector("#path-progress");
+const traceProgressFill = document.querySelector("#trace-progress-fill");
 const form = document.querySelector("#chat-form");
 const input = document.querySelector("#chat-input");
 const send = document.querySelector("#send");
@@ -97,6 +101,8 @@ const actionLabels = {
   mcp_request_authenticated: "MCP 요청 인증",
   invalid_bearer_token: "잘못된 Bearer 토큰 차단",
   invalid_user_jwt: "잘못된 사용자 JWT 차단",
+  user_session_authenticated: "Verify 사용자 세션 인증",
+  agent_plan_failed: "에이전트 계획 오류",
   verify_obo_jwt_validated: "사용자·에이전트 OBO JWT 검증",
   verify_jwt_validated: "Verify JWT 검증",
   dynamic_credentials_issued: "동적 DB 자격증명 발급",
@@ -163,6 +169,7 @@ let latestCredential = null;
 let latestTool = "";
 let stageDialogTrigger = null;
 let activeRequestId = null;
+let requestProgressInterval = null;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -220,6 +227,8 @@ function setReadinessState(state) {
 function formatAction(action) {
   const rawAction = String(action ?? "");
   if (Object.hasOwn(actionLabels, rawAction)) return actionLabels[rawAction];
+  if (rawAction.startsWith("agent_plan_")) return "에이전트 실행 계획 수립";
+  if (rawAction.startsWith("agent_response_")) return "에이전트 내부 응답 완료";
   return (
     rawAction.replaceAll("_", " ").replaceAll("/", " › ") || "알 수 없는 조치"
   );
@@ -483,6 +492,7 @@ function initialsFor(displayName) {
 }
 
 function showLogin() {
+  stopRequestProgressPolling();
   document.body.classList.remove("authenticated");
   workspace.hidden = true;
   identity.hidden = true;
@@ -601,6 +611,18 @@ function setBusy(busy) {
     .forEach((button) => (button.disabled = busy));
 }
 
+function stopRequestProgressPolling() {
+  if (!requestProgressInterval) return;
+  window.clearInterval(requestProgressInterval);
+  requestProgressInterval = null;
+}
+
+function startRequestProgressPolling() {
+  stopRequestProgressPolling();
+  void loadEvents();
+  requestProgressInterval = window.setInterval(() => void loadEvents(), 250);
+}
+
 function addThinking() {
   const article = addMessage(
     "agent",
@@ -619,11 +641,43 @@ const defaultPathStates = {
   database: { label: "대기", status: "neutral" },
 };
 
+const pathOrder = ["verify", "agent", "mcp", "vault", "database"];
+const activePathCopy = {
+  verify: {
+    label: "Verify 검증 중",
+    state: "검증 중",
+    detail: "IBM Verify 사용자 세션과 JWT 유효성을 확인하고 있습니다.",
+  },
+  agent: {
+    label: "Agent 계획 중",
+    state: "계획 중",
+    detail: "Bob AI 에이전트가 의도와 허용된 도구 범위를 결정하고 있습니다.",
+  },
+  mcp: {
+    label: "MCP 실행 중",
+    state: "실행 중",
+    detail: "MCP Server가 사용자 JWT와 도구 요청 스키마를 검증하고 있습니다.",
+  },
+  vault: {
+    label: "Vault 평가 중",
+    state: "평가 중",
+    detail: "Vault가 OBO 신원과 읽기 전용 DB 역할 정책을 평가하고 있습니다.",
+  },
+  database: {
+    label: "DB 조회 중",
+    state: "조회 중",
+    detail:
+      "동적 자격증명으로 허용된 PostgreSQL 읽기 쿼리를 실행하고 있습니다.",
+  },
+};
+
 function updatePathStep(key, label, status, time = "—", active = false) {
   const step = pathSteps[key];
   if (!step) return;
   step.classList.toggle("active", active);
+  step.classList.toggle("complete", status === "allowed");
   step.classList.toggle("denied", status === "denied");
+  step.classList.toggle("error", status === "error");
   const state = step.querySelector(".path-state");
   if (state) {
     state.textContent = label;
@@ -639,11 +693,51 @@ function resetVisiblePath() {
   }
 }
 
+function updatePathOverview(stage, state, detail) {
+  const stageIndex = stage ? pathOrder.indexOf(stage) : -1;
+  const currentValue =
+    state === "complete"
+      ? pathOrder.length
+      : state === "response"
+        ? 2
+        : Math.max(stageIndex + 1, 0);
+  const progressPercent =
+    state === "waiting"
+      ? 0
+      : state === "complete"
+        ? 100
+        : state === "response"
+          ? 40
+          : ((Math.max(stageIndex, 0) + 0.65) / pathOrder.length) * 100;
+  const overviewLabel =
+    state === "waiting"
+      ? "요청 대기"
+      : state === "complete"
+        ? "접근 완료"
+        : state === "response"
+          ? "응답 완료"
+          : state === "denied"
+            ? "요청 차단"
+            : state === "error"
+              ? "요청 오류"
+              : activePathCopy[stage]?.label || "처리 중";
+
+  traceStageCount.textContent =
+    state === "waiting" ? "0/5" : `${String(currentValue)}/5`;
+  traceLiveState.textContent = overviewLabel;
+  traceLiveState.className = `live-state ${
+    state === "complete" || state === "response" ? "verified" : state
+  }`;
+  traceStageDetail.textContent = detail;
+  pathProgress.className = `path-progress ${state}`;
+  pathProgress.setAttribute("aria-valuenow", String(currentValue));
+  traceProgressFill.style.width = `${String(progressPercent)}%`;
+}
+
 function beginRequestPath() {
   resetVisiblePath();
-  updatePathStep("verify", "검증 중", "active", "—", true);
-  traceLiveState.textContent = "요청 시작";
-  traceLiveState.className = "live-state active";
+  updatePathStep("verify", activePathCopy.verify.state, "active", "—", true);
+  updatePathOverview("verify", "active", activePathCopy.verify.detail);
   accessStatusSummary.className = "access-status-summary active";
   accessStatusBadge.className = "access-status-badge active";
   accessStatusRequest.textContent = "새 요청";
@@ -657,53 +751,13 @@ function beginRequestPath() {
   accessStatusAction.textContent = "사용자 세션 검증";
 }
 
-function renderVisiblePath(steps) {
-  resetVisiblePath();
-  if (!Array.isArray(steps) || steps.length === 0) return;
-
-  const now = seoulTimeFormatter.format(new Date());
-  const denied = steps.some((step) => step.status === "denied");
-
-  for (const step of steps) {
-    const label = String(step.label ?? "");
-    const status = String(step.status ?? "");
-    if (label.includes("사용자 JWT") || label.includes("IBM Verify")) {
-      updatePathStep("verify", "성공", "allowed", now);
-    } else if (label.includes("OBO JWT") || label.includes("Agent 정책")) {
-      updatePathStep("agent", "위임", "allowed", now);
-      updatePathStep("mcp", "성공", "allowed", now);
-    } else if (label.includes("Vault")) {
-      updatePathStep(
-        "vault",
-        status === "denied" ? "차단" : "허용",
-        status === "denied" ? "denied" : "allowed",
-        now,
-        status === "denied",
-      );
-    } else if (label.includes("DB") || label.includes("자격증명")) {
-      updatePathStep("database", "발급", "allowed", now, true);
-    }
-  }
-
-  if (denied) {
-    updatePathStep("database", "미실행", "neutral");
-  }
-}
-
 function renderTrace(steps) {
   if (!Array.isArray(steps) || steps.length === 0) {
     trace.innerHTML = defaultTraceMarkup;
-    traceLiveState.textContent = "대기";
-    traceLiveState.className = "live-state waiting";
-    resetVisiblePath();
     return;
   }
 
   trace.replaceChildren();
-  const hasDeniedStep = steps.some((step) => step.status === "denied");
-  traceLiveState.textContent = hasDeniedStep ? "정책 차단" : "검증 완료";
-  traceLiveState.className = `live-state ${hasDeniedStep ? "denied" : "verified"}`;
-  renderVisiblePath(steps);
 
   for (const [index, step] of steps.entries()) {
     const item = document.createElement("li");
@@ -745,8 +799,9 @@ async function sendMessage(message) {
   addMessage("user", trimmed);
   input.value = "";
   input.style.height = "";
-  activeRequestId = null;
+  activeRequestId = window.crypto.randomUUID();
   beginRequestPath();
+  startRequestProgressPolling();
   setBusy(true);
   const thinking = addThinking();
   try {
@@ -756,6 +811,7 @@ async function sendMessage(message) {
         accept: "application/json",
         "content-type": "application/json",
         "x-csrf-token": csrfToken,
+        "x-request-id": activeRequestId,
       },
       body: JSON.stringify({ message: trimmed }),
     });
@@ -765,11 +821,12 @@ async function sendMessage(message) {
     }
     const payload = await response.json();
     if (!response.ok) {
-      activeRequestId = String(payload?.error?.requestId ?? "") || null;
+      activeRequestId =
+        String(payload?.error?.requestId ?? "") || activeRequestId;
       if (activeRequestId) void loadEvents();
       throw new Error(payload?.error?.message ?? "요청을 완료하지 못했습니다.");
     }
-    activeRequestId = String(payload.requestId ?? "") || null;
+    activeRequestId = String(payload.requestId ?? "") || activeRequestId;
     thinking.remove();
     const responseMessage = addMessage(
       "agent",
@@ -821,6 +878,8 @@ async function sendMessage(message) {
       { label: "다시 시도", prompt: retryValue },
     ]);
   } finally {
+    stopRequestProgressPolling();
+    void loadEvents();
     setBusy(false);
     input.focus();
   }
@@ -929,6 +988,11 @@ function renderCurrentAccessStatus(
       (status === "allowed" || status === "ok")
     );
   });
+  const responseOnly = requestEvents.some(
+    (event) =>
+      String(event.stage ?? "") === "policy" &&
+      String(event.action ?? "").startsWith("agent_response_"),
+  );
   const credentialsIssued = requestEvents.some(
     (event) =>
       String(event.action ?? "") === "dynamic_credentials_issued" ||
@@ -947,6 +1011,34 @@ function renderCurrentAccessStatus(
   if (deniedEvent) kind = "denied";
   else if (errorEvent) kind = "error";
   else if (databaseSuccess) kind = "allowed";
+  else if (responseOnly) kind = "response";
+
+  const completedStages = new Set(
+    requestEvents
+      .filter((event) => ["allowed", "ok"].includes(String(event.status)))
+      .map(
+        (event) =>
+          ({
+            identity: "verify",
+            policy: "agent",
+            transport: "mcp",
+            vault: "vault",
+            database: "database",
+          })[String(event.stage ?? "")],
+      )
+      .filter(Boolean),
+  );
+  const nextStageKey = pathOrder.find((key) => !completedStages.has(key));
+  const currentStage =
+    kind === "active" && nextStageKey
+      ? {
+          verify: "Verify 신원",
+          agent: "에이전트 계획",
+          mcp: "MCP 도구",
+          vault: "Vault 정책",
+          database: "PostgreSQL",
+        }[nextStageKey]
+      : stage;
 
   const deniedResultByStage = {
     transport: "MCP 인증 단계에서 접근 차단",
@@ -984,7 +1076,7 @@ function renderCurrentAccessStatus(
   const copyByKind = {
     active: {
       result: "접근 요청 처리 중",
-      description: `${stage} 단계에서 요청을 처리하고 있습니다. 완료되면 권한과 자격증명 상태가 갱신됩니다.`,
+      description: `${currentStage} 단계에서 요청을 처리하고 있습니다. 완료되면 권한과 자격증명 상태가 갱신됩니다.`,
       badge: "처리 중",
       policy: requestEvents.some(
         (event) => String(event.stage ?? "") === "vault",
@@ -1000,6 +1092,14 @@ function renderCurrentAccessStatus(
       badge: "허용",
       policy: "읽기 전용 허용",
       credentials: "발급·사용 완료",
+    },
+    response: {
+      result: "에이전트 응답 완료",
+      description:
+        "Bob AI 에이전트가 내부 정책 안내로 응답했습니다. MCP, Vault, PostgreSQL은 호출하지 않았습니다.",
+      badge: "완료",
+      policy: "내부 응답",
+      credentials: "미발급",
     },
     denied: {
       result: deniedResultByStage[stageKey] ?? `${stage} 단계에서 접근 차단`,
@@ -1027,7 +1127,7 @@ function renderCurrentAccessStatus(
   accessStatusResult.textContent = copy.result;
   accessStatusDescription.textContent = copy.description;
   accessStatusBadge.textContent = copy.badge;
-  accessStatusStage.textContent = stage;
+  accessStatusStage.textContent = currentStage;
   accessStatusPolicy.textContent = copy.policy;
   accessStatusCredentials.textContent = copy.credentials;
   if (kind === "allowed" && latestCredential) {
@@ -1047,11 +1147,9 @@ function renderState(kind, message) {
 
 function updatePathFromEvents(events) {
   if (!Array.isArray(events) || events.length === 0) {
-    resetTelemetryPath();
     return;
   }
   resetVisiblePath();
-  Object.values(pathSteps).forEach((step) => step?.classList.remove("active"));
   const pathByStage = {
     identity: "verify",
     policy: "agent",
@@ -1059,13 +1157,32 @@ function updatePathFromEvents(events) {
     vault: "vault",
     database: "database",
   };
-  const updated = new Set();
   const requestEvents = latestRequestEvents(events);
+  const eventsByPath = new Map();
+  for (const event of requestEvents) {
+    const key = pathByStage[String(event.stage ?? "")];
+    if (key && !eventsByPath.has(key)) eventsByPath.set(key, event);
+  }
+
+  if (!eventsByPath.has("agent")) {
+    const transportEvent = eventsByPath.get("mcp");
+    const transportStatus = String(transportEvent?.status ?? "");
+    if (transportStatus === "allowed" || transportStatus === "ok") {
+      eventsByPath.set("agent", {
+        ...transportEvent,
+        stage: "policy",
+        action: "agent_plan_inferred",
+      });
+    }
+  }
+
   const terminalEvent = requestEvents.find((event) => {
     const status = String(event.status ?? "");
     return status === "denied" || (status !== "allowed" && status !== "ok");
   });
-  const terminalStatus = String(terminalEvent?.status ?? "");
+  const terminalKey = terminalEvent
+    ? pathByStage[String(terminalEvent.stage ?? "")]
+    : null;
   const databaseComplete = requestEvents.some((event) => {
     const status = String(event.status ?? "");
     return (
@@ -1073,70 +1190,92 @@ function updatePathFromEvents(events) {
       (status === "allowed" || status === "ok")
     );
   });
-  const traceState =
-    terminalStatus === "denied"
-      ? { label: "요청 차단", kind: "denied" }
-      : terminalEvent
-        ? { label: "요청 오류", kind: "error" }
-        : databaseComplete
-          ? { label: "접근 완료", kind: "verified" }
-          : { label: "처리 중", kind: "active" };
+  const responseOnly = requestEvents.some(
+    (event) =>
+      String(event.stage ?? "") === "policy" &&
+      String(event.action ?? "").startsWith("agent_response_"),
+  );
+  const successfulKeys = new Set();
 
-  traceLiveState.textContent = traceState.label;
-  traceLiveState.className = `live-state ${traceState.kind}`;
-
-  for (const [index, event] of requestEvents.entries()) {
-    const key = pathByStage[String(event.stage ?? "")];
-    if (!key || updated.has(key)) continue;
-    updated.add(key);
+  for (const key of pathOrder) {
+    const event = eventsByPath.get(key);
+    if (!event) continue;
     const eventDate = new Date(event.at);
     const time = Number.isNaN(eventDate.getTime())
       ? "—"
       : seoulTimeFormatter.format(eventDate);
     const rawStatus = String(event.status ?? "error");
     const status =
-      key === "agent"
+      rawStatus === "allowed" || rawStatus === "ok"
         ? "allowed"
-        : rawStatus === "allowed" || rawStatus === "ok"
-          ? "allowed"
-          : rawStatus === "denied"
-            ? "denied"
-            : "error";
+        : rawStatus === "denied"
+          ? "denied"
+          : "error";
     const label =
-      key === "agent" && rawStatus === "denied"
-        ? "정책 적용"
-        : status === "allowed"
-          ? key === "vault"
-            ? "허용"
-            : "성공"
-          : rawStatus === "denied"
-            ? "차단"
-            : "오류";
-    updatePathStep(key, label, status, time, index === 0);
+      status === "allowed"
+        ? key === "vault"
+          ? "허용"
+          : "성공"
+        : status === "denied"
+          ? "차단"
+          : "오류";
+    if (status === "allowed") successfulKeys.add(key);
+    updatePathStep(key, label, status, time);
   }
 
-  if (!updated.has("agent")) {
-    const successfulTransport = requestEvents.find((event) => {
-      const status = String(event.status ?? "");
-      return (
-        String(event.stage ?? "") === "transport" &&
-        (status === "allowed" || status === "ok")
-      );
-    });
-    if (successfulTransport) {
-      const eventDate = new Date(successfulTransport.at);
-      const time = Number.isNaN(eventDate.getTime())
-        ? "—"
-        : seoulTimeFormatter.format(eventDate);
-      updatePathStep("agent", "성공", "allowed", time);
+  if (terminalEvent && terminalKey) {
+    const terminalIndex = pathOrder.indexOf(terminalKey);
+    for (const key of pathOrder.slice(terminalIndex + 1)) {
+      updatePathStep(key, "미실행", "neutral");
     }
+    const terminalStatus = String(terminalEvent.status ?? "");
+    const terminalState = terminalStatus === "denied" ? "denied" : "error";
+    updatePathOverview(
+      terminalKey,
+      terminalState,
+      terminalState === "denied"
+        ? `${activePathCopy[terminalKey].label.replace(" 중", "")} 단계에서 요청을 차단했습니다. 이후 단계는 실행하지 않았습니다.`
+        : `${activePathCopy[terminalKey].label.replace(" 중", "")} 단계에서 오류가 발생해 요청을 중단했습니다.`,
+    );
+    return;
+  }
+
+  if (databaseComplete) {
+    updatePathOverview(
+      "database",
+      "complete",
+      "Verify부터 PostgreSQL까지 현재 요청의 모든 보안 단계를 완료했습니다.",
+    );
+    return;
+  }
+
+  if (responseOnly) {
+    for (const key of ["mcp", "vault", "database"]) {
+      updatePathStep(key, "미실행", "neutral");
+    }
+    updatePathOverview(
+      "agent",
+      "response",
+      "에이전트가 내부 정책 안내로 응답했습니다. MCP, Vault, DB는 호출하지 않았습니다.",
+    );
+    return;
+  }
+
+  const nextStage = pathOrder.find((key) => !successfulKeys.has(key));
+  if (nextStage) {
+    const copy = activePathCopy[nextStage];
+    updatePathStep(nextStage, copy.state, "active", "—", true);
+    updatePathOverview(nextStage, "active", copy.detail);
   }
 }
 
 function resetTelemetryPath() {
   resetVisiblePath();
-  traceLiveState.textContent = "대기";
-  traceLiveState.className = "live-state waiting";
+  updatePathOverview(
+    null,
+    "waiting",
+    "요청을 보내면 실제 보안 이벤트에 맞춰 현재 단계가 이동합니다.",
+  );
 }
 
 function renderEvents(events) {
@@ -1215,9 +1354,15 @@ async function loadEvents(announce = false) {
     const payload = await response.json();
     renderEvents(payload.events);
     const currentEvents = eventsForActiveRequest(payload.events);
-    if (activeRequestId) updatePathFromEvents(currentEvents);
-    else resetTelemetryPath();
-    renderCurrentAccessStatus(currentEvents, false, payload.events);
+    if (activeRequestId) {
+      if (currentEvents.length > 0) {
+        updatePathFromEvents(currentEvents);
+        renderCurrentAccessStatus(currentEvents, false, payload.events);
+      }
+    } else {
+      resetTelemetryPath();
+      renderCurrentAccessStatus([], false, payload.events);
+    }
     lastUpdated.textContent = `마지막 업데이트 ${seoulTimeFormatter.format(new Date())}`;
     if (announce && refreshAnnouncement) {
       refreshAnnouncement.textContent = `보안 결정 ${String(payload.events.length)}건을 새로고침했습니다.`;
@@ -1258,11 +1403,13 @@ async function resetDemoSession() {
     if (!response.ok) throw new Error("reset unavailable");
     latestCredential = null;
     latestTool = "";
+    stopRequestProgressPolling();
     activeRequestId = null;
     conversation.innerHTML = defaultConversationMarkup;
     renderTrace([]);
     renderEvents([]);
     renderCurrentAccessStatus([]);
+    resetTelemetryPath();
     lastUpdated.textContent = "데모 세션이 초기화되었습니다";
     input.value = "";
     input.focus();

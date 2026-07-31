@@ -97,6 +97,7 @@ function createAgent(): BoundedChatAgent {
   return new BoundedChatAgent(
     new HttpMcpToolCaller(config.mcpInternalUrl, config.serviceVersion),
     planner,
+    (event) => events.record(event),
   );
 }
 

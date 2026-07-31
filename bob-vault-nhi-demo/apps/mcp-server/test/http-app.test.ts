@@ -156,6 +156,8 @@ describe("HTTP security boundary", () => {
     expect(html).toContain('id="control-center"');
     expect(html).toContain('id="current-access-status"');
     expect(html).toContain('id="stage-dialog"');
+    expect(html).toContain('id="trace-stage-count"');
+    expect(html).toContain('id="trace-progress-fill"');
     expect(html).toContain('id="unauth-test"');
     expect(html).toContain('id="unauth-path"');
     expect(html).toContain("인증 없이 접근 테스트");
@@ -314,10 +316,12 @@ describe("HTTP security boundary", () => {
   });
 
   it("passes an authenticated request to the bounded agent", async () => {
-    const { app, agent } = buildApp({ session: authenticatedSession });
+    const { app, agent, events } = buildApp({ session: authenticatedSession });
+    const requestId = "demo-request-123";
 
     const response = await request(app)
       .post("/api/chat")
+      .set("x-request-id", requestId)
       .set("x-csrf-token", authenticatedSession.csrfToken)
       .send({ message: "주문 ORD-1001 상태" })
       .expect(200);
@@ -325,11 +329,19 @@ describe("HTTP security boundary", () => {
     expect(response.body).toMatchObject({
       tool: "get_order_status",
       reply: expect.stringContaining("ORD-1001"),
+      requestId,
     });
     expect(agent.respond).toHaveBeenCalledWith(
       "주문 ORD-1001 상태",
       authenticatedSession,
+      requestId,
     );
+    expect(events.list()[0]).toMatchObject({
+      stage: "identity",
+      status: "allowed",
+      action: "user_session_authenticated",
+      requestId,
+    });
   });
 
   it("runs a user-scoped preflight and resets only the demo session", async () => {

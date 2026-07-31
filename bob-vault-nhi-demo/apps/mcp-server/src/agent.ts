@@ -102,6 +102,16 @@ export type AgentToolName =
   | "get_failed_payment_trend"
   | "get_sensitive_payment_data";
 
+function planUsesMcp(plan: AgentPlan): boolean {
+  return [
+    "order_status",
+    "failed_payment_summary",
+    "recent_orders",
+    "failed_payment_trend",
+    "sensitive_payment_data",
+  ].includes(plan.intent);
+}
+
 export interface AgentTraceStep {
   label: string;
   detail: string;
@@ -136,6 +146,7 @@ export interface McpToolCaller {
     tool: AgentToolName,
     argumentsValue: Record<string, string | number>,
     accessToken: string,
+    requestId?: string,
   ): Promise<Record<string, unknown>>;
 }
 
@@ -146,11 +157,22 @@ export interface MessagePlanner {
 }
 
 export interface ChatAgent {
-  respond(message: string, principal: UserPrincipal): Promise<AgentReply>;
+  respond(
+    message: string,
+    principal: UserPrincipal,
+    requestId?: string,
+  ): Promise<AgentReply>;
   preflight?(): Promise<AgentPlanningStatus>;
   getStatus?(): AgentPlanningStatus;
   reset?(subject: string): void;
 }
+
+export type AgentProgressReporter = (event: {
+  stage: "policy";
+  status: "allowed" | "error";
+  action: string;
+  requestId: string;
+}) => void;
 
 export class HttpMcpToolCaller implements McpToolCaller {
   public constructor(
@@ -162,6 +184,7 @@ export class HttpMcpToolCaller implements McpToolCaller {
     tool: AgentToolName,
     argumentsValue: Record<string, string | number>,
     accessToken: string,
+    requestId?: string,
   ): Promise<Record<string, unknown>> {
     const client = new Client(
       {
@@ -176,6 +199,7 @@ export class HttpMcpToolCaller implements McpToolCaller {
         requestInit: {
           headers: {
             authorization: `Bearer ${accessToken}`,
+            ...(requestId ? { "x-request-id": requestId } : {}),
           },
         },
       },
@@ -356,19 +380,44 @@ export class BoundedChatAgent implements ChatAgent {
   public constructor(
     private readonly mcp: McpToolCaller,
     private readonly planner: MessagePlanner = new RuleBasedPlanner(),
+    private readonly reportProgress?: AgentProgressReporter,
   ) {}
 
   public async respond(
     message: string,
     principal: UserPrincipal,
+    requestId?: string,
   ): Promise<AgentReply> {
     const normalized = message.trim();
     if (!normalized) {
       throw new AppError("Message is required", 400, "INVALID_CHAT_MESSAGE");
     }
 
-    const plan = agentPlanSchema.parse(await this.planner.plan(normalized));
-    const reply = await this.#execute(plan, principal);
+    let plan: AgentPlan;
+    try {
+      plan = agentPlanSchema.parse(await this.planner.plan(normalized));
+    } catch (error) {
+      if (requestId) {
+        this.reportProgress?.({
+          stage: "policy",
+          status: "error",
+          action: "agent_plan_failed",
+          requestId,
+        });
+      }
+      throw error;
+    }
+    if (requestId) {
+      this.reportProgress?.({
+        stage: "policy",
+        status: "allowed",
+        action: planUsesMcp(plan)
+          ? `agent_plan_${plan.intent}`
+          : `agent_response_${plan.intent}`,
+        requestId,
+      });
+    }
+    const reply = await this.#execute(plan, principal, requestId);
     if (reply.tool) {
       this.#remember(principal.subject, reply);
     }
@@ -398,14 +447,16 @@ export class BoundedChatAgent implements ChatAgent {
   async #execute(
     plan: AgentPlan,
     principal: UserPrincipal,
+    requestId?: string,
   ): Promise<AgentReply> {
     switch (plan.intent) {
       case "sensitive_payment_data": {
         const result = denialSchema.parse(
-          await this.mcp.callTool(
+          await this.#callTool(
             "get_sensitive_payment_data",
             { customer_id: plan.customer_id },
             principal.accessToken,
+            requestId,
           ),
         );
         void result.reason;
@@ -420,10 +471,11 @@ export class BoundedChatAgent implements ChatAgent {
       }
       case "order_status": {
         const result = orderResultSchema.parse(
-          await this.mcp.callTool(
+          await this.#callTool(
             "get_order_status",
             { order_id: plan.order_id },
             principal.accessToken,
+            requestId,
           ),
         );
         return allowedReply(
@@ -444,10 +496,11 @@ export class BoundedChatAgent implements ChatAgent {
       case "failed_payment_summary": {
         const date = plan.date ?? todayInSeoul();
         const result = paymentSummarySchema.parse(
-          await this.mcp.callTool(
+          await this.#callTool(
             "get_failed_payment_summary",
             { date },
             principal.accessToken,
+            requestId,
           ),
         );
         return allowedReply(
@@ -468,10 +521,11 @@ export class BoundedChatAgent implements ChatAgent {
       case "recent_orders": {
         const limit = plan.limit ?? 5;
         const result = recentOrdersSchema.parse(
-          await this.mcp.callTool(
+          await this.#callTool(
             "get_recent_orders",
             { limit },
             principal.accessToken,
+            requestId,
           ),
         );
         const orderSummary = result.orders.length
@@ -499,10 +553,11 @@ export class BoundedChatAgent implements ChatAgent {
       case "failed_payment_trend": {
         const days = plan.days ?? 7;
         const result = failedPaymentTrendSchema.parse(
-          await this.mcp.callTool(
+          await this.#callTool(
             "get_failed_payment_trend",
             { days },
             principal.accessToken,
+            requestId,
           ),
         );
         const trend = result.points.length
@@ -531,6 +586,17 @@ export class BoundedChatAgent implements ChatAgent {
       case "unsupported":
         return unsupportedReply(principal);
     }
+  }
+
+  #callTool(
+    tool: AgentToolName,
+    argumentsValue: Record<string, string | number>,
+    accessToken: string,
+    requestId?: string,
+  ): Promise<Record<string, unknown>> {
+    return requestId
+      ? this.mcp.callTool(tool, argumentsValue, accessToken, requestId)
+      : this.mcp.callTool(tool, argumentsValue, accessToken);
   }
 
   #explainLastDecision(principal: UserPrincipal): AgentReply {
