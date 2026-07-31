@@ -1,9 +1,10 @@
 const ADMIN_ENTITLEMENT = "manageAPIClients";
-const READ_ONLY_RESPONSE_FIELD_NAMES = new Set(["_links", "clientId", "id"]);
+const READ_ONLY_RESPONSE_FIELD_NAMES = new Set(["_links", "id"]);
 const SAFE_ERROR_FIELD_PATTERN =
   /(error|message|detail|reason|cause|code|status|field|path|invalid)/i;
 const UPDATE_FIELD_NAMES = Object.freeze([
   "clientName",
+  "clientId",
   "entitlements",
   "clientSecret",
   "enabled",

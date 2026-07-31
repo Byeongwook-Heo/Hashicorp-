@@ -68,7 +68,7 @@ test("enables JWT and removes only the temporary admin entitlement", () => {
   assert.equal(updated.restrictScopes, true);
   assert.deepEqual(updated.scopes, current.scopes);
   assert.deepEqual(updated.additionalConfig, current.additionalConfig);
-  assert.equal(Object.hasOwn(updated, "clientId"), false);
+  assert.equal(updated.clientId, current.clientId);
   assert.equal(Object.hasOwn(updated, "id"), false);
   assert.equal(Object.hasOwn(updated, "_links"), false);
 });
@@ -89,6 +89,7 @@ test("sanitized plan never includes the client secret value", () => {
     submittedFieldNames: [
       "accessTokenType",
       "additionalConfig",
+      "clientId",
       "clientName",
       "clientSecret",
       "enabled",
@@ -97,7 +98,7 @@ test("sanitized plan never includes the client secret value", () => {
       "restrictScopes",
       "scopes",
     ],
-    omittedResponseFieldNames: ["_links", "clientId", "id"],
+    omittedResponseFieldNames: ["_links", "id"],
     unexpectedOmittedResponseFieldNames: [],
   });
   assert.equal(JSON.stringify(plan).includes(current.clientSecret), false);
