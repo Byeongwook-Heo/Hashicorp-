@@ -44,17 +44,24 @@ vault write auth/jwt/config \
   jwt_supported_algs=RS256 \
   default_role=bob-orders >/dev/null
 
-bound_claims="$(jq -cn --arg claim "${verify_nhi_claim}" --arg value "${verify_nhi_value}" '{($claim):$value}')"
-vault write auth/jwt/role/bob-orders \
-  role_type=jwt \
-  user_claim="${verify_nhi_claim}" \
-  bound_audiences="${verify_audience}" \
-  bound_claims="${bound_claims}" \
-  token_policies=bob-orders \
-  token_no_default_policy=true \
-  token_ttl=2m \
-  token_max_ttl=5m \
-  token_explicit_max_ttl=5m >/dev/null
+role_file="$(new_private_file)"
+jq -n \
+  --arg user_claim "${verify_nhi_claim}" \
+  --arg audience "${verify_audience}" \
+  --arg claim "${verify_nhi_claim}" \
+  --arg value "${verify_nhi_value}" \
+  '{
+    role_type: "jwt",
+    user_claim: $user_claim,
+    bound_audiences: [$audience],
+    bound_claims: {($claim): $value},
+    token_policies: ["bob-orders"],
+    token_no_default_policy: true,
+    token_ttl: "2m",
+    token_max_ttl: "5m",
+    token_explicit_max_ttl: "5m"
+  }' >"${role_file}"
+vault write auth/jwt/role/bob-orders - <"${role_file}" >/dev/null
 
 bootstrap_secret_name="${PROJECT_NAME}/bootstrap/vault-db-admin"
 db_admin_secret="$(aws secretsmanager get-secret-value \
