@@ -12,6 +12,12 @@ const input = document.querySelector("#chat-input");
 const send = document.querySelector("#send");
 const logout = document.querySelector("#logout");
 let csrfToken = "";
+const defaultTraceMarkup = trace.innerHTML;
+
+const toolLabels = {
+  get_order_status: "주문 상태 조회",
+  get_failed_payment_summary: "실패 결제 요약 조회",
+};
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -110,6 +116,12 @@ function addThinking() {
 }
 
 function renderTrace(steps) {
+  if (!Array.isArray(steps) || steps.length === 0) {
+    trace.innerHTML = defaultTraceMarkup;
+    traceLiveState.textContent = "대기";
+    traceLiveState.className = "live-state waiting";
+    return;
+  }
   trace.replaceChildren();
   const hasDeniedStep = steps.some((step) => step.status === "denied");
   traceLiveState.textContent = hasDeniedStep ? "정책 차단" : "검증 완료";
@@ -153,6 +165,7 @@ async function sendMessage(message) {
   const retryValue = trimmed;
   addMessage("user", trimmed);
   input.value = "";
+  input.style.height = "";
   setBusy(true);
   const thinking = addThinking();
   try {
@@ -178,7 +191,7 @@ async function sendMessage(message) {
       "agent",
       String(payload.reply),
       payload.tool
-        ? `MCP 도구 · ${String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
+        ? `MCP 도구 · ${toolLabels[String(payload.tool)] ?? String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
         : "에이전트 정책 안내",
     );
     renderTrace(Array.isArray(payload.trace) ? payload.trace : []);
@@ -208,6 +221,11 @@ input.addEventListener("keydown", (event) => {
     event.preventDefault();
     form.requestSubmit();
   }
+});
+
+input.addEventListener("input", () => {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 132)}px`;
 });
 
 document.querySelectorAll("[data-prompt]").forEach((button) => {

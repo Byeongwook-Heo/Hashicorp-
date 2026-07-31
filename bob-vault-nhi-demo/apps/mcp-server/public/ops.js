@@ -33,6 +33,9 @@ const actionLabels = {
   dynamic_credentials_issued: "동적 DB 자격증명 발급",
   get_order_status: "주문 상태 조회",
   get_failed_payment_summary: "실패 결제 요약 조회",
+  vault_policy_denied: "Vault 정책 거부",
+  vault_policy_allowed: "Vault 정책 허용",
+  pii_access_denied: "민감 정보 접근 차단",
   "database/creds/bob-payment-pii": "민감 결제 DB 역할 요청 차단",
 };
 
