@@ -13,6 +13,9 @@ const userInitial = document.querySelector("#user-initial");
 const agentGreeting = document.querySelector("#agent-greeting");
 const loginError = document.querySelector("#login-error");
 const previewStatus = document.querySelector("#preview-status");
+const unauthTest = document.querySelector("#unauth-test");
+const unauthResult = document.querySelector("#unauth-result");
+const unauthOutcome = document.querySelector("#unauth-outcome");
 const serviceVersion = document.querySelector("#service-version");
 const conversation = document.querySelector("#conversation");
 const trace = document.querySelector("#trace");
@@ -159,6 +162,7 @@ let eventsInterval = null;
 let latestCredential = null;
 let latestTool = "";
 let stageDialogTrigger = null;
+let activeRequestId = null;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -488,6 +492,7 @@ function showLogin() {
   loginError.hidden = !new window.URLSearchParams(window.location.search).has(
     "auth_error",
   );
+  resetUnauthenticatedDemo();
   if (eventsInterval) {
     window.clearInterval(eventsInterval);
     eventsInterval = null;
@@ -501,6 +506,9 @@ function showWorkspace() {
   headerLogin.hidden = true;
   loginPanel.hidden = true;
   workspace.hidden = false;
+  activeRequestId = null;
+  resetTelemetryPath();
+  renderCurrentAccessStatus([]);
   input.focus();
   if (!eventsInterval) {
     void loadEvents();
@@ -604,9 +612,9 @@ function addThinking() {
 }
 
 const defaultPathStates = {
-  verify: { label: "성공", status: "allowed" },
-  agent: { label: "준비", status: "allowed" },
-  mcp: { label: "연결", status: "neutral" },
+  verify: { label: "대기", status: "neutral" },
+  agent: { label: "대기", status: "neutral" },
+  mcp: { label: "대기", status: "neutral" },
   vault: { label: "대기", status: "neutral" },
   database: { label: "대기", status: "neutral" },
 };
@@ -629,6 +637,24 @@ function resetVisiblePath() {
   for (const [key, value] of Object.entries(defaultPathStates)) {
     updatePathStep(key, value.label, value.status);
   }
+}
+
+function beginRequestPath() {
+  resetVisiblePath();
+  updatePathStep("verify", "검증 중", "active", "—", true);
+  traceLiveState.textContent = "요청 시작";
+  traceLiveState.className = "live-state active";
+  accessStatusSummary.className = "access-status-summary active";
+  accessStatusBadge.className = "access-status-badge active";
+  accessStatusRequest.textContent = "새 요청";
+  accessStatusResult.textContent = "사용자 신원 확인 중";
+  accessStatusDescription.textContent =
+    "현재 요청의 Verify 신원부터 순서대로 평가합니다.";
+  accessStatusBadge.textContent = "처리 중";
+  accessStatusStage.textContent = "Verify 신원";
+  accessStatusPolicy.textContent = "평가 전";
+  accessStatusCredentials.textContent = "미발급";
+  accessStatusAction.textContent = "사용자 세션 검증";
 }
 
 function renderVisiblePath(steps) {
@@ -719,6 +745,8 @@ async function sendMessage(message) {
   addMessage("user", trimmed);
   input.value = "";
   input.style.height = "";
+  activeRequestId = null;
+  beginRequestPath();
   setBusy(true);
   const thinking = addThinking();
   try {
@@ -737,8 +765,11 @@ async function sendMessage(message) {
     }
     const payload = await response.json();
     if (!response.ok) {
+      activeRequestId = String(payload?.error?.requestId ?? "") || null;
+      if (activeRequestId) void loadEvents();
       throw new Error(payload?.error?.message ?? "요청을 완료하지 못했습니다.");
     }
+    activeRequestId = String(payload.requestId ?? "") || null;
     thinking.remove();
     const responseMessage = addMessage(
       "agent",
@@ -763,6 +794,21 @@ async function sendMessage(message) {
     void loadEvents();
   } catch (error) {
     thinking.remove();
+    if (!activeRequestId) {
+      updatePathStep("verify", "오류", "error", "—", true);
+      traceLiveState.textContent = "요청 오류";
+      traceLiveState.className = "live-state error";
+      accessStatusSummary.className = "access-status-summary error";
+      accessStatusBadge.className = "access-status-badge error";
+      accessStatusResult.textContent = "요청을 처리하지 못했습니다";
+      accessStatusDescription.textContent =
+        "서버 응답을 확인하지 못해 이후 접근 단계는 실행하지 않았습니다.";
+      accessStatusBadge.textContent = "오류";
+      accessStatusStage.textContent = "Verify 신원";
+      accessStatusPolicy.textContent = "평가 전";
+      accessStatusCredentials.textContent = "미발급";
+      accessStatusAction.textContent = "요청 중단";
+    }
     if (!input.value) input.value = retryValue;
     const failureMessage = addMessage(
       "agent",
@@ -812,8 +858,19 @@ function latestRequestEvents(events) {
     : events.slice(0, 1);
 }
 
-function renderCurrentAccessStatus(events, loadFailed = false) {
-  const summary = buildSummary(events);
+function eventsForActiveRequest(events) {
+  if (!activeRequestId || !Array.isArray(events)) return [];
+  return events.filter(
+    (event) => String(event.requestId ?? "") === activeRequestId,
+  );
+}
+
+function renderCurrentAccessStatus(
+  events,
+  loadFailed = false,
+  summaryEvents = events,
+) {
+  const summary = buildSummary(summaryEvents);
   decisionTotal.textContent = `${summary.total}건`;
   countAllowed.textContent = String(summary.allowed);
   countDenied.textContent = String(summary.denied);
@@ -1057,6 +1114,23 @@ function updatePathFromEvents(events) {
             : "오류";
     updatePathStep(key, label, status, time, index === 0);
   }
+
+  if (!updated.has("agent")) {
+    const successfulTransport = requestEvents.find((event) => {
+      const status = String(event.status ?? "");
+      return (
+        String(event.stage ?? "") === "transport" &&
+        (status === "allowed" || status === "ok")
+      );
+    });
+    if (successfulTransport) {
+      const eventDate = new Date(successfulTransport.at);
+      const time = Number.isNaN(eventDate.getTime())
+        ? "—"
+        : seoulTimeFormatter.format(eventDate);
+      updatePathStep("agent", "성공", "allowed", time);
+    }
+  }
 }
 
 function resetTelemetryPath() {
@@ -1068,12 +1142,9 @@ function resetTelemetryPath() {
 function renderEvents(events) {
   eventList.replaceChildren();
   if (!Array.isArray(events) || events.length === 0) {
-    resetTelemetryPath();
     renderState("empty", "아직 기록된 보안 결정이 없습니다.");
     return;
   }
-
-  updatePathFromEvents(events);
 
   for (const event of events) {
     const row = document.createElement("li");
@@ -1143,7 +1214,10 @@ async function loadEvents(announce = false) {
     if (!response.ok) throw new Error("events unavailable");
     const payload = await response.json();
     renderEvents(payload.events);
-    renderCurrentAccessStatus(payload.events);
+    const currentEvents = eventsForActiveRequest(payload.events);
+    if (activeRequestId) updatePathFromEvents(currentEvents);
+    else resetTelemetryPath();
+    renderCurrentAccessStatus(currentEvents, false, payload.events);
     lastUpdated.textContent = `마지막 업데이트 ${seoulTimeFormatter.format(new Date())}`;
     if (announce && refreshAnnouncement) {
       refreshAnnouncement.textContent = `보안 결정 ${String(payload.events.length)}건을 새로고침했습니다.`;
@@ -1184,6 +1258,7 @@ async function resetDemoSession() {
     if (!response.ok) throw new Error("reset unavailable");
     latestCredential = null;
     latestTool = "";
+    activeRequestId = null;
     conversation.innerHTML = defaultConversationMarkup;
     renderTrace([]);
     renderEvents([]);
@@ -1241,6 +1316,90 @@ stageCodeCopy?.addEventListener("click", async () => {
     stageCodeCopy.textContent = "복사 불가";
   }
 });
+
+function setUnauthenticatedStage(stage, label, status = "neutral") {
+  const item = document.querySelector(`[data-unauth-stage="${stage}"]`);
+  if (!item) return;
+  item.className = status;
+  const state = item.querySelector("span");
+  if (state) state.textContent = label;
+}
+
+function resetUnauthenticatedDemo() {
+  setUnauthenticatedStage("verify", "신원 없음");
+  setUnauthenticatedStage("agent", "미실행");
+  setUnauthenticatedStage("mcp", "대기");
+  setUnauthenticatedStage("vault", "미실행");
+  setUnauthenticatedStage("database", "미실행");
+  if (unauthResult) {
+    unauthResult.textContent = "테스트 전";
+    unauthResult.className = "unauth-demo-result waiting";
+  }
+  if (unauthOutcome) {
+    unauthOutcome.textContent =
+      "버튼을 누르면 인증 헤더가 없는 실제 요청을 전송합니다.";
+    unauthOutcome.className = "unauth-outcome";
+  }
+  if (unauthTest) {
+    unauthTest.disabled = false;
+    unauthTest.textContent = "인증 없이 접근 테스트";
+  }
+}
+
+async function runUnauthenticatedDemo() {
+  if (!unauthTest || unauthTest.disabled) return;
+  unauthTest.disabled = true;
+  unauthTest.textContent = "접근 시도 중…";
+  setUnauthenticatedStage("verify", "JWT 없음", "denied");
+  setUnauthenticatedStage("agent", "미실행");
+  setUnauthenticatedStage("mcp", "검사 중", "active");
+  setUnauthenticatedStage("vault", "미실행");
+  setUnauthenticatedStage("database", "미실행");
+  unauthResult.textContent = "검증 중";
+  unauthResult.className = "unauth-demo-result active";
+  unauthOutcome.textContent =
+    "Authorization 헤더 없이 get_recent_orders 도구 호출을 전송했습니다.";
+  unauthOutcome.className = "unauth-outcome active";
+
+  try {
+    const response = await fetch("/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "unauthenticated-demo",
+        method: "tools/call",
+        params: { name: "get_recent_orders", arguments: { limit: 5 } },
+      }),
+    });
+
+    if (response.status !== 401) {
+      throw new Error(`unexpected status ${String(response.status)}`);
+    }
+
+    setUnauthenticatedStage("mcp", "차단", "denied");
+    unauthResult.textContent = "401 차단";
+    unauthResult.className = "unauth-demo-result denied";
+    unauthOutcome.textContent =
+      "MCP 입구에서 요청을 차단했습니다. Vault 정책 평가와 DB 자격증명 발급은 실행되지 않았습니다.";
+    unauthOutcome.className = "unauth-outcome denied";
+  } catch {
+    setUnauthenticatedStage("mcp", "확인 필요", "error");
+    unauthResult.textContent = "테스트 오류";
+    unauthResult.className = "unauth-demo-result error";
+    unauthOutcome.textContent =
+      "예상한 401 응답을 확인하지 못했습니다. 서비스 상태를 확인해 주세요.";
+    unauthOutcome.className = "unauth-outcome error";
+  } finally {
+    unauthTest.disabled = false;
+    unauthTest.textContent = "다시 테스트";
+  }
+}
+
+unauthTest?.addEventListener("click", () => void runUnauthenticatedDemo());
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();

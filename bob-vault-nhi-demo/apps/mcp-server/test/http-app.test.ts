@@ -156,6 +156,9 @@ describe("HTTP security boundary", () => {
     expect(html).toContain('id="control-center"');
     expect(html).toContain('id="current-access-status"');
     expect(html).toContain('id="stage-dialog"');
+    expect(html).toContain('id="unauth-test"');
+    expect(html).toContain('id="unauth-path"');
+    expect(html).toContain("인증 없이 접근 테스트");
     expect(html).toContain('data-stage="vault"');
     expect(html).toContain("/icons/custom/postgresql-elephant.svg");
     expect(html).toContain("/icons/custom/hashicorp-vault.svg");
@@ -192,18 +195,24 @@ describe("HTTP security boundary", () => {
   });
 
   it("rejects MCP requests without the bearer token", async () => {
-    const { app, events } = buildApp();
+    const { app, events, vault } = buildApp();
 
     await request(app)
       .post("/mcp")
       .set("accept", "application/json, text/event-stream")
-      .send(toolsListRequest)
+      .send({
+        jsonrpc: "2.0",
+        id: "unauthenticated-demo",
+        method: "tools/call",
+        params: { name: "get_recent_orders", arguments: { limit: 5 } },
+      })
       .expect(401);
 
     expect(events.list()[0]).toMatchObject({
       stage: "transport",
       status: "denied",
     });
+    expect(vault.withDatabaseCredentials).not.toHaveBeenCalled();
   });
 
   it("rejects unapproved browser origins", async () => {
@@ -282,13 +291,16 @@ describe("HTTP security boundary", () => {
   });
 
   it("requires an authenticated session for the chatbot", async () => {
-    const { app } = buildApp();
+    const { app, agent, vault } = buildApp();
 
     await request(app)
       .post("/api/chat")
       .set("x-csrf-token", authenticatedSession.csrfToken)
       .send({ message: "주문 ORD-1001 상태" })
       .expect(401);
+
+    expect(agent.respond).not.toHaveBeenCalled();
+    expect(vault.withDatabaseCredentials).not.toHaveBeenCalled();
   });
 
   it("requires the session CSRF value for the chatbot", async () => {
