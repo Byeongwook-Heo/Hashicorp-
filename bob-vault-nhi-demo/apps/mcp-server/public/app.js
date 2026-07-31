@@ -78,8 +78,11 @@ function addMessage(kind, text, metadata) {
   const avatar = element(
     "div",
     `message-avatar ${kind === "user" ? "user-avatar" : "agent-avatar"}`,
-    kind === "user" ? userName.textContent.slice(0, 1) || "U" : "AI",
+    kind === "user" ? userName.textContent.slice(0, 1) || "U" : undefined,
   );
+  if (kind !== "user") {
+    avatar.append(element("span", "carbon-icon icon-bot"));
+  }
   avatar.setAttribute("aria-hidden", "true");
   const body = element("div", "message-body");
   body.append(

@@ -9,13 +9,16 @@
       content="챗봇부터 IBM Verify, MCP, Vault, PostgreSQL까지 NHI 접근 결정을 확인하는 보안 관제 화면입니다."
     />
     <title>NHI 접근 제어 센터 | MCP 보안 관제</title>
-    <link rel="stylesheet" href="/ops.css?v=20260731-modern" />
-    <script src="/ops.js?v=20260731-modern" type="module"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-ibm" />
+    <link rel="stylesheet" href="/ops.css?v=20260731-ibm" />
+    <script src="/ops.js?v=20260731-ibm" type="module"></script>
   </head>
   <body>
     <header class="topbar">
       <a class="brand" href="/" aria-label="챗봇 화면으로 돌아가기">
-        <span class="brand-mark" aria-hidden="true">N</span>
+        <span class="brand-mark" aria-hidden="true">
+          <span class="carbon-icon icon-cloud-auditing"></span>
+        </span>
         <span>
           <strong>NHI 접근 제어 센터</strong>
           <small>MCP 보안 관제</small>
@@ -53,24 +56,110 @@
 
       <section class="control-strip" aria-label="핵심 제어 요약">
         <article>
+          <img
+            class="control-app-icon"
+            src="/icons/ibm-security-verify.svg"
+            alt=""
+            width="32"
+            height="32"
+          />
           <small>사용자 신원</small>
           <strong>IBM Verify OIDC</strong>
           <p>로그인 세션과 사용자 JWT를 분리 검증합니다.</p>
         </article>
         <article>
+          <span
+            class="control-icon carbon-icon icon-connection-send"
+            aria-hidden="true"
+          ></span>
           <small>에이전트 위임</small>
           <strong>Verify STS + OBO JWT</strong>
           <p>KMS 서명 기반 private_key_jwt로 위임 토큰을 발급합니다.</p>
         </article>
         <article>
+          <span
+            class="control-icon carbon-icon icon-policy"
+            aria-hidden="true"
+          ></span>
           <small>권한 승인</small>
           <strong>Vault JWT 정책 평가</strong>
           <p>클레임과 DB 역할을 매핑해 허용 여부를 결정합니다.</p>
         </article>
         <article>
+          <span
+            class="control-icon carbon-icon icon-postgresql"
+            aria-hidden="true"
+          ></span>
           <small>데이터 접근</small>
           <strong>동적 PostgreSQL 계정</strong>
           <p>짧은 TTL 자격증명을 발급하고 호출 후 즉시 폐기합니다.</p>
+        </article>
+      </section>
+
+      <section class="insight-grid" aria-label="최근 보안 결정 요약">
+        <article class="insight-card" aria-labelledby="decision-overview-title">
+          <div class="insight-head">
+            <div>
+              <p class="eyebrow">최근 20건 결정</p>
+              <h2 id="decision-overview-title">정상 흐름과 차단 비율</h2>
+            </div>
+            <span
+              class="insight-symbol carbon-icon icon-security"
+              aria-hidden="true"
+            ></span>
+            <strong class="metric-inline" id="decision-total">0건</strong>
+          </div>
+          <p class="chart-caption" id="decision-caption">
+            보안 결정 데이터를 기다리는 중입니다.
+          </p>
+          <div class="decision-counts" aria-label="결정별 건수">
+            <span><b id="count-allowed">0</b> 정상·허용</span>
+            <span><b id="count-denied">0</b> 차단</span>
+            <span><b id="count-error">0</b> 오류</span>
+          </div>
+          <div class="decision-bar" aria-hidden="true">
+            <span class="decision-segment allowed" id="segment-allowed"></span>
+            <span class="decision-segment denied" id="segment-denied"></span>
+            <span class="decision-segment error" id="segment-error"></span>
+          </div>
+        </article>
+
+        <article class="insight-card" aria-labelledby="stage-chart-title">
+          <div class="insight-head">
+            <div>
+              <p class="eyebrow">통제 단계 분포</p>
+              <h2 id="stage-chart-title">요청이 집중된 검증 구간</h2>
+            </div>
+            <span
+              class="insight-symbol carbon-icon icon-chart-bar"
+              aria-hidden="true"
+            ></span>
+          </div>
+          <p class="chart-caption" id="stage-caption">
+            단계별 이벤트를 집계하는 중입니다.
+          </p>
+          <div id="stage-chart" class="stage-chart" aria-live="polite"></div>
+        </article>
+
+        <article class="insight-card" aria-labelledby="activity-chart-title">
+          <div class="insight-head">
+            <div>
+              <p class="eyebrow">최근 요청 흐름</p>
+              <h2 id="activity-chart-title">최신 이벤트 시퀀스</h2>
+            </div>
+            <span
+              class="insight-symbol carbon-icon icon-network"
+              aria-hidden="true"
+            ></span>
+          </div>
+          <p class="chart-caption" id="activity-caption">
+            최근 이벤트를 불러오는 중입니다.
+          </p>
+          <div
+            id="activity-chart"
+            class="activity-chart"
+            aria-live="polite"
+          ></div>
         </article>
       </section>
 
@@ -89,7 +178,9 @@
             </div>
             <div class="refresh-group">
               <button id="refresh" type="button" aria-controls="events">
-                <span class="refresh-icon" aria-hidden="true">↻</span>
+                <span class="refresh-icon" aria-hidden="true">
+                  <span class="carbon-icon icon-renew"></span>
+                </span>
                 <span class="refresh-label">새로고침</span>
               </button>
               <p id="last-updated" role="status" aria-live="polite">
@@ -129,31 +220,58 @@
           <ol class="flow" aria-label="NHI 접근 검증 단계">
             <li>
               <span class="step">01</span>
+              <img
+                class="flow-app-icon"
+                src="/icons/ibm-security-verify.svg"
+                alt=""
+                width="24"
+                height="24"
+              />
               <strong>사용자 인증</strong>
               <small>IBM Verify OIDC · 사용자 JWT</small>
             </li>
             <li>
               <span class="step">02</span>
+              <span
+                class="flow-icon carbon-icon icon-bot"
+                aria-hidden="true"
+              ></span>
               <strong>챗봇 에이전트</strong>
               <small>허용된 입력 · 고정 도구 스키마</small>
             </li>
             <li>
               <span class="step">03</span>
+              <span
+                class="flow-icon carbon-icon icon-network"
+                aria-hidden="true"
+              ></span>
               <strong>MCP 서버</strong>
               <small>Bearer 검증 · 요청 경계 확인</small>
             </li>
             <li>
               <span class="step">04</span>
+              <span
+                class="flow-icon carbon-icon icon-connection-send"
+                aria-hidden="true"
+              ></span>
               <strong>Verify STS</strong>
               <small>KMS 서명 · OBO JWT 발급</small>
             </li>
             <li>
               <span class="step">05</span>
+              <span
+                class="flow-icon carbon-icon icon-policy"
+                aria-hidden="true"
+              ></span>
               <strong>Vault 정책</strong>
               <small>클레임 매핑 · 짧은 TTL 리스</small>
             </li>
             <li>
               <span class="step">06</span>
+              <span
+                class="flow-icon carbon-icon icon-postgresql"
+                aria-hidden="true"
+              ></span>
               <strong>PostgreSQL</strong>
               <small>읽기 전용 쿼리 · 사용 후 폐기</small>
             </li>

@@ -5,6 +5,18 @@ const eventList = document.querySelector("#events");
 const refresh = document.querySelector("#refresh");
 const refreshLabel = refresh.querySelector(".refresh-label");
 const lastUpdated = document.querySelector("#last-updated");
+const decisionTotal = document.querySelector("#decision-total");
+const decisionCaption = document.querySelector("#decision-caption");
+const countAllowed = document.querySelector("#count-allowed");
+const countDenied = document.querySelector("#count-denied");
+const countError = document.querySelector("#count-error");
+const segmentAllowed = document.querySelector("#segment-allowed");
+const segmentDenied = document.querySelector("#segment-denied");
+const segmentError = document.querySelector("#segment-error");
+const stageChart = document.querySelector("#stage-chart");
+const stageCaption = document.querySelector("#stage-caption");
+const activityChart = document.querySelector("#activity-chart");
+const activityCaption = document.querySelector("#activity-caption");
 
 const allowedStatuses = new Set(["allowed", "denied", "error", "ok"]);
 
@@ -61,6 +73,177 @@ function setReadinessState(state) {
   if (state) readiness.classList.add(state);
 }
 
+function formatAction(action) {
+  const rawAction = String(action ?? "");
+  if (Object.hasOwn(actionLabels, rawAction)) return actionLabels[rawAction];
+  const readableAction = rawAction.replaceAll("_", " ").replaceAll("/", " › ");
+  return readableAction || "알 수 없는 조치";
+}
+
+function buildSummary(events) {
+  const summary = {
+    total: Array.isArray(events) ? events.length : 0,
+    allowed: 0,
+    denied: 0,
+    error: 0,
+    stageCounts: {
+      transport: 0,
+      identity: 0,
+      vault: 0,
+      database: 0,
+      policy: 0,
+    },
+  };
+
+  if (!Array.isArray(events)) return summary;
+
+  for (const event of events) {
+    const status = String(event.status ?? "");
+    if (status === "allowed" || status === "ok") {
+      summary.allowed += 1;
+    } else if (status === "denied") {
+      summary.denied += 1;
+    } else {
+      summary.error += 1;
+    }
+
+    const stage = String(event.stage ?? "");
+    if (Object.hasOwn(summary.stageCounts, stage)) {
+      summary.stageCounts[stage] += 1;
+    }
+  }
+
+  return summary;
+}
+
+function setSegmentWidth(node, percent) {
+  node.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+function renderDecisionOverview(events) {
+  const summary = buildSummary(events);
+  decisionTotal.textContent = `${summary.total}건`;
+  countAllowed.textContent = String(summary.allowed);
+  countDenied.textContent = String(summary.denied);
+  countError.textContent = String(summary.error);
+
+  const denominator = summary.total || 1;
+  setSegmentWidth(segmentAllowed, (summary.allowed / denominator) * 100);
+  setSegmentWidth(segmentDenied, (summary.denied / denominator) * 100);
+  setSegmentWidth(segmentError, (summary.error / denominator) * 100);
+
+  if (!summary.total) {
+    decisionCaption.textContent = "표시할 보안 결정이 아직 없습니다.";
+    return;
+  }
+
+  decisionCaption.textContent =
+    summary.denied > 0
+      ? `최근 ${summary.total}건 중 ${summary.allowed}건은 정상 흐름, ${summary.denied}건은 정책 차단으로 끝났습니다.`
+      : `최근 ${summary.total}건은 모두 정상 또는 허용 흐름으로 처리되었습니다.`;
+}
+
+function renderStageChart(events) {
+  stageChart.replaceChildren();
+  const summary = buildSummary(events);
+  const entries = Object.entries(summary.stageCounts);
+  const maxCount = Math.max(...entries.map(([, count]) => count), 0);
+
+  if (!summary.total || maxCount === 0) {
+    stageCaption.textContent = "단계별 분포를 계산할 이벤트가 없습니다.";
+    stageChart.append(
+      makeElement("p", "chart-caption", "표시할 단계별 데이터가 없습니다."),
+    );
+    return;
+  }
+
+  const [topStageKey, topStageCount] = [...entries].sort(
+    (left, right) => right[1] - left[1],
+  )[0];
+  stageCaption.textContent = `${stageLabels[topStageKey] ?? topStageKey} 단계가 ${topStageCount}건으로 가장 많이 관측되었습니다.`;
+
+  for (const [stageKey, count] of entries) {
+    const row = document.createElement("div");
+    row.className = "stage-row";
+
+    const label = makeElement(
+      "span",
+      "stage-label",
+      stageLabels[stageKey] ?? stageKey,
+    );
+    const track = makeElement("div", "stage-track");
+    const fill = makeElement("span", "stage-fill");
+    fill.style.width = `${(count / maxCount) * 100}%`;
+    track.append(fill);
+    const value = makeElement("span", "stage-value", String(count));
+    row.append(label, track, value);
+    stageChart.append(row);
+  }
+}
+
+function legendItem(labelText, className) {
+  const label = document.createElement("span");
+  const marker = document.createElement("i");
+  marker.className = className;
+  label.append(marker, document.createTextNode(labelText));
+  return label;
+}
+
+function renderActivityChart(events) {
+  activityChart.replaceChildren();
+
+  if (!Array.isArray(events) || events.length === 0) {
+    activityCaption.textContent = "최근 요청 흐름을 계산할 이벤트가 없습니다.";
+    activityChart.append(
+      makeElement("p", "chart-caption", "표시할 최근 이벤트가 없습니다."),
+    );
+    return;
+  }
+
+  const items = events.slice(0, 10).reverse();
+  const strip = makeElement("div", "activity-strip");
+
+  for (const event of items) {
+    const safeStatus = allowedStatuses.has(event.status)
+      ? String(event.status)
+      : "error";
+    const point = makeElement("article", `activity-point ${safeStatus}`);
+    const marker = document.createElement("span");
+    const eventTime = new Date(event.at);
+    const stage = makeElement(
+      "strong",
+      "",
+      stageLabels[String(event.stage ?? "")] ?? "기타 제어",
+    );
+    const time = makeElement(
+      "small",
+      "",
+      Number.isNaN(eventTime.getTime())
+        ? "시각 정보 없음"
+        : seoulTimeFormatter.format(eventTime),
+    );
+    point.title = formatAction(event.action);
+    point.setAttribute(
+      "aria-label",
+      `${stage.textContent} ${time.textContent} ${statusLabels[safeStatus] ?? "오류"} ${formatAction(event.action)}`,
+    );
+    point.append(marker, stage, time);
+    strip.append(point);
+  }
+
+  const latestEvent = events[0];
+  activityCaption.textContent = `가장 최근 조치는 ${formatAction(latestEvent.action)}이며, 결과는 ${statusLabels[String(latestEvent.status)] ?? "오류"}입니다.`;
+
+  const legend = makeElement("div", "activity-legend");
+  legend.append(
+    legendItem("허용", "allowed"),
+    legendItem("차단", "denied"),
+    legendItem("오류", "error"),
+  );
+
+  activityChart.append(strip, legend);
+}
+
 async function loadStatus() {
   try {
     const response = await fetch("/api/status", {
@@ -88,13 +271,6 @@ async function loadStatus() {
 
 function renderState(kind, message) {
   eventList.replaceChildren(makeElement("li", `state ${kind}`, message));
-}
-
-function formatAction(action) {
-  const rawAction = String(action ?? "");
-  if (Object.hasOwn(actionLabels, rawAction)) return actionLabels[rawAction];
-  const readableAction = rawAction.replaceAll("_", " ").replaceAll("/", " › ");
-  return readableAction || "알 수 없는 조치";
 }
 
 function renderEvents(events) {
@@ -126,7 +302,7 @@ function renderEvents(events) {
     stage.dataset.label = "통제 단계";
 
     const safeStatus = allowedStatuses.has(event.status)
-      ? event.status
+      ? String(event.status)
       : "error";
     const status = makeElement(
       "span",
@@ -172,12 +348,18 @@ async function loadEvents() {
     if (!response.ok) throw new Error("events unavailable");
     const payload = await response.json();
     renderEvents(payload.events);
+    renderDecisionOverview(payload.events);
+    renderStageChart(payload.events);
+    renderActivityChart(payload.events);
     lastUpdated.textContent = `마지막 업데이트 ${seoulTimeFormatter.format(new Date())}`;
   } catch {
     renderState(
       "error",
       "보안 결정 기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
     );
+    renderDecisionOverview([]);
+    renderStageChart([]);
+    renderActivityChart([]);
     lastUpdated.textContent = "업데이트 실패";
   } finally {
     eventsRequestInFlight = false;

@@ -9,21 +9,19 @@
       content="IBM Verify 사용자 인증과 MCP, Vault 동적 자격증명을 시연하는 안전한 Agent 챗봇"
     />
     <title>Agentic Security Lab | 안전한 AI 에이전트</title>
-    <link rel="stylesheet" href="/styles.css?v=20260731-modern" />
-    <script src="/app.js?v=20260731-modern" type="module"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-ibm" />
+    <link rel="stylesheet" href="/styles.css?v=20260731-ibm" />
+    <script src="/app.js?v=20260731-ibm" type="module"></script>
   </head>
   <body>
     <header class="topbar">
       <a class="brand" href="/" aria-label="Agentic Security Lab 홈">
         <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 32 32" role="img">
-            <path d="M6 9.5 16 4l10 5.5v13L16 28 6 22.5z" />
-            <path d="m11 13 5-3 5 3v6l-5 3-5-3z" />
-          </svg>
+          <span class="carbon-icon icon-security-services"></span>
         </span>
         <span>
           <strong>Agentic Security Lab</strong>
-          <small>Verify · MCP · Vault 보안 데모</small>
+          <small>IBM Verify · MCP · Vault 최소 권한 데모</small>
         </span>
       </a>
       <div class="identity" id="identity" hidden>
@@ -32,10 +30,13 @@
           <small>사용자 인증 완료</small>
           <strong id="user-name">—</strong>
         </span>
-        <button class="text-button" id="logout" type="button">로그아웃</button>
+        <button class="text-button" id="logout" type="button">
+          <span class="carbon-icon icon-logout" aria-hidden="true"></span>
+          로그아웃
+        </button>
       </div>
       <a class="ops-link" href="/ops">
-        <span aria-hidden="true">↗</span>
+        <span class="carbon-icon icon-launch" aria-hidden="true"></span>
         NHI 접근 제어 센터
       </a>
     </header>
@@ -43,22 +44,27 @@
     <main>
       <section class="login-panel" id="login-panel" hidden>
         <div class="login-icon" aria-hidden="true">
-          <svg viewBox="0 0 48 48">
-            <path
-              d="M24 4 41 11v11c0 11-7.4 18.3-17 22-9.6-3.7-17-11-17-22V11z"
-            />
-            <path d="m16 24 5 5 11-12" />
-          </svg>
+          <img
+            src="/icons/ibm-security-verify.svg"
+            alt=""
+            width="56"
+            height="56"
+          />
         </div>
         <p class="eyebrow">신원 확인 우선</p>
-        <h1>안전한 대화는<br />신원 확인에서 시작됩니다.</h1>
+        <h1>안전한 대화는 신원 확인에서 시작됩니다.</h1>
         <p>
           IBM Verify가 사용자를 인증하고, 챗봇은 필요한 권한만 요청합니다.
           비밀번호와 토큰은 화면이나 에이전트 컨텍스트에 노출되지 않습니다.
         </p>
+        <ul class="login-points" aria-label="로그인 후 적용되는 보안 제어">
+          <li>사용자 세션은 IBM Verify가 유지합니다.</li>
+          <li>에이전트는 OBO 토큰으로만 권한을 위임받습니다.</li>
+          <li>데이터베이스 자격증명은 요청 직후 폐기됩니다.</li>
+        </ul>
         <a class="primary-action" href="/auth/login">
           IBM Verify로 로그인
-          <span aria-hidden="true">→</span>
+          <span class="carbon-icon icon-launch" aria-hidden="true"></span>
         </a>
         <p class="login-error" id="login-error" role="alert" hidden>
           로그인을 완료하지 못했습니다. 다시 시도해 주세요.
@@ -78,9 +84,18 @@
             </div>
             <div class="intro-side">
               <div class="trust-summary" aria-label="적용된 보안 제어">
-                <span>Verify 로그인</span>
-                <span>최소 권한</span>
-                <span>동적 자격증명</span>
+                <div>
+                  <small>사용자</small>
+                  <strong>Verify 로그인</strong>
+                </div>
+                <div>
+                  <small>권한 모델</small>
+                  <strong>최소 권한</strong>
+                </div>
+                <div>
+                  <small>데이터 접근</small>
+                  <strong>동적 자격증명</strong>
+                </div>
               </div>
               <div class="session-card" aria-label="현재 세션 보안 설명">
                 <small>현재 세션 보호</small>
@@ -103,7 +118,7 @@
           >
             <article class="message agent-message">
               <div class="message-avatar agent-avatar" aria-hidden="true">
-                AI
+                <span class="carbon-icon icon-bot"></span>
               </div>
               <div class="message-body">
                 <span class="message-label">보안 에이전트</span>
@@ -118,12 +133,16 @@
           <div class="suggestions" aria-label="빠른 요청">
             <span class="suggestions-label">빠른 요청</span>
             <button type="button" data-prompt="주문 ORD-1001 상태를 확인해줘">
-              <span class="suggestion-icon" aria-hidden="true">01</span>
+              <span class="suggestion-icon" aria-hidden="true">
+                <span class="carbon-icon icon-delivery"></span>
+              </span>
               <span>주문 상태 확인</span>
               <small>ORD-1001</small>
             </button>
             <button type="button" data-prompt="오늘 실패한 결제를 요약해줘">
-              <span class="suggestion-icon" aria-hidden="true">02</span>
+              <span class="suggestion-icon" aria-hidden="true">
+                <span class="carbon-icon icon-chart-bar"></span>
+              </span>
               <span>실패 결제 요약</span>
               <small>오늘</small>
             </button>
@@ -131,7 +150,9 @@
               type="button"
               data-prompt="CUS-1001의 민감 결제 정보를 보여줘"
             >
-              <span class="suggestion-icon" aria-hidden="true">03</span>
+              <span class="suggestion-icon" aria-hidden="true">
+                <span class="carbon-icon icon-locked"></span>
+              </span>
               <span>정책 차단 확인</span>
               <small>CUS-1001</small>
             </button>
@@ -149,10 +170,7 @@
                 required
               ></textarea>
               <button id="send" type="submit" aria-label="메시지 보내기">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m4 4 17 8-17 8 3-8z" />
-                  <path d="M7 12h14" />
-                </svg>
+                <span class="carbon-icon icon-send" aria-hidden="true"></span>
               </button>
             </div>
             <span>
@@ -164,12 +182,7 @@
         <aside class="security-panel" aria-labelledby="security-title">
           <div class="security-heading">
             <span class="shield" aria-hidden="true">
-              <svg viewBox="0 0 32 32">
-                <path
-                  d="M16 3 27 8v8c0 7.4-4.8 12.3-11 15-6.2-2.7-11-7.6-11-15V8z"
-                />
-                <path d="m11 16 3 3 7-8" />
-              </svg>
+              <span class="carbon-icon icon-security"></span>
             </span>
             <div>
               <p class="eyebrow">실시간 보안 추적</p>
