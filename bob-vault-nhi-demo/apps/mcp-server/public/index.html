@@ -211,32 +211,30 @@
               </div>
             </div>
 
-            <div
-              class="conversation"
-              id="conversation"
-              role="log"
-              aria-live="polite"
-              aria-relevant="additions"
-              aria-label="Agent 대화"
-            >
-              <article class="message agent-message">
-                <div class="message-avatar agent-avatar" aria-hidden="true">
-                  <img
-                    src="/images/bob-head.png"
-                    alt=""
-                    width="32"
-                    height="32"
-                  />
+            <section class="chat-hero" aria-labelledby="chat-hero-title">
+              <div class="chat-hero-figure">
+                <img
+                  src="/images/bob-agent.png"
+                  alt=""
+                  width="180"
+                  height="268"
+                />
+              </div>
+              <div class="chat-hero-copy">
+                <p class="eyebrow">Bob AI 에이전트</p>
+                <h3 id="chat-hero-title">보안이 적용된 작업만 수행합니다</h3>
+                <p>
+                  주문 조회, 실패 결제 요약, 정책 차단 확인처럼 허용된 읽기 전용
+                  작업만 요청할 수 있습니다. 요청 흐름은 오른쪽 NHI 접근 제어
+                  센터와 실시간으로 함께 추적됩니다.
+                </p>
+                <div class="chat-hero-pills" aria-label="적용 중인 보안 제어">
+                  <span>IBM Verify 사용자 인증</span>
+                  <span>OBO JWT 기반 위임</span>
+                  <span>Vault 승인 후 DB 접근</span>
                 </div>
-                <div class="message-body">
-                  <span class="message-label">보안 에이전트</span>
-                  <p>
-                    안녕하세요. 주문 상태 조회, 실패 결제 요약, 정책 차단 여부를
-                    이 화면에서 바로 확인할 수 있습니다.
-                  </p>
-                </div>
-              </article>
-            </div>
+              </div>
+            </section>
 
             <div class="suggestions" aria-label="빠른 요청">
               <span class="suggestions-label">빠른 요청</span>
@@ -264,6 +262,33 @@
                 <span>정책 차단 확인</span>
                 <small>CUS-1001</small>
               </button>
+            </div>
+
+            <div
+              class="conversation"
+              id="conversation"
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+              aria-label="Agent 대화"
+            >
+              <article class="message agent-message">
+                <div class="message-avatar agent-avatar" aria-hidden="true">
+                  <img
+                    src="/images/bob-head.png"
+                    alt=""
+                    width="32"
+                    height="32"
+                  />
+                </div>
+                <div class="message-body">
+                  <span class="message-label">보안 에이전트</span>
+                  <p>
+                    안녕하세요. 주문 상태 조회, 실패 결제 요약, 정책 차단 여부를
+                    이 화면에서 바로 확인할 수 있습니다.
+                  </p>
+                </div>
+              </article>
             </div>
 
             <form class="composer" id="chat-form">
