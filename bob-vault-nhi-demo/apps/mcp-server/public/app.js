@@ -2,12 +2,17 @@ const root = document.documentElement;
 const metaColorScheme = document.querySelector('meta[name="color-scheme"]');
 const themeToggle = document.querySelector("#theme-toggle");
 const themeToggleLabel = document.querySelector("#theme-toggle-label");
+const themeSymbol = document.querySelector(".theme-symbol");
+const menuButton = document.querySelector(".menu-button");
+const sideRail = document.querySelector(".side-rail");
 const topnav = document.querySelector("#topnav");
 const loginPanel = document.querySelector("#login-panel");
 const workspace = document.querySelector("#workspace");
 const headerLogin = document.querySelector("#header-login");
 const identity = document.querySelector("#identity");
 const userName = document.querySelector("#user-name");
+const userInitial = document.querySelector("#user-initial");
+const agentGreeting = document.querySelector("#agent-greeting");
 const loginError = document.querySelector("#login-error");
 const previewStatus = document.querySelector("#preview-status");
 const serviceVersion = document.querySelector("#service-version");
@@ -23,6 +28,7 @@ const mode = document.querySelector("#mode");
 const eventList = document.querySelector("#events");
 const refresh = document.querySelector("#refresh");
 const refreshLabel = document.querySelector(".refresh-label");
+const refreshAnnouncement = document.querySelector("#refresh-announcement");
 const lastUpdated = document.querySelector("#last-updated");
 const decisionTotal = document.querySelector("#decision-total");
 const decisionCaption = document.querySelector("#decision-caption");
@@ -36,6 +42,13 @@ const stageChart = document.querySelector("#stage-chart");
 const stageCaption = document.querySelector("#stage-caption");
 const activityChart = document.querySelector("#activity-chart");
 const activityCaption = document.querySelector("#activity-caption");
+const pathSteps = {
+  verify: document.querySelector("#path-step-verify"),
+  agent: document.querySelector("#path-step-agent"),
+  mcp: document.querySelector("#path-step-mcp"),
+  vault: document.querySelector("#path-step-vault"),
+  database: document.querySelector("#path-step-database"),
+};
 
 const defaultTraceMarkup = trace.innerHTML;
 const themeStorageKey = "bob-vault-demo-theme";
@@ -120,6 +133,7 @@ function applyTheme(theme) {
     themeToggleLabel.textContent =
       theme === "dark" ? "라이트 모드" : "다크 모드";
   }
+  if (themeSymbol) themeSymbol.textContent = theme === "dark" ? "☾" : "☼";
 }
 
 function toggleTheme() {
@@ -231,11 +245,32 @@ async function loadSession() {
   }
   const session = await response.json();
   csrfToken = String(session.csrfToken);
-  userName.textContent = String(session.user.displayName).slice(0, 80);
+  const displayName = String(session.user.displayName).slice(0, 80);
+  userName.textContent = displayName;
+  if (userInitial) {
+    userInitial.textContent = initialsFor(displayName);
+  }
+  if (agentGreeting) {
+    agentGreeting.textContent = `안녕하세요, ${displayName}님!`;
+  }
   showWorkspace();
 }
 
+function initialsFor(displayName) {
+  const words = displayName.trim().split(/\s+/u).filter(Boolean);
+  if (words.length >= 2) {
+    return words
+      .slice(0, 2)
+      .map((word) => word[0])
+      .join("")
+      .toUpperCase();
+  }
+  return (words[0]?.slice(0, 2) || "U").toUpperCase();
+}
+
 function showLogin() {
+  document.body.classList.remove("authenticated");
+  menuButton.hidden = true;
   workspace.hidden = true;
   identity.hidden = true;
   topnav.hidden = true;
@@ -251,8 +286,10 @@ function showLogin() {
 }
 
 function showWorkspace() {
+  document.body.classList.add("authenticated");
+  menuButton.hidden = false;
   identity.hidden = false;
-  topnav.hidden = false;
+  topnav.hidden = true;
   headerLogin.hidden = true;
   loginPanel.hidden = true;
   workspace.hidden = false;
@@ -278,7 +315,7 @@ function addMessage(kind, text, metadata) {
   const avatar = element(
     "div",
     `message-avatar ${kind === "user" ? "user-avatar" : "agent-avatar"}`,
-    kind === "user" ? userName.textContent.slice(0, 1) || "U" : undefined,
+    kind === "user" ? userInitial?.textContent || "U" : undefined,
   );
   if (kind !== "user") {
     avatar.textContent = "";
@@ -291,14 +328,16 @@ function addMessage(kind, text, metadata) {
   }
   avatar.setAttribute("aria-hidden", "true");
   const body = element("div", "message-body");
-  body.append(
+  const heading = element("div", "message-heading");
+  heading.append(
     element(
       "span",
       "message-label",
-      kind === "user" ? userName.textContent : "보안 에이전트",
+      kind === "user" ? userName.textContent : "Bob AI 에이전트",
     ),
-    element("p", "", text),
+    element("time", "", seoulTimeFormatter.format(new Date())),
   );
+  body.append(heading, element("p", "", text));
   if (metadata) {
     body.append(element("small", "message-meta", metadata));
   }
@@ -306,6 +345,53 @@ function addMessage(kind, text, metadata) {
   conversation.append(article);
   article.scrollIntoView({ behavior: "smooth", block: "nearest" });
   return article;
+}
+
+function appendQueryPreview(article, tool) {
+  const queries = {
+    get_order_status: [
+      "SELECT order_id, payment_status, delivery_status, updated_at",
+      "FROM v_bob_order_status",
+      "WHERE order_id = $1",
+      "LIMIT 1;",
+    ],
+    get_failed_payment_summary: [
+      "SELECT delivery_status, COUNT(*)::int AS count",
+      "FROM v_bob_order_status",
+      "WHERE payment_status = 'FAILED'",
+      "  AND updated_at >= $1::date",
+      "  AND updated_at < ($1::date + INTERVAL '1 day')",
+      "GROUP BY delivery_status",
+      "ORDER BY delivery_status",
+      "LIMIT 20;",
+    ],
+  };
+  const lines = queries[tool];
+  if (!lines) return;
+
+  const result = element("section", "query-result");
+  result.setAttribute("aria-label", "실행된 읽기 전용 SQL");
+  const header = element("div", "query-result-header");
+  header.append(element("span", "", "SQL (읽기 전용)"));
+  const copy = element("button", "", "복사");
+  copy.type = "button";
+  const query = lines.join("\n");
+  copy.addEventListener("click", async () => {
+    try {
+      await window.navigator.clipboard.writeText(query);
+      copy.textContent = "복사됨";
+      window.setTimeout(() => (copy.textContent = "복사"), 1200);
+    } catch {
+      copy.textContent = "복사 불가";
+    }
+  });
+  header.append(copy);
+  const pre = document.createElement("pre");
+  const code = document.createElement("code");
+  code.textContent = query;
+  pre.append(code);
+  result.append(header, pre);
+  article.querySelector(".message-body")?.append(result);
 }
 
 function setBusy(busy) {
@@ -324,11 +410,73 @@ function addThinking() {
   return article;
 }
 
+const defaultPathStates = {
+  verify: { label: "성공", status: "allowed" },
+  agent: { label: "준비", status: "allowed" },
+  mcp: { label: "연결", status: "neutral" },
+  vault: { label: "대기", status: "neutral" },
+  database: { label: "대기", status: "neutral" },
+};
+
+function updatePathStep(key, label, status, time = "—", active = false) {
+  const step = pathSteps[key];
+  if (!step) return;
+  step.classList.toggle("active", active);
+  step.classList.toggle("denied", status === "denied");
+  const state = step.querySelector(".path-state");
+  if (state) {
+    state.textContent = label;
+    state.className = `path-state ${status}`;
+  }
+  const timestamp = step.querySelector("time");
+  if (timestamp) timestamp.textContent = time;
+}
+
+function resetVisiblePath() {
+  for (const [key, value] of Object.entries(defaultPathStates)) {
+    updatePathStep(key, value.label, value.status);
+  }
+}
+
+function renderVisiblePath(steps) {
+  resetVisiblePath();
+  if (!Array.isArray(steps) || steps.length === 0) return;
+
+  const now = seoulTimeFormatter.format(new Date());
+  const denied = steps.some((step) => step.status === "denied");
+
+  for (const step of steps) {
+    const label = String(step.label ?? "");
+    const status = String(step.status ?? "");
+    if (label.includes("사용자 JWT") || label.includes("IBM Verify")) {
+      updatePathStep("verify", "성공", "allowed", now);
+    } else if (label.includes("OBO JWT") || label.includes("Agent 정책")) {
+      updatePathStep("agent", "위임", "allowed", now);
+      updatePathStep("mcp", "성공", "allowed", now);
+    } else if (label.includes("Vault")) {
+      updatePathStep(
+        "vault",
+        status === "denied" ? "차단" : "허용",
+        status === "denied" ? "denied" : "allowed",
+        now,
+        status === "denied",
+      );
+    } else if (label.includes("DB") || label.includes("자격증명")) {
+      updatePathStep("database", "발급", "allowed", now, true);
+    }
+  }
+
+  if (denied) {
+    updatePathStep("database", "미실행", "neutral");
+  }
+}
+
 function renderTrace(steps) {
   if (!Array.isArray(steps) || steps.length === 0) {
     trace.innerHTML = defaultTraceMarkup;
     traceLiveState.textContent = "대기";
     traceLiveState.className = "live-state waiting";
+    resetVisiblePath();
     return;
   }
 
@@ -336,6 +484,7 @@ function renderTrace(steps) {
   const hasDeniedStep = steps.some((step) => step.status === "denied");
   traceLiveState.textContent = hasDeniedStep ? "정책 차단" : "검증 완료";
   traceLiveState.className = `live-state ${hasDeniedStep ? "denied" : "verified"}`;
+  renderVisiblePath(steps);
 
   for (const [index, step] of steps.entries()) {
     const item = document.createElement("li");
@@ -398,13 +547,14 @@ async function sendMessage(message) {
       throw new Error(payload?.error?.message ?? "요청을 완료하지 못했습니다.");
     }
     thinking.remove();
-    addMessage(
+    const responseMessage = addMessage(
       "agent",
       String(payload.reply),
       payload.tool
         ? `MCP 도구 · ${toolLabels[String(payload.tool)] ?? String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
         : "에이전트 정책 안내",
     );
+    appendQueryPreview(responseMessage, String(payload.tool ?? ""));
     renderTrace(Array.isArray(payload.trace) ? payload.trace : []);
     void loadEvents();
   } catch (error) {
@@ -488,14 +638,6 @@ function renderStageChart(events) {
   }
 }
 
-function legendItem(labelText, className) {
-  const label = document.createElement("span");
-  const marker = document.createElement("i");
-  marker.className = className;
-  label.append(marker, document.createTextNode(labelText));
-  return label;
-}
-
 function renderActivityChart(events) {
   activityChart.replaceChildren();
 
@@ -507,65 +649,209 @@ function renderActivityChart(events) {
     return;
   }
 
-  const items = events.slice(0, 10).reverse();
-  const strip = element("div", "activity-strip");
+  const svgNamespace = "http://www.w3.org/2000/svg";
+  const width = 520;
+  const height = 170;
+  const plot = { left: 34, right: 10, top: 12, bottom: 28 };
+  const today = new Date();
+  const dateFormatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const shortDateFormatter = new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    month: "numeric",
+    day: "numeric",
+  });
+  const buckets = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today.getTime() - (6 - index) * 86_400_000);
+    return {
+      key: dateFormatter.format(date),
+      label: shortDateFormatter
+        .format(date)
+        .replace(/\.\s*/gu, "/")
+        .replace(/\/$/u, ""),
+      allowed: 0,
+      denied: 0,
+      error: 0,
+    };
+  });
+  const byDate = new Map(buckets.map((bucket) => [bucket.key, bucket]));
 
-  for (const event of items) {
-    const safeStatus = allowedStatuses.has(event.status)
-      ? String(event.status)
-      : "error";
-    const point = element("article", `activity-point ${safeStatus}`);
-    const marker = document.createElement("span");
-    const eventTime = new Date(event.at);
-    const stage = element(
-      "strong",
-      "",
-      stageLabels[String(event.stage ?? "")] ?? "기타 제어",
+  for (const event of events) {
+    const eventDate = new Date(event.at);
+    if (Number.isNaN(eventDate.getTime())) continue;
+    const bucket = byDate.get(dateFormatter.format(eventDate));
+    if (!bucket) continue;
+    const status = String(event.status ?? "error");
+    if (status === "allowed" || status === "ok") bucket.allowed += 1;
+    else if (status === "denied") bucket.denied += 1;
+    else bucket.error += 1;
+  }
+
+  const maxValue = Math.max(
+    1,
+    ...buckets.flatMap((bucket) => [
+      bucket.allowed,
+      bucket.denied,
+      bucket.error,
+    ]),
+  );
+  const xFor = (index) =>
+    plot.left +
+    (index / Math.max(1, buckets.length - 1)) *
+      (width - plot.left - plot.right);
+  const yFor = (value) =>
+    plot.top + (1 - value / maxValue) * (height - plot.top - plot.bottom);
+  const svg = document.createElementNS(svgNamespace, "svg");
+  svg.setAttribute("viewBox", `0 0 ${String(width)} ${String(height)}`);
+  svg.setAttribute("class", "trend-svg");
+  svg.setAttribute("role", "img");
+  svg.setAttribute(
+    "aria-label",
+    `최근 7일 허용 ${String(buckets.reduce((sum, bucket) => sum + bucket.allowed, 0))}건, 차단 ${String(buckets.reduce((sum, bucket) => sum + bucket.denied, 0))}건, 오류 ${String(buckets.reduce((sum, bucket) => sum + bucket.error, 0))}건`,
+  );
+
+  for (const ratio of [0, 0.5, 1]) {
+    const value = Math.round(maxValue * (1 - ratio));
+    const y = plot.top + ratio * (height - plot.top - plot.bottom);
+    const line = document.createElementNS(svgNamespace, "line");
+    line.setAttribute("x1", String(plot.left));
+    line.setAttribute("x2", String(width - plot.right));
+    line.setAttribute("y1", String(y));
+    line.setAttribute("y2", String(y));
+    line.setAttribute("class", "trend-grid");
+    svg.append(line);
+
+    const label = document.createElementNS(svgNamespace, "text");
+    label.setAttribute("x", String(plot.left - 7));
+    label.setAttribute("y", String(y + 3));
+    label.setAttribute("text-anchor", "end");
+    label.setAttribute("class", "trend-axis-label");
+    label.textContent = String(value);
+    svg.append(label);
+  }
+
+  for (const [index, bucket] of buckets.entries()) {
+    const label = document.createElementNS(svgNamespace, "text");
+    label.setAttribute("x", String(xFor(index)));
+    label.setAttribute("y", String(height - 7));
+    label.setAttribute("text-anchor", "middle");
+    label.setAttribute("class", "trend-axis-label");
+    label.textContent = bucket.label;
+    svg.append(label);
+  }
+
+  for (const series of ["allowed", "denied", "error"]) {
+    const values = buckets.map((bucket) => bucket[series]);
+    const path = document.createElementNS(svgNamespace, "path");
+    path.setAttribute(
+      "d",
+      values
+        .map(
+          (value, index) =>
+            `${index === 0 ? "M" : "L"}${xFor(index).toFixed(1)},${yFor(value).toFixed(1)}`,
+        )
+        .join(" "),
     );
-    const time = element(
-      "small",
-      "",
-      Number.isNaN(eventTime.getTime())
-        ? "시각 정보 없음"
-        : seoulTimeFormatter.format(eventTime),
-    );
-    const status = element(
-      "small",
-      "activity-status",
-      statusLabels[safeStatus] ?? "오류",
-    );
-    point.title = formatAction(event.action);
-    point.setAttribute(
-      "aria-label",
-      `${stage.textContent} ${time.textContent} ${statusLabels[safeStatus] ?? "오류"} ${formatAction(event.action)}`,
-    );
-    point.append(marker, stage, time, status);
-    strip.append(point);
+    path.setAttribute("class", `trend-line ${series}`);
+    svg.append(path);
+
+    values.forEach((value, index) => {
+      const dot = document.createElementNS(svgNamespace, "circle");
+      dot.setAttribute("cx", String(xFor(index)));
+      dot.setAttribute("cy", String(yFor(value)));
+      dot.setAttribute("r", "2.7");
+      dot.setAttribute("class", `trend-dot ${series}`);
+      svg.append(dot);
+    });
   }
 
   const latestEvent = events[0];
   activityCaption.textContent = `가장 최근 조치는 ${formatAction(latestEvent.action)}이며, 결과는 ${statusLabels[String(latestEvent.status)] ?? "오류"}입니다.`;
-
-  const legend = element("div", "activity-legend");
-  legend.append(
-    legendItem("정상·허용", "allowed"),
-    legendItem("차단", "denied"),
-    legendItem("오류", "error"),
-  );
-
-  activityChart.append(strip, legend);
+  activityChart.append(svg);
 }
 
 function renderState(kind, message) {
   eventList.replaceChildren(element("li", `state ${kind}`, message));
 }
 
+function updatePathFromEvents(events) {
+  if (!Array.isArray(events) || events.length === 0) {
+    resetTelemetryPath();
+    return;
+  }
+  resetVisiblePath();
+  Object.values(pathSteps).forEach((step) => step?.classList.remove("active"));
+  const pathByStage = {
+    identity: "verify",
+    policy: "agent",
+    transport: "mcp",
+    vault: "vault",
+    database: "database",
+  };
+  const updated = new Set();
+  const latestRequestId = String(events[0]?.requestId ?? "");
+  const requestEvents = latestRequestId
+    ? events.filter(
+        (event) => String(event.requestId ?? "") === latestRequestId,
+      )
+    : events.slice(0, 1);
+  const hasDeniedEvent = requestEvents.some(
+    (event) => String(event.status ?? "") === "denied",
+  );
+
+  traceLiveState.textContent = hasDeniedEvent ? "정책 차단" : "최근 요청 완료";
+  traceLiveState.className = `live-state ${hasDeniedEvent ? "denied" : "verified"}`;
+
+  for (const [index, event] of requestEvents.entries()) {
+    const key = pathByStage[String(event.stage ?? "")];
+    if (!key || updated.has(key)) continue;
+    updated.add(key);
+    const eventDate = new Date(event.at);
+    const time = Number.isNaN(eventDate.getTime())
+      ? "—"
+      : seoulTimeFormatter.format(eventDate);
+    const rawStatus = String(event.status ?? "error");
+    const status =
+      key === "agent"
+        ? "allowed"
+        : rawStatus === "allowed" || rawStatus === "ok"
+          ? "allowed"
+          : rawStatus === "denied"
+            ? "denied"
+            : "denied";
+    const label =
+      key === "agent" && rawStatus === "denied"
+        ? "정책 적용"
+        : status === "allowed"
+          ? key === "vault"
+            ? "허용"
+            : "성공"
+          : rawStatus === "denied"
+            ? "차단"
+            : "오류";
+    updatePathStep(key, label, status, time, index === 0);
+  }
+}
+
+function resetTelemetryPath() {
+  resetVisiblePath();
+  traceLiveState.textContent = "대기";
+  traceLiveState.className = "live-state waiting";
+}
+
 function renderEvents(events) {
   eventList.replaceChildren();
   if (!Array.isArray(events) || events.length === 0) {
+    resetTelemetryPath();
     renderState("empty", "아직 기록된 보안 결정이 없습니다.");
     return;
   }
+
+  updatePathFromEvents(events);
 
   for (const event of events) {
     const row = document.createElement("li");
@@ -603,7 +889,7 @@ function renderEvents(events) {
     action.dataset.label = "조치";
     action.title = rawAction;
 
-    row.append(timestamp, stage, status, action);
+    row.append(status, action, timestamp, stage);
     row.setAttribute(
       "aria-label",
       `${timestamp.textContent}, ${stage.textContent}, ${status.textContent}, ${action.textContent}`,
@@ -618,10 +904,11 @@ function setRefreshState(loading) {
   eventList.setAttribute("aria-busy", String(loading));
 }
 
-async function loadEvents() {
+async function loadEvents(announce = false) {
   if (eventsRequestInFlight || workspace.hidden) return;
   eventsRequestInFlight = true;
   setRefreshState(true);
+  if (announce && refreshAnnouncement) refreshAnnouncement.textContent = "";
   if (eventList.querySelector(".state")) {
     renderState("loading", "보안 결정을 불러오는 중…");
   }
@@ -638,7 +925,11 @@ async function loadEvents() {
     renderStageChart(payload.events);
     renderActivityChart(payload.events);
     lastUpdated.textContent = `마지막 업데이트 ${seoulTimeFormatter.format(new Date())}`;
+    if (announce && refreshAnnouncement) {
+      refreshAnnouncement.textContent = `보안 결정 ${String(payload.events.length)}건을 새로고침했습니다.`;
+    }
   } catch {
+    resetTelemetryPath();
     renderState(
       "error",
       "보안 결정 기록을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.",
@@ -647,6 +938,10 @@ async function loadEvents() {
     renderStageChart([]);
     renderActivityChart([]);
     lastUpdated.textContent = "업데이트 실패";
+    if (announce && refreshAnnouncement) {
+      refreshAnnouncement.textContent =
+        "보안 결정을 새로고침하지 못했습니다. 잠시 후 다시 시도해 주세요.";
+    }
   } finally {
     eventsRequestInFlight = false;
     setRefreshState(false);
@@ -654,7 +949,31 @@ async function loadEvents() {
 }
 
 themeToggle?.addEventListener("click", toggleTheme);
-refresh?.addEventListener("click", () => void loadEvents());
+menuButton?.addEventListener("click", () => {
+  const collapsed = workspace.classList.toggle("rail-collapsed");
+  sideRail?.toggleAttribute("inert", collapsed);
+  sideRail?.setAttribute("aria-hidden", String(collapsed));
+  if (collapsed && sideRail?.contains(document.activeElement)) {
+    menuButton.focus();
+  }
+  menuButton.setAttribute("aria-expanded", String(!collapsed));
+  menuButton.setAttribute(
+    "aria-label",
+    collapsed ? "도구 메뉴 펼치기" : "도구 메뉴 접기",
+  );
+});
+refresh?.addEventListener("click", () => void loadEvents(true));
+
+document.querySelectorAll(".side-rail a").forEach((link) => {
+  link.addEventListener("click", () => {
+    document.querySelectorAll(".side-rail a").forEach((item) => {
+      item.classList.remove("active");
+      item.removeAttribute("aria-current");
+    });
+    link.classList.add("active");
+    link.setAttribute("aria-current", "page");
+  });
+});
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
