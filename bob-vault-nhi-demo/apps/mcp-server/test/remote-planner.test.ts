@@ -58,6 +58,10 @@ describe("RemoteMessagePlanner", () => {
     expect(plan).toEqual({ intent: "order_status", order_id: "ORD-1001" });
     expect(authorization).toBe("Bearer runtime-token-for-tests");
     expect(requestBody).toContain("ORD-1001 배송 상태 알려줘");
+    expect(JSON.parse(requestBody)).toMatchObject({
+      stream: false,
+      think: false,
+    });
     expect(requestBody).not.toContain("header.payload.signature.user");
     expect(requestBody).not.toContain("dynamic-password");
   });

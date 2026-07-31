@@ -119,6 +119,7 @@ export class RemoteMessagePlanner implements MessagePlanner {
           { role: "user", content: boundedMessage },
         ],
         stream: false,
+        think: false,
         format: planningJsonSchema,
         options: { temperature: 0, num_predict: 160 },
         keep_alive: this.config.keepAlive,
