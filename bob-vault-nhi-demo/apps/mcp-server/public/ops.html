@@ -1,126 +1,194 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <meta
       name="description"
-      content="Operational view of the Bob to IBM Verify to Vault NHI security path."
+      content="챗봇부터 IBM Verify, MCP, Vault, PostgreSQL까지 NHI 접근 결정을 확인하는 보안 관제 화면입니다."
     />
-    <title>NHI Access Flight Recorder</title>
+    <title>NHI 접근 제어 센터 | MCP 보안 관제</title>
     <link rel="stylesheet" href="/ops.css" />
     <script src="/ops.js" type="module"></script>
   </head>
   <body>
-    <div class="ambient ambient-a" aria-hidden="true"></div>
-    <div class="ambient ambient-b" aria-hidden="true"></div>
     <header class="topbar">
-      <a class="brand" href="/" aria-label="NHI Access Flight Recorder home">
+      <a class="brand" href="/" aria-label="챗봇 화면으로 돌아가기">
         <span class="brand-mark" aria-hidden="true">N</span>
         <span>
-          <strong>NHI Access</strong>
-          <small>Flight Recorder</small>
+          <strong>NHI 접근 제어 센터</strong>
+          <small>MCP 보안 관제</small>
         </span>
       </a>
       <div class="topbar-meta">
-        <span class="environment">AWS · Seoul</span>
-        <span class="live"><i aria-hidden="true"></i> LIVE</span>
+        <span class="environment">AWS · 서울</span>
+        <span class="live"><i aria-hidden="true"></i> 실시간</span>
       </div>
     </header>
 
     <main>
-      <section class="hero">
-        <div>
-          <p class="eyebrow">BOB → VAULT / SECURITY CONTROL PLANE</p>
-          <h1>Every credential is<br /><span>earned, then erased.</span></h1>
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="eyebrow">보안 제어 경로</p>
+          <h1 id="page-title">MCP 요청부터 Vault 승인까지 한 화면에서 추적합니다</h1>
           <p class="lede">
-            A live, sanitized record of machine identity checks. No private key,
-            access token, or database password enters the agent context.
+            챗봇의 사용자 요청부터 동적 데이터베이스 자격증명 폐기까지, 민감값을
+            제외한 보안 결정만 실시간으로 확인합니다.
           </p>
         </div>
-        <div class="hero-state" aria-label="System readiness">
-          <span class="hero-state-label">CONTROL STATE</span>
-          <strong id="readiness">Checking</strong>
-          <span id="mode">—</span>
+        <div class="hero-state" aria-label="시스템 준비 상태">
+          <span class="state-indicator" aria-hidden="true"></span>
+          <div>
+            <span class="hero-state-label">제어 상태</span>
+            <strong id="readiness" role="status" aria-live="polite"
+              >확인 중</strong
+            >
+            <span id="mode">구성 상태를 확인하고 있습니다</span>
+          </div>
         </div>
       </section>
 
-      <section class="flow-section" aria-labelledby="flow-title">
+      <section class="control-strip" aria-label="핵심 제어 요약">
+        <article>
+          <small>사용자 신원</small>
+          <strong>IBM Verify OIDC</strong>
+          <p>로그인 세션과 사용자 JWT를 분리 검증합니다.</p>
+        </article>
+        <article>
+          <small>에이전트 위임</small>
+          <strong>Verify STS + OBO JWT</strong>
+          <p>KMS 서명 기반 private_key_jwt로 위임 토큰을 발급합니다.</p>
+        </article>
+        <article>
+          <small>권한 승인</small>
+          <strong>Vault JWT 정책 평가</strong>
+          <p>클레임과 DB 역할을 매핑해 허용 여부를 결정합니다.</p>
+        </article>
+        <article>
+          <small>데이터 접근</small>
+          <strong>동적 PostgreSQL 계정</strong>
+          <p>짧은 TTL 자격증명을 발급하고 호출 후 즉시 폐기합니다.</p>
+        </article>
+      </section>
+
+      <div class="dashboard-grid">
+      <section class="operations panel-section" aria-labelledby="events-title">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">IDENTITY PATH</p>
-            <h2 id="flow-title">One request. Five controls.</h2>
+            <p class="eyebrow">보안 결정 원장</p>
+            <h2 id="events-title">최근 보안 결정</h2>
+            <p class="section-description">
+              토큰과 비밀번호를 제외한 검증 단계, 결정, 조치만 표시합니다.
+            </p>
           </div>
-          <p>Trust is re-established at every boundary.</p>
+          <div class="refresh-group">
+            <button id="refresh" type="button" aria-controls="events">
+              <span class="refresh-icon" aria-hidden="true">↻</span>
+              <span class="refresh-label">새로고침</span>
+            </button>
+            <p id="last-updated" role="status" aria-live="polite">
+              아직 업데이트되지 않았습니다
+            </p>
+          </div>
         </div>
-        <ol class="flow">
+        <div class="event-ledger">
+          <div class="event-header" aria-hidden="true">
+            <span>시각</span><span>통제 단계</span><span>결정</span
+            ><span>조치</span>
+          </div>
+          <ol
+            id="events"
+            class="event-list"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <li class="state loading">보안 결정을 불러오는 중…</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="flow-section panel-section" aria-labelledby="flow-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">신원 및 권한 경로</p>
+            <h2 id="flow-title">하나의 요청, 여섯 단계의 검증</h2>
+          </div>
+          <p class="section-description">
+            신뢰를 전달하지 않고 각 시스템 경계에서 다시 검증합니다.
+          </p>
+        </div>
+        <ol class="flow" aria-label="NHI 접근 검증 단계">
           <li>
             <span class="step">01</span>
-            <strong>Bob IDE</strong>
-            <small>Bearer + source CIDR</small>
+            <strong>사용자 인증</strong>
+            <small>IBM Verify OIDC · 사용자 JWT</small>
           </li>
           <li>
             <span class="step">02</span>
-            <strong>AWS KMS</strong>
-            <small>Non-exportable RSA signing</small>
+            <strong>챗봇 에이전트</strong>
+            <small>허용된 입력 · 고정 도구 스키마</small>
           </li>
           <li>
             <span class="step">03</span>
-            <strong>IBM Verify</strong>
-            <small>Bound NHI JWT</small>
+            <strong>MCP 서버</strong>
+            <small>Bearer 검증 · 요청 경계 확인</small>
           </li>
           <li>
             <span class="step">04</span>
-            <strong>Vault</strong>
-            <small>Policy + short TTL lease</small>
+            <strong>Verify STS</strong>
+            <small>KMS 서명 · OBO JWT 발급</small>
           </li>
           <li>
             <span class="step">05</span>
+            <strong>Vault 정책</strong>
+            <small>클레임 매핑 · 짧은 TTL 리스</small>
+          </li>
+          <li>
+            <span class="step">06</span>
             <strong>PostgreSQL</strong>
-            <small>Read-only fixed queries</small>
+            <small>읽기 전용 쿼리 · 사용 후 폐기</small>
           </li>
         </ol>
       </section>
-
-      <section class="operations" aria-labelledby="events-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">SANITIZED TELEMETRY</p>
-            <h2 id="events-title">Recent decisions</h2>
-          </div>
-          <button id="refresh" type="button">Refresh events</button>
-        </div>
-        <div class="event-header" aria-hidden="true">
-          <span>TIME</span><span>CONTROL</span><span>DECISION</span
-          ><span>ACTION</span>
-        </div>
-        <ol id="events" class="event-list" aria-live="polite">
-          <li class="empty">Waiting for a security decision…</li>
-        </ol>
-      </section>
+      </div>
 
       <section class="guardrails" aria-labelledby="guardrails-title">
         <div>
-          <p class="eyebrow">ENFORCED GUARDRAILS</p>
-          <h2 id="guardrails-title">The agent never holds the keys.</h2>
+          <p class="eyebrow">강제 보안 제어</p>
+          <h2 id="guardrails-title">비밀값은 에이전트 컨텍스트 밖에 둡니다.</h2>
+          <p class="section-description">
+            각 제어는 요청 처리 중 항상 적용되며 우회 경로를 제공하지 않습니다.
+          </p>
         </div>
         <dl>
           <div>
-            <dt>Private signing key</dt>
-            <dd>KMS only · never exportable</dd>
+            <dt>서명용 개인 키</dt>
+            <dd>
+              <span>KMS 전용 · 외부 반출 불가</span>
+              <strong class="policy-state">적용됨</strong>
+            </dd>
           </div>
           <div>
-            <dt>Database credential</dt>
-            <dd>Dynamic · revoked after each call</dd>
+            <dt>DB 자격증명</dt>
+            <dd>
+              <span>동적 발급 · 호출 후 즉시 폐기</span>
+              <strong class="policy-state">적용됨</strong>
+            </dd>
           </div>
           <div>
-            <dt>SQL surface</dt>
-            <dd>2 parameterized read-only queries</dd>
+            <dt>SQL 허용 범위</dt>
+            <dd>
+              <span>파라미터화된 읽기 전용 쿼리 2개</span>
+              <strong class="policy-state">제한됨</strong>
+            </dd>
           </div>
           <div>
-            <dt>Sensitive request</dt>
-            <dd>Denied before Vault is contacted</dd>
+            <dt>민감 정보 요청</dt>
+            <dd>
+              <span>Vault 자격증명 발급 전 차단</span>
+              <strong class="policy-state denied">차단됨</strong>
+            </dd>
           </div>
         </dl>
       </section>
@@ -128,8 +196,8 @@
 
     <footer>
       <span>bob-vault-nhi-demo</span>
-      <span id="version">version —</span>
-      <span>MCP 2025-11-25</span>
+      <span id="version">버전 —</span>
+      <span>MCP 프로토콜 2025-11-25</span>
     </footer>
   </body>
 </html>

@@ -6,6 +6,7 @@ const loginError = document.querySelector("#login-error");
 const serviceVersion = document.querySelector("#service-version");
 const conversation = document.querySelector("#conversation");
 const trace = document.querySelector("#trace");
+const traceLiveState = document.querySelector("#trace-live-state");
 const form = document.querySelector("#chat-form");
 const input = document.querySelector("#chat-input");
 const send = document.querySelector("#send");
@@ -27,9 +28,9 @@ async function loadStatus() {
     });
     if (!response.ok) return;
     const status = await response.json();
-    serviceVersion.textContent = `version ${String(status.version).slice(0, 32)}`;
+    serviceVersion.textContent = `버전 ${String(status.version).slice(0, 32)}`;
   } catch {
-    serviceVersion.textContent = "version unavailable";
+    serviceVersion.textContent = "버전 정보를 불러올 수 없음";
   }
 }
 
@@ -71,7 +72,7 @@ function addMessage(kind, text, metadata) {
   const avatar = element(
     "div",
     `message-avatar ${kind === "user" ? "user-avatar" : "agent-avatar"}`,
-    kind === "user" ? userName.textContent.slice(0, 1) || "U" : "A",
+    kind === "user" ? userName.textContent.slice(0, 1) || "U" : "AI",
   );
   avatar.setAttribute("aria-hidden", "true");
   const body = element("div", "message-body");
@@ -79,7 +80,7 @@ function addMessage(kind, text, metadata) {
     element(
       "span",
       "message-label",
-      kind === "user" ? userName.textContent : "Security Agent",
+      kind === "user" ? userName.textContent : "보안 에이전트",
     ),
     element("p", "", text),
   );
@@ -95,6 +96,7 @@ function addMessage(kind, text, metadata) {
 function setBusy(busy) {
   input.disabled = busy;
   send.disabled = busy;
+  conversation.setAttribute("aria-busy", String(busy));
   document
     .querySelectorAll(".suggestions button")
     .forEach((button) => (button.disabled = busy));
@@ -103,16 +105,27 @@ function setBusy(busy) {
 function addThinking() {
   const article = addMessage("agent", "MCP 도구와 권한을 확인하고 있습니다…");
   article.classList.add("thinking");
+  article.setAttribute("role", "status");
   return article;
 }
 
 function renderTrace(steps) {
   trace.replaceChildren();
+  const hasDeniedStep = steps.some((step) => step.status === "denied");
+  traceLiveState.textContent = hasDeniedStep ? "정책 차단" : "검증 완료";
+  traceLiveState.className = `live-state${hasDeniedStep ? " denied" : ""}`;
   for (const [index, step] of steps.entries()) {
     const item = document.createElement("li");
     const copy = document.createElement("div");
     copy.append(
-      element("strong", "", String(step.label)),
+      element(
+        "strong",
+        "",
+        {
+          "OBO JWT": "에이전트 OBO JWT",
+          "Agent 정책": "에이전트 정책",
+        }[step.label] ?? String(step.label),
+      ),
       element("small", "", String(step.detail)),
     );
     const stateLabel = {
@@ -137,6 +150,7 @@ function renderTrace(steps) {
 async function sendMessage(message) {
   const trimmed = message.trim();
   if (!trimmed) return;
+  const retryValue = trimmed;
   addMessage("user", trimmed);
   input.value = "";
   setBusy(true);
@@ -164,12 +178,13 @@ async function sendMessage(message) {
       "agent",
       String(payload.reply),
       payload.tool
-        ? `MCP · ${String(payload.tool)} · request ${String(payload.requestId).slice(0, 8)}`
-        : "Agent 정책 안내",
+        ? `MCP 도구 · ${String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
+        : "에이전트 정책 안내",
     );
     renderTrace(Array.isArray(payload.trace) ? payload.trace : []);
   } catch (error) {
     thinking.remove();
+    if (!input.value) input.value = retryValue;
     addMessage(
       "agent",
       error instanceof Error

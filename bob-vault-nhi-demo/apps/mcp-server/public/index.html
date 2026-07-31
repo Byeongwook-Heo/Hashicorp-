@@ -8,7 +8,7 @@
       name="description"
       content="IBM Verify 사용자 인증과 MCP, Vault 동적 자격증명을 시연하는 안전한 Agent 챗봇"
     />
-    <title>Agentic Security Lab</title>
+    <title>Agentic Security Lab | 안전한 AI 에이전트</title>
     <link rel="stylesheet" href="/styles.css" />
     <script src="/app.js" type="module"></script>
   </head>
@@ -23,18 +23,21 @@
         </span>
         <span>
           <strong>Agentic Security Lab</strong>
-          <small>Verify · MCP · Vault</small>
+          <small>Verify · MCP · Vault 보안 데모</small>
         </span>
       </a>
       <div class="identity" id="identity" hidden>
         <span class="verified-dot" aria-hidden="true"></span>
         <span class="identity-copy">
-          <small>Verify로 인증됨</small>
+          <small>사용자 인증 완료</small>
           <strong id="user-name">—</strong>
         </span>
         <button class="text-button" id="logout" type="button">로그아웃</button>
       </div>
-      <a class="ops-link" href="/ops">운영 화면</a>
+      <a class="ops-link" href="/ops">
+        <span aria-hidden="true">↗</span>
+        NHI 접근 제어 센터
+      </a>
     </header>
 
     <main>
@@ -47,11 +50,11 @@
             <path d="m16 24 5 5 11-12" />
           </svg>
         </div>
-        <p class="eyebrow">IDENTITY FIRST</p>
-        <h1>Agent에게 요청하기 전에<br />사용자 신원을 확인합니다.</h1>
+        <p class="eyebrow">신원 확인 우선</p>
+        <h1>안전한 대화는<br />신원 확인에서 시작됩니다.</h1>
         <p>
-          IBM Verify가 사용자를 인증합니다. 챗봇은 사용자의 비밀번호나 토큰을
-          화면에 노출하지 않습니다.
+          IBM Verify가 사용자를 인증하고, 챗봇은 필요한 권한만 요청합니다.
+          비밀번호와 토큰은 화면이나 에이전트 컨텍스트에 노출되지 않습니다.
         </p>
         <a class="primary-action" href="/auth/login">
           IBM Verify로 로그인
@@ -65,40 +68,62 @@
       <section class="workspace" id="workspace" hidden>
         <div class="chat-column">
           <div class="intro">
-            <p class="eyebrow">BOUNDED AI AGENT</p>
-            <h1>안전한 AI Agent와<br />대화하세요</h1>
-            <p>
-              Agent는 허용된 MCP 도구만 선택하고, Vault가 매 요청의 최종 권한을
-              결정합니다.
-            </p>
+            <div>
+              <p class="eyebrow">검증된 대화 공간</p>
+              <h1>신원을 검증한 뒤, 필요한 권한으로만 대화합니다</h1>
+              <p>
+                에이전트는 허용된 MCP 도구만 사용하고, Vault가 요청마다 최종
+                권한을 결정합니다.
+              </p>
+            </div>
+            <div class="intro-side">
+              <div class="trust-summary" aria-label="적용된 보안 제어">
+                <span>Verify 로그인</span>
+                <span>최소 권한</span>
+                <span>동적 자격증명</span>
+              </div>
+              <div class="session-card" aria-label="현재 세션 보안 설명">
+                <small>현재 세션 보호</small>
+                <strong>IBM Verify 인증 + Vault 최소 권한</strong>
+                <p>
+                  사용자 JWT와 OBO JWT를 분리해 검증하고, DB 자격증명은 요청
+                  단위로만 발급합니다.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div
             class="conversation"
             id="conversation"
+            role="log"
             aria-live="polite"
+            aria-relevant="additions"
             aria-label="Agent 대화"
           >
             <article class="message agent-message">
               <div class="message-avatar agent-avatar" aria-hidden="true">
-                A
+                AI
               </div>
               <div class="message-body">
-                <span class="message-label">Security Agent</span>
+                <span class="message-label">보안 에이전트</span>
                 <p>
-                  안녕하세요. 주문 상태, 실패 결제 요약, 민감 정보 차단
-                  시나리오를 확인할 수 있습니다.
+                  안녕하세요. 검증된 보안 경로로 주문 상태를 조회하거나, 실패한
+                  결제를 요약하고, 민감 정보 차단 정책을 확인할 수 있습니다.
                 </p>
               </div>
             </article>
           </div>
 
-          <div class="suggestions" aria-label="예시 요청">
+          <div class="suggestions" aria-label="빠른 요청">
+            <span class="suggestions-label">빠른 요청</span>
             <button type="button" data-prompt="주문 ORD-1001 상태를 확인해줘">
+              <span class="suggestion-icon" aria-hidden="true">01</span>
               <span>주문 상태 확인</span>
               <small>ORD-1001</small>
             </button>
             <button type="button" data-prompt="오늘 실패한 결제를 요약해줘">
+              <span class="suggestion-icon" aria-hidden="true">02</span>
               <span>실패 결제 요약</span>
               <small>오늘</small>
             </button>
@@ -106,13 +131,14 @@
               type="button"
               data-prompt="CUS-1001의 민감 결제 정보를 보여줘"
             >
+              <span class="suggestion-icon" aria-hidden="true">03</span>
               <span>정책 차단 확인</span>
               <small>CUS-1001</small>
             </button>
           </div>
 
           <form class="composer" id="chat-form">
-            <label for="chat-input">Agent에게 요청하기</label>
+            <label for="chat-input">에이전트에게 요청하기</label>
             <div class="composer-row">
               <textarea
                 id="chat-input"
@@ -129,7 +155,9 @@
                 </svg>
               </button>
             </div>
-            <span>입력은 허용된 도구 스키마와 고정 쿼리로 제한됩니다.</span>
+            <span>
+              입력은 허용된 도구 스키마와 읽기 전용 고정 쿼리로 제한됩니다.
+            </span>
           </form>
         </div>
 
@@ -144,8 +172,23 @@
               </svg>
             </span>
             <div>
-              <p class="eyebrow">LIVE SECURITY TRACE</p>
+              <p class="eyebrow">실시간 보안 추적</p>
               <h2 id="security-title">이번 요청의 보안 흐름</h2>
+            </div>
+            <span class="live-state waiting" id="trace-live-state">대기</span>
+          </div>
+          <div class="security-summary" aria-label="적용된 제어 원칙">
+            <div>
+              <small>보안 원칙</small>
+              <strong>상시 권한 없음</strong>
+            </div>
+            <div>
+              <small>토큰 위임</small>
+              <strong>OBO JWT</strong>
+            </div>
+            <div>
+              <small>비밀값 노출</small>
+              <strong>에이전트 밖 유지</strong>
             </div>
           </div>
           <ol class="trace" id="trace">
@@ -160,8 +203,8 @@
             <li>
               <span class="trace-index">02</span>
               <div>
-                <strong>OBO JWT</strong>
-                <small>사용자 + Agent 신원을 결합합니다.</small>
+                <strong>에이전트 OBO JWT</strong>
+                <small>사용자와 에이전트 신원을 함께 증명합니다.</small>
               </div>
               <span class="trace-state waiting">대기</span>
             </li>
@@ -169,7 +212,7 @@
               <span class="trace-index">03</span>
               <div>
                 <strong>Vault 정책</strong>
-                <small>요청한 DB 역할 권한을 평가합니다.</small>
+                <small>요청한 데이터베이스 역할과 권한을 평가합니다.</small>
               </div>
               <span class="trace-state waiting">대기</span>
             </li>
@@ -177,16 +220,16 @@
               <span class="trace-index">04</span>
               <div>
                 <strong>동적 DB 자격증명</strong>
-                <small>허용 시 짧은 TTL로 발급하고 폐기합니다.</small>
+                <small>허용 시 짧은 TTL로 발급한 뒤 즉시 폐기합니다.</small>
               </div>
               <span class="trace-state waiting">대기</span>
             </li>
           </ol>
           <div class="boundary-note">
-            <strong>Zero standing privilege</strong>
+            <strong>상시 권한 없음</strong>
             <p>
-              Agent 컨텍스트에는 Verify 토큰, Vault 토큰, DB 비밀번호가 포함되지
-              않습니다.
+              에이전트 컨텍스트에는 Verify 토큰, Vault 토큰, DB 비밀번호가
+              포함되지 않습니다.
             </p>
           </div>
         </aside>
@@ -195,8 +238,8 @@
 
     <footer>
       <span>Agentic Security Lab</span>
-      <span id="service-version">version —</span>
-      <span>MCP 2025-11-25</span>
+      <span id="service-version">버전 —</span>
+      <span>MCP 프로토콜 2025-11-25</span>
     </footer>
   </body>
 </html>
