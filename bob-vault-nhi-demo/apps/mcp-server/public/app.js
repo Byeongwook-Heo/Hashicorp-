@@ -3,8 +3,6 @@ const metaColorScheme = document.querySelector('meta[name="color-scheme"]');
 const themeToggle = document.querySelector("#theme-toggle");
 const themeToggleLabel = document.querySelector("#theme-toggle-label");
 const themeSymbol = document.querySelector(".theme-symbol");
-const menuButton = document.querySelector(".menu-button");
-const sideRail = document.querySelector(".side-rail");
 const topnav = document.querySelector("#topnav");
 const loginPanel = document.querySelector("#login-panel");
 const workspace = document.querySelector("#workspace");
@@ -50,6 +48,15 @@ const accessStatusCredentials = document.querySelector(
   "#access-status-credentials",
 );
 const accessStatusAction = document.querySelector("#access-status-action");
+const stageDialog = document.querySelector("#stage-dialog");
+const stageDialogEyebrow = document.querySelector("#stage-dialog-eyebrow");
+const stageDialogTitle = document.querySelector("#stage-dialog-title");
+const stageDialogSummary = document.querySelector("#stage-dialog-summary");
+const stageDialogState = document.querySelector("#stage-dialog-state");
+const stageDialogTime = document.querySelector("#stage-dialog-time");
+const stageDialogAction = document.querySelector("#stage-dialog-action");
+const stageDialogCode = document.querySelector("#stage-dialog-code");
+const stageCodeCopy = document.querySelector("#stage-code-copy");
 const pathSteps = {
   verify: document.querySelector("#path-step-verify"),
   agent: document.querySelector("#path-step-agent"),
@@ -99,6 +106,44 @@ const actionLabels = {
   pii_access_denied: "민감 정보 접근 차단",
   "database/creds/bob-payment-pii": "민감 결제 DB 역할 요청 차단",
 };
+const readOnlyQueries = {
+  get_order_status: [
+    "SELECT order_id, payment_status, delivery_status, updated_at",
+    "FROM v_bob_order_status",
+    "WHERE order_id = $1",
+    "LIMIT 1;",
+  ],
+  get_failed_payment_summary: [
+    "SELECT delivery_status, COUNT(*)::int AS count",
+    "FROM v_bob_order_status",
+    "WHERE payment_status = 'FAILED'",
+    "  AND updated_at >= $1::date",
+    "  AND updated_at < ($1::date + INTERVAL '1 day')",
+    "GROUP BY delivery_status",
+    "ORDER BY delivery_status",
+    "LIMIT 20;",
+  ],
+  get_recent_orders: [
+    "SELECT order_id, payment_status, delivery_status, updated_at",
+    "FROM v_bob_order_status",
+    "ORDER BY updated_at DESC",
+    "LIMIT $1;",
+  ],
+  get_failed_payment_trend: [
+    "SELECT (updated_at AT TIME ZONE 'Asia/Seoul')::date AS date,",
+    "       COUNT(*)::int AS total_count,",
+    "       COUNT(*) FILTER (WHERE payment_status = 'FAILED')::int AS failed_count",
+    "FROM v_bob_order_status",
+    "WHERE updated_at >= CURRENT_DATE - ($1::int - 1)",
+    "GROUP BY 1 ORDER BY 1;",
+  ],
+};
+const toolExampleArguments = {
+  get_order_status: { orderId: "ORD-1001" },
+  get_failed_payment_summary: { date: "YYYY-MM-DD" },
+  get_recent_orders: { limit: 5 },
+  get_failed_payment_trend: { days: 7 },
+};
 
 const seoulTimeFormatter = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
@@ -112,6 +157,8 @@ let csrfToken = "";
 let eventsRequestInFlight = false;
 let eventsInterval = null;
 let latestCredential = null;
+let latestTool = "";
+let stageDialogTrigger = null;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -172,6 +219,129 @@ function formatAction(action) {
   return (
     rawAction.replaceAll("_", " ").replaceAll("/", " › ") || "알 수 없는 조치"
   );
+}
+
+function stageDetail(stage) {
+  const activeTool = Object.hasOwn(toolLabels, latestTool)
+    ? latestTool
+    : "get_order_status";
+  const catalog = {
+    verify: {
+      eyebrow: "01 · 사용자 신원",
+      title: "IBM Verify",
+      summary:
+        "사용자의 로그인 세션과 JWT 서명을 검증하고, 발급자·대상·만료 시간을 확인합니다.",
+      action:
+        "검증이 끝난 사용자 요청만 다음 단계로 전달합니다. 토큰 원문은 화면이나 로그에 표시하지 않습니다.",
+      code: [
+        "GET /v1.0/endpoint/default/jwks",
+        "",
+        "validate(userJwt, {",
+        '  issuer: "https://ceiam.verify.ibm.com/oidc/endpoint/default",',
+        '  audience: "<chatbot-client-id>",',
+        '  requiredClaims: ["sub", "exp", "iat"]',
+        "});",
+      ].join("\n"),
+    },
+    agent: {
+      eyebrow: "02 · 에이전트 계획",
+      title: "Bob AI 에이전트",
+      summary:
+        "사용자 문장에서 의도를 분류하고 허용된 읽기 전용 도구와 인자를 선택합니다.",
+      action:
+        "도구 허용 목록과 사용자 입력에 근거한 인자인지 확인합니다. 계획에 실패하면 규칙 기반 안전 모드로 전환합니다.",
+      code: [
+        "const plan = await planner.plan(message);",
+        "",
+        "assert(allowedTools.has(plan.tool));",
+        "assert(isGrounded(plan.arguments, message));",
+        "return plan;",
+      ].join("\n"),
+    },
+    mcp: {
+      eyebrow: "03 · 도구 실행",
+      title: "MCP Server",
+      summary:
+        "사용자 JWT를 인증한 뒤 스키마가 고정된 MCP 도구 호출만 수락합니다.",
+      action: `${toolLabels[activeTool]} 요청을 MCP tools/call 형식으로 만들고 입력 스키마를 다시 검증합니다.`,
+      code: JSON.stringify(
+        {
+          jsonrpc: "2.0",
+          method: "tools/call",
+          params: {
+            name: activeTool,
+            arguments: toolExampleArguments[activeTool] ?? {},
+          },
+        },
+        null,
+        2,
+      ),
+    },
+    vault: {
+      eyebrow: "04 · 정책과 자격증명",
+      title: "HashiCorp Vault",
+      summary:
+        "OBO JWT의 사용자·에이전트 클레임을 정책에 매핑하고 짧은 TTL의 DB 자격증명을 발급합니다.",
+      action:
+        "bob-orders 역할의 읽기 전용 정책만 평가합니다. 민감 정보 역할은 정책 단계에서 차단됩니다.",
+      code: [
+        "POST /v1/auth/jwt/login",
+        "X-Vault-Namespace: demo",
+        "",
+        "{",
+        '  "role": "bob-orders",',
+        '  "jwt": "<OBO JWT>"',
+        "}",
+        "",
+        "GET /v1/database/creds/bob-orders-readonly",
+      ].join("\n"),
+    },
+    database: {
+      eyebrow: "05 · 데이터 접근",
+      title: "PostgreSQL",
+      summary:
+        "Vault가 발급한 임시 계정으로 사전에 정의된 읽기 전용 SQL만 실행합니다.",
+      action: `${toolLabels[activeTool]}에 대응하는 매개변수화된 쿼리를 실행하고 자격증명을 즉시 반환합니다.`,
+      code: (
+        readOnlyQueries[activeTool] ?? readOnlyQueries.get_order_status
+      ).join("\n"),
+    },
+  };
+  return catalog[stage];
+}
+
+function openStageDialog(stage, trigger) {
+  const detail = stageDetail(stage);
+  const step = pathSteps[stage];
+  if (!detail || !step || !stageDialog) return;
+
+  const state =
+    step.querySelector(".path-state")?.textContent?.trim() || "대기";
+  const time = step.querySelector("time")?.textContent?.trim() || "—";
+  stageDialogTrigger = trigger;
+  stageDialogEyebrow.textContent = detail.eyebrow;
+  stageDialogTitle.textContent = detail.title;
+  stageDialogSummary.textContent = detail.summary;
+  stageDialogState.textContent = state;
+  stageDialogState.className = `stage-modal-state ${
+    step.classList.contains("denied")
+      ? "denied"
+      : step.classList.contains("active") ||
+          state === "성공" ||
+          state === "허용"
+        ? "allowed"
+        : "waiting"
+  }`;
+  stageDialogTime.textContent = time;
+  stageDialogAction.textContent = detail.action;
+  stageDialogCode.textContent = detail.code;
+  stageCodeCopy.textContent = "코드 복사";
+  stageDialog.showModal();
+}
+
+function closeStageDialog() {
+  if (!stageDialog?.open) return;
+  stageDialog.close();
 }
 
 function buildSummary(events) {
@@ -310,7 +480,6 @@ function initialsFor(displayName) {
 
 function showLogin() {
   document.body.classList.remove("authenticated");
-  menuButton.hidden = true;
   workspace.hidden = true;
   identity.hidden = true;
   topnav.hidden = true;
@@ -327,7 +496,6 @@ function showLogin() {
 
 function showWorkspace() {
   document.body.classList.add("authenticated");
-  menuButton.hidden = false;
   identity.hidden = false;
   topnav.hidden = true;
   headerLogin.hidden = true;
@@ -388,45 +556,13 @@ function addMessage(kind, text, metadata) {
 }
 
 function appendQueryPreview(article, tool) {
-  const queries = {
-    get_order_status: [
-      "SELECT order_id, payment_status, delivery_status, updated_at",
-      "FROM v_bob_order_status",
-      "WHERE order_id = $1",
-      "LIMIT 1;",
-    ],
-    get_failed_payment_summary: [
-      "SELECT delivery_status, COUNT(*)::int AS count",
-      "FROM v_bob_order_status",
-      "WHERE payment_status = 'FAILED'",
-      "  AND updated_at >= $1::date",
-      "  AND updated_at < ($1::date + INTERVAL '1 day')",
-      "GROUP BY delivery_status",
-      "ORDER BY delivery_status",
-      "LIMIT 20;",
-    ],
-    get_recent_orders: [
-      "SELECT order_id, payment_status, delivery_status, updated_at",
-      "FROM v_bob_order_status",
-      "ORDER BY updated_at DESC",
-      "LIMIT $1;",
-    ],
-    get_failed_payment_trend: [
-      "SELECT (updated_at AT TIME ZONE 'Asia/Seoul')::date AS date,",
-      "       COUNT(*)::int AS total_count,",
-      "       COUNT(*) FILTER (WHERE payment_status = 'FAILED')::int AS failed_count",
-      "FROM v_bob_order_status",
-      "WHERE updated_at >= CURRENT_DATE - ($1::int - 1)",
-      "GROUP BY 1 ORDER BY 1;",
-    ],
-  };
-  const lines = queries[tool];
+  const lines = readOnlyQueries[tool];
   if (!lines) return;
 
   const result = element("section", "query-result");
   result.setAttribute("aria-label", "실행된 읽기 전용 SQL");
   const header = element("div", "query-result-header");
-  header.append(element("span", "", "SQL (읽기 전용)"));
+  header.append(element("span", "", "코드"));
   const copy = element("button", "", "복사");
   copy.type = "button";
   const query = lines.join("\n");
@@ -611,6 +747,7 @@ async function sendMessage(message) {
         ? `MCP 도구 · ${toolLabels[String(payload.tool)] ?? String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
         : "에이전트 정책 안내",
     );
+    latestTool = String(payload.tool ?? "");
     appendQueryPreview(responseMessage, String(payload.tool ?? ""));
     appendFollowUpSuggestions(responseMessage, payload.suggestions);
     renderTrace(Array.isArray(payload.trace) ? payload.trace : []);
@@ -1030,19 +1167,6 @@ async function loadEvents(announce = false) {
 }
 
 themeToggle?.addEventListener("click", toggleTheme);
-menuButton?.addEventListener("click", () => {
-  const collapsed = workspace.classList.toggle("rail-collapsed");
-  sideRail?.toggleAttribute("inert", collapsed);
-  sideRail?.setAttribute("aria-hidden", String(collapsed));
-  if (collapsed && sideRail?.contains(document.activeElement)) {
-    menuButton.focus();
-  }
-  menuButton.setAttribute("aria-expanded", String(!collapsed));
-  menuButton.setAttribute(
-    "aria-label",
-    collapsed ? "도구 메뉴 펼치기" : "도구 메뉴 접기",
-  );
-});
 refresh?.addEventListener("click", () => void loadEvents(true));
 demoReset?.addEventListener("click", () => void resetDemoSession());
 
@@ -1059,6 +1183,7 @@ async function resetDemoSession() {
     }
     if (!response.ok) throw new Error("reset unavailable");
     latestCredential = null;
+    latestTool = "";
     conversation.innerHTML = defaultConversationMarkup;
     renderTrace([]);
     renderEvents([]);
@@ -1078,15 +1203,43 @@ async function resetDemoSession() {
   }
 }
 
-document.querySelectorAll(".side-rail a").forEach((link) => {
-  link.addEventListener("click", () => {
-    document.querySelectorAll(".side-rail a").forEach((item) => {
-      item.classList.remove("active");
-      item.removeAttribute("aria-current");
-    });
-    link.classList.add("active");
-    link.setAttribute("aria-current", "page");
+document.querySelector("#identity-path")?.addEventListener("click", (event) => {
+  const step = event.target.closest?.("[data-stage]");
+  if (!step) return;
+  openStageDialog(step.dataset.stage, step);
+});
+
+document
+  .querySelector("#identity-path")
+  ?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const step = event.target.closest?.("[data-stage]");
+    if (!step) return;
+    event.preventDefault();
+    openStageDialog(step.dataset.stage, step);
   });
+
+document.querySelectorAll("[data-stage-dialog-close]").forEach((button) => {
+  button.addEventListener("click", closeStageDialog);
+});
+
+stageDialog?.addEventListener("click", (event) => {
+  if (event.target === stageDialog) closeStageDialog();
+});
+
+stageDialog?.addEventListener("close", () => {
+  if (stageDialogTrigger?.isConnected) stageDialogTrigger.focus();
+  stageDialogTrigger = null;
+});
+
+stageCodeCopy?.addEventListener("click", async () => {
+  try {
+    await window.navigator.clipboard.writeText(stageDialogCode.textContent);
+    stageCodeCopy.textContent = "복사됨";
+    window.setTimeout(() => (stageCodeCopy.textContent = "코드 복사"), 1200);
+  } catch {
+    stageCodeCopy.textContent = "복사 불가";
+  }
 });
 
 form.addEventListener("submit", (event) => {

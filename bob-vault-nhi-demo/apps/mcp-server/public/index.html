@@ -8,30 +8,18 @@
       name="description"
       content="IBM Verify 사용자 인증, MCP 요청 제어, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 Agentic Security Lab"
     />
-    <title>Agentic Security Lab | 대화 · NHI 접근 제어</title>
-    <script src="/theme.js?v=20260731-console2"></script>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-console2" />
-    <link rel="stylesheet" href="/styles.css?v=20260731-console2" />
-    <script src="/app.js?v=20260731-console2" type="module"></script>
+    <title>Agentic Security Lab | 대화 · 접근제어</title>
+    <script src="/theme.js?v=20260731-console3"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-console3" />
+    <link rel="stylesheet" href="/styles.css?v=20260731-console3" />
+    <script src="/app.js?v=20260731-console3" type="module"></script>
   </head>
   <body>
     <header class="topbar">
-      <button
-        class="menu-button"
-        type="button"
-        aria-label="도구 메뉴 접기"
-        aria-expanded="true"
-        hidden
-      >
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-        <span aria-hidden="true"></span>
-      </button>
-
       <a class="brand" href="/" aria-label="Agentic Security Lab 홈">
         <img
           class="brand-mark"
-          src="/icons/custom/vault-mark.png"
+          src="/icons/custom/hashicorp-vault.svg"
           alt=""
           width="32"
           height="32"
@@ -41,7 +29,7 @@
 
       <nav class="topnav" id="topnav" aria-label="주요 영역" hidden>
         <a href="#chat-section">대화</a>
-        <a href="#control-center">NHI 접근 제어</a>
+        <a href="#control-center">접근제어</a>
       </nav>
 
       <div class="topbar-actions">
@@ -103,7 +91,7 @@
             </article>
             <article>
               <img
-                src="/icons/custom/vault-mark.png"
+                src="/icons/custom/hashicorp-vault.svg"
                 alt=""
                 width="24"
                 height="24"
@@ -162,48 +150,6 @@
       </section>
 
       <section class="workspace" id="workspace" hidden>
-        <aside class="side-rail" aria-label="Agentic Security Lab 도구">
-          <a
-            class="active"
-            href="#chat-section"
-            aria-label="대화"
-            aria-current="page"
-          >
-            <span class="carbon-icon icon-bot" aria-hidden="true"></span>
-          </a>
-          <a href="#control-center" aria-label="보안 정책">
-            <span class="carbon-icon icon-security" aria-hidden="true"></span>
-          </a>
-          <a href="#identity-path" aria-label="신원 경로">
-            <span class="carbon-icon icon-user-id" aria-hidden="true"></span>
-          </a>
-          <a href="#identity-path" aria-label="데이터베이스 접근">
-            <img
-              class="postgresql-logo rail-logo"
-              src="/icons/custom/postgresql-elephant.svg"
-              alt=""
-              width="23"
-              height="24"
-            />
-          </a>
-          <a href="#events" aria-label="보안 이벤트">
-            <span class="carbon-icon icon-policy" aria-hidden="true"></span>
-          </a>
-          <a href="#current-access-status" aria-label="현재 접근 상태">
-            <span
-              class="carbon-icon icon-security-services"
-              aria-hidden="true"
-            ></span>
-          </a>
-          <span class="rail-spacer"></span>
-          <span class="rail-static" aria-hidden="true">
-            <span
-              class="carbon-icon icon-security-services"
-              aria-hidden="true"
-            ></span>
-          </span>
-        </aside>
-
         <section class="console-layout">
           <section
             class="chat-surface"
@@ -215,9 +161,7 @@
                 <span class="carbon-icon icon-bot" aria-hidden="true"></span>
                 <h2 id="chat-title">대화</h2>
               </div>
-              <span class="icon-button" aria-hidden="true">
-                <span aria-hidden="true">⋮</span>
-              </span>
+              <span class="panel-context">읽기 전용 · 최소 권한</span>
             </header>
 
             <div class="chat-scroll">
@@ -331,9 +275,6 @@
               </div>
 
               <form class="composer" id="chat-form">
-                <div class="composer-tabs" aria-hidden="true">
-                  <span class="active">메시지</span><span>코드</span>
-                </div>
                 <label class="sr-only" for="chat-input"
                   >에이전트에게 요청하기</label
                 >
@@ -347,10 +288,9 @@
                   required
                 ></textarea>
                 <div class="composer-actions">
-                  <div>
-                    <span class="composer-add" aria-hidden="true">＋</span>
-                    <span aria-hidden="true">{ }</span>
-                  </div>
+                  <span class="composer-hint"
+                    >Enter 전송 · Shift+Enter 줄바꿈</span
+                  >
                   <button id="send" type="submit" aria-label="메시지 보내기">
                     <span
                       class="carbon-icon icon-send"
@@ -373,7 +313,7 @@
           >
             <header class="panel-header control-header">
               <div class="panel-title">
-                <h2 id="control-title">NHI 접근 제어</h2>
+                <h2 id="control-title">접근제어</h2>
               </div>
               <div class="control-status">
                 <span class="status-spark" aria-hidden="true">✣</span>
@@ -425,13 +365,20 @@
                 aria-labelledby="identity-path-title"
               >
                 <div class="section-heading">
-                  <h3 id="identity-path-title">NHI 신원 경로</h3>
+                  <h3 id="identity-path-title">신원·권한 경로</h3>
                   <span class="live-state waiting" id="trace-live-state"
                     >대기</span
                   >
                 </div>
                 <ol>
-                  <li id="path-step-verify" class="complete">
+                  <li
+                    id="path-step-verify"
+                    class="complete"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="dialog"
+                    data-stage="verify"
+                  >
                     <span class="path-node" aria-hidden="true">›</span>
                     <span class="path-icon verify-path-icon">
                       <img
@@ -446,9 +393,18 @@
                       ><small>신원 확인 및 인증</small>
                     </span>
                     <span class="path-state allowed">성공</span>
-                    <time>—</time>
+                    <span class="path-meta"
+                      ><time>—</time><small>상세 보기</small></span
+                    >
                   </li>
-                  <li id="path-step-agent" class="complete">
+                  <li
+                    id="path-step-agent"
+                    class="complete"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="dialog"
+                    data-stage="agent"
+                  >
                     <span class="path-node" aria-hidden="true">›</span>
                     <span class="path-icon bob-path-icon">
                       <img
@@ -463,9 +419,17 @@
                       ><small>의도 분석 및 계획 수립</small>
                     </span>
                     <span class="path-state allowed">준비</span>
-                    <time>—</time>
+                    <span class="path-meta"
+                      ><time>—</time><small>상세 보기</small></span
+                    >
                   </li>
-                  <li id="path-step-mcp">
+                  <li
+                    id="path-step-mcp"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="dialog"
+                    data-stage="mcp"
+                  >
                     <span class="path-node" aria-hidden="true">›</span>
                     <span class="path-icon mcp-path-icon">
                       <span
@@ -478,13 +442,21 @@
                       ><small>도구 실행 및 요청 생성</small>
                     </span>
                     <span class="path-state neutral">연결</span>
-                    <time>—</time>
+                    <span class="path-meta"
+                      ><time>—</time><small>상세 보기</small></span
+                    >
                   </li>
-                  <li id="path-step-vault">
+                  <li
+                    id="path-step-vault"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="dialog"
+                    data-stage="vault"
+                  >
                     <span class="path-node" aria-hidden="true">›</span>
                     <span class="path-icon vault-path-icon">
                       <img
-                        src="/icons/custom/vault-mark.png"
+                        src="/icons/custom/hashicorp-vault.svg"
                         alt=""
                         width="34"
                         height="34"
@@ -495,9 +467,17 @@
                       ><small>정책 평가 및 권한 부여</small>
                     </span>
                     <span class="path-state neutral">대기</span>
-                    <time>—</time>
+                    <span class="path-meta"
+                      ><time>—</time><small>상세 보기</small></span
+                    >
                   </li>
-                  <li id="path-step-database">
+                  <li
+                    id="path-step-database"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="dialog"
+                    data-stage="database"
+                  >
                     <span class="path-node" aria-hidden="true">›</span>
                     <span class="path-icon postgresql-path-icon">
                       <img
@@ -513,7 +493,9 @@
                       ><small>데이터베이스 실행</small>
                     </span>
                     <span class="path-state neutral">대기</span>
-                    <time>—</time>
+                    <span class="path-meta"
+                      ><time>—</time><small>상세 보기</small></span
+                    >
                   </li>
                 </ol>
               </section>
@@ -631,6 +613,73 @@
           </aside>
         </section>
       </section>
+
+      <dialog
+        class="stage-dialog"
+        id="stage-dialog"
+        aria-labelledby="stage-dialog-title"
+        aria-describedby="stage-dialog-summary"
+      >
+        <div class="stage-dialog-shell">
+          <header class="stage-dialog-header">
+            <div>
+              <span class="stage-dialog-eyebrow" id="stage-dialog-eyebrow"
+                >접근 단계</span
+              >
+              <h2 id="stage-dialog-title">단계 상세</h2>
+            </div>
+            <button
+              class="stage-dialog-close"
+              type="button"
+              data-stage-dialog-close
+              aria-label="단계 상세 닫기"
+            >
+              ×
+            </button>
+          </header>
+
+          <div class="stage-dialog-body">
+            <p class="stage-dialog-summary" id="stage-dialog-summary"></p>
+
+            <dl class="stage-dialog-status">
+              <div>
+                <dt>현재 상태</dt>
+                <dd id="stage-dialog-state">대기</dd>
+              </div>
+              <div>
+                <dt>최근 처리 시각</dt>
+                <dd id="stage-dialog-time">—</dd>
+              </div>
+            </dl>
+
+            <section
+              class="stage-dialog-section"
+              aria-labelledby="stage-action-title"
+            >
+              <h3 id="stage-action-title">수행 내용</h3>
+              <p id="stage-dialog-action"></p>
+            </section>
+
+            <section
+              class="stage-dialog-section"
+              aria-labelledby="stage-code-title"
+            >
+              <div class="stage-code-heading">
+                <h3 id="stage-code-title">검증 및 실행 코드</h3>
+                <button id="stage-code-copy" type="button">코드 복사</button>
+              </div>
+              <pre><code id="stage-dialog-code"></code></pre>
+            </section>
+          </div>
+
+          <footer class="stage-dialog-footer">
+            <span
+              >표시된 값은 데모용이며 토큰과 자격증명은 포함하지 않습니다.</span
+            >
+            <button type="button" data-stage-dialog-close>확인</button>
+          </footer>
+        </div>
+      </dialog>
     </main>
 
     <footer>

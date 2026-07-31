@@ -155,8 +155,14 @@ describe("HTTP security boundary", () => {
     expect(html).toContain('id="chat-section"');
     expect(html).toContain('id="control-center"');
     expect(html).toContain('id="current-access-status"');
+    expect(html).toContain('id="stage-dialog"');
+    expect(html).toContain('data-stage="vault"');
     expect(html).toContain("/icons/custom/postgresql-elephant.svg");
+    expect(html).toContain("/icons/custom/hashicorp-vault.svg");
     expect(html).toContain("Bob AI 에이전트");
+    expect(html).toContain("접근제어");
+    expect(html).not.toContain("composer-tabs");
+    expect(html).not.toContain("side-rail");
     expect(html).not.toContain("보안 결정 추이");
     expect(html.toLowerCase()).not.toContain("ollama");
   });
