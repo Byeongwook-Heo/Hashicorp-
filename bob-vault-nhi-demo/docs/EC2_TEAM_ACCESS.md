@@ -1,4 +1,4 @@
-# CGC certificate access to the Vault EC2 instance
+# CGC public-key access to the Vault EC2 instance
 
 CGC connects with a dedicated RSA 3072 `.pem` key through a hardened public bastion. The Vault EC2 instance remains private and accepts SSH only from the bastion security group.
 
@@ -8,9 +8,9 @@ CGC connects with a dedicated RSA 3072 `.pem` key through a hardened public bast
 - Public SSH is restricted to the explicitly approved source CIDRs in `/bob-vault-nhi-demo/allowed-source-cidrs`.
 - Password, keyboard-interactive, and root login are disabled.
 - CGC cannot obtain a shell on the bastion; the key can only forward to `vault.bob-vault-nhi-demo.internal:22`.
-- The same key creates the `cgc` shell on Vault. Agent, X11, tunnel, and port forwarding are disabled on the Vault host.
-- The key expires at `2026-09-02T00:00:00Z`. A systemd timer also clears the key, locks the user, and terminates existing CGC sessions.
-- CGC has passwordless sudo on the event Vault host. Treat this as privileged lab access.
+- The same public key provides the `cgc` shell on Vault.
+- CGC has no sudo entitlement on the Vault host.
+- The public bastion key expires at `2026-09-02T00:00:00Z`, which closes the external SSH path after the event.
 - The owner retains Systems Manager as a separate break-glass path.
 
 ## Private key handling
@@ -65,7 +65,7 @@ Opening `ssh bob-vault-bastion` directly is intentionally denied. The bastion ke
 
 ## Source IP
 
-If CGC is not on an already approved network, add only CGC's current public IPv4 address as `/32`, then reapply the certificate access plan. Never open SSH to `0.0.0.0/0`.
+If CGC is not on an already approved network, add only CGC's current public IPv4 address as `/32`, then reapply the public-key access plan. Never open SSH to `0.0.0.0/0`.
 
 ## Deployment
 

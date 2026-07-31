@@ -95,10 +95,10 @@ event-access-apply: ## Apply time-bounded, audited SSM access without opening SS
 event-access-connect: ## Assume the event operator role and open the approved SSM shell.
 	@./scripts/start-event-ssm-session.sh
 
-event-ssh-plan: ## Plan the certificate-only CGC bastion path.
+event-ssh-plan: ## Plan the CGC public-key path through the restricted bastion.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-ssh-plan"
 
-event-ssh-apply: ## Deploy the certificate-only CGC bastion path.
+event-ssh-apply: ## Deploy the CGC public-key path through the restricted bastion.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-ssh-apply"
 
 verify-jwks-plan: ## Plan path-restricted JWKS access from official IBM Verify Europe egress IPs.

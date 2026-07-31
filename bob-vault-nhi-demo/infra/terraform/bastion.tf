@@ -209,16 +209,14 @@ resource "aws_ssm_document" "configure_vault_event_ssh" {
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description   = "Configure time-bounded per-person SSH public keys on the private Vault host"
+    description   = "Install per-person SSH public keys on the private Vault host"
     mainSteps = [{
       action = "aws:runShellScript"
-      name   = "configureEventSsh"
+      name   = "configurePublicKey"
       inputs = {
         timeoutSeconds = "300"
         runCommand = [templatefile("${path.module}/templates/configure-vault-event-ssh.sh.tftpl", {
-          event_ssh_users           = var.event_ssh_users
-          event_ssh_expires_at      = var.event_ssh_expires_at
-          event_ssh_expiry_calendar = var.event_ssh_expiry_calendar
+          event_ssh_users = var.event_ssh_users
         })]
       }
     }]
