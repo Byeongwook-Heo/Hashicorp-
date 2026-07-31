@@ -16,6 +16,21 @@ const previewStatus = document.querySelector("#preview-status");
 const unauthTest = document.querySelector("#unauth-test");
 const unauthResult = document.querySelector("#unauth-result");
 const unauthOutcome = document.querySelector("#unauth-outcome");
+const verifyDemoDialog = document.querySelector("#verify-demo-dialog");
+const verifyDemoClose = document.querySelector("#verify-demo-close");
+const verifyDemoForm = document.querySelector("#verify-demo-form");
+const verifyDemoUsername = document.querySelector("#verify-demo-username");
+const verifyDemoPassword = document.querySelector("#verify-demo-password");
+const verifyDemoPasswordToggle = document.querySelector(
+  "#verify-demo-password-toggle",
+);
+const verifyDemoFill = document.querySelector("#verify-demo-fill");
+const verifyDemoSubmit = document.querySelector("#verify-demo-submit");
+const verifyDemoError = document.querySelector("#verify-demo-error");
+const verifyDemoResultPanel = document.querySelector(
+  "#verify-demo-result-panel",
+);
+const verifyDemoFinish = document.querySelector("#verify-demo-finish");
 const serviceVersion = document.querySelector("#service-version");
 const conversation = document.querySelector("#conversation");
 const trace = document.querySelector("#trace");
@@ -75,6 +90,11 @@ const stageDialogTime = document.querySelector("#stage-dialog-time");
 const stageDialogAction = document.querySelector("#stage-dialog-action");
 const stageDialogCode = document.querySelector("#stage-dialog-code");
 const stageCodeCopy = document.querySelector("#stage-code-copy");
+const stageDialogSubsteps = document.querySelector("#stage-dialog-substeps");
+const stageDialogChecks = document.querySelector("#stage-dialog-checks");
+const stageCodeViewButtons = document.querySelectorAll(
+  "[data-stage-code-view]",
+);
 const pathSteps = {
   verify: document.querySelector("#path-step-verify"),
   agent: document.querySelector("#path-step-agent"),
@@ -190,6 +210,7 @@ let requestProgressInterval = null;
 let requestElapsedInterval = null;
 let requestStartedAt = 0;
 let requestElapsedMilliseconds = 0;
+let currentStageDetail = null;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -340,7 +361,389 @@ function stageDetail(stage) {
       ).join("\n"),
     },
   };
-  return catalog[stage];
+  const base = catalog[stage];
+  return base ? { ...base, ...richStageDetail(stage, activeTool) } : undefined;
+}
+
+function richStageDetail(stage, activeTool) {
+  const toolName = toolLabels[activeTool];
+  const toolArguments = toolExampleArguments[activeTool] ?? {};
+  const details = {
+    verify: {
+      eyebrow: "01 · 사용자와 에이전트 신원",
+      summary:
+        "사용자 로그인과 Agent 워크로드 인증을 각각 수행한 뒤, 사용자 subject와 Agent 신원을 결합한 OBO JWT를 발급하고 검증합니다.",
+      action:
+        "사람의 신원과 Agent의 비인간 신원을 함께 증명하되 사용자 토큰, Client Assertion, OBO 토큰 원문은 화면이나 로그에 남기지 않습니다.",
+      substeps: [
+        [
+          "OIDC Authorization Code + PKCE 요청",
+          "브라우저가 code_challenge와 state를 포함해 Verify authorize endpoint로 이동합니다.",
+          "USER · OIDC",
+        ],
+        [
+          "Cloud Directory 사용자 인증",
+          "Verify가 사용자 자격 증명과 로그인 정책을 확인하고 일회용 authorization code를 반환합니다.",
+          "USER · AUTHN",
+        ],
+        [
+          "사용자 access_token JWT 발급",
+          "Chatbot이 code_verifier로 code를 교환하고 사용자 sub·iss·aud·exp가 포함된 access token을 받습니다.",
+          "USER · JWT",
+        ],
+        [
+          "Agent private_key_jwt 인증",
+          "Agent가 AWS KMS로 서명한 Client Assertion을 제출해 Client Secret 없이 자신의 워크로드 신원을 증명합니다.",
+          "AGENT · NHI",
+        ],
+        [
+          "RFC 8693 OBO 토큰 교환",
+          "사용자 access token을 subject_token으로 제출하고 Agent Client Assertion과 함께 OBO access token을 요청합니다.",
+          "USER + AGENT",
+        ],
+        [
+          "OBO JWT 발급과 로컬 검증",
+          "Verify가 사용자 subject와 Agent binding을 보존한 JWT를 발급하고 JWKS·issuer·audience·exp·actor claim을 검증합니다.",
+          "OBO · JWT",
+        ],
+      ],
+      checks: [
+        ["사용자 토큰", "RS256 · sub/iss/aud/exp 검증"],
+        ["Agent 인증", "AWS KMS private_key_jwt"],
+        ["토큰 교환", "RFC 8693 · subject_token=USER_ACCESS_TOKEN"],
+        ["OBO binding", "사용자 sub + Agent client_id 일치"],
+      ],
+      codeViews: {
+        request: [
+          "GET /v1.0/endpoint/default/authorize?",
+          "  response_type=code&client_id=<CHATBOT_CLIENT_ID>&",
+          "  scope=openid%20profile%20vault.db.read&",
+          "  code_challenge=<PKCE_SHA256>&code_challenge_method=S256",
+          "",
+          "POST /oauth2/token",
+          "grant_type=urn:ietf:params:oauth:grant-type:token-exchange",
+          "client_id=<AGENT_CLIENT_ID>",
+          "client_assertion=<KMS_SIGNED_PRIVATE_KEY_JWT>",
+          "subject_token=<USER_ACCESS_TOKEN>",
+          "subject_token_type=urn:ietf:params:oauth:token-type:access_token",
+          "audience=bob-vault-orders&scope=vault.db.read",
+        ].join("\n"),
+        response: JSON.stringify(
+          {
+            access_token: "<OBO_ACCESS_TOKEN_REDACTED>",
+            token_type: "Bearer",
+            expires_in: 300,
+            verified_claims: {
+              sub: "<VERIFY_USER_SUBJECT>",
+              client_id: "<AGENT_CLIENT_ID>",
+              aud: "bob-vault-orders",
+              scope: "vault.db.read",
+            },
+          },
+          null,
+          2,
+        ),
+        execution: [
+          "const assertion = await kmsSigner.sign();",
+          "const obo = await exchangeToken({",
+          "  clientAssertion: assertion,",
+          "  subjectToken: verifiedUserAccessToken,",
+          '  audience: "bob-vault-orders", scope: "vault.db.read"',
+          "});",
+          "await jwtVerify(obo.access_token, verifyJwks, {",
+          '  issuer: VERIFY_OBO_ISSUER, audience: "bob-vault-orders",',
+          '  algorithms: ["RS256"]',
+          "});",
+          "assert(obo.sub === user.sub);",
+          "assert(obo.client_id === AGENT_CLIENT_ID);",
+        ].join("\n"),
+      },
+    },
+    agent: {
+      substeps: [
+        [
+          "사용자 세션 컨텍스트 수신",
+          "검증된 사용자 subject, scope, request ID만 실행 컨텍스트에 전달합니다.",
+          "SESSION",
+        ],
+        [
+          "의도와 엔터티 분석",
+          "자연어 요청에서 주문 ID, 날짜, 조회 건수 등 허용된 인자를 추출합니다.",
+          "INTENT",
+        ],
+        [
+          "허용 도구 계획 수립",
+          "계획 결과를 고정 MCP 도구 allowlist와 비교하고 쓰기·삭제 작업을 배제합니다.",
+          "PLAN",
+        ],
+        [
+          "입력 근거와 스키마 검증",
+          "생성된 인자가 사용자 요청에 근거하고 도구별 Zod 스키마를 만족하는지 확인합니다.",
+          "POLICY",
+        ],
+        [
+          "실행 계획 감사 기록",
+          "토큰이나 프롬프트 원문 없이 선택 도구와 request ID를 이벤트로 남깁니다.",
+          "AUDIT",
+        ],
+      ],
+      checks: [
+        ["도구 범위", "읽기 전용 allowlist"],
+        ["입력 검증", "요청 근거 + Zod 스키마"],
+        ["실패 모드", "규칙 기반 안전 계획"],
+        ["감사 추적", "request ID로 전 구간 연결"],
+      ],
+      codeViews: {
+        request: JSON.stringify(
+          {
+            requestId: "<REQUEST_ID>",
+            user: { sub: "<VERIFY_SUB>", scope: "vault.db.read" },
+            message: "최근 주문 5건을 요약해줘",
+          },
+          null,
+          2,
+        ),
+        response: JSON.stringify(
+          {
+            tool: activeTool,
+            arguments: toolArguments,
+            policy: "read-only",
+            grounded: true,
+          },
+          null,
+          2,
+        ),
+        execution: [
+          "const plan = await planner.plan(message);",
+          "assert(allowedTools.has(plan.tool));",
+          "assert(isGrounded(plan.arguments, message));",
+          "toolSchemas[plan.tool].parse(plan.arguments);",
+          "audit.record({ requestId, stage: 'policy', tool: plan.tool });",
+          "return plan;",
+        ].join("\n"),
+      },
+    },
+    mcp: {
+      substeps: [
+        [
+          "Bearer OBO JWT 수신",
+          "Authorization 헤더에서 OBO JWT를 추출하고 허용된 토큰 형식인지 확인합니다.",
+          "TRANSPORT",
+        ],
+        [
+          "JWT와 재사용 방지 검증",
+          "JWKS 서명·issuer·audience·exp·scope·JTI를 검증해 위조·만료·재사용을 차단합니다.",
+          "JWT",
+        ],
+        [
+          "JSON-RPC와 도구 스키마 검증",
+          "tools/call 메서드, 도구 이름, 인자 타입과 범위를 고정 스키마로 다시 검사합니다.",
+          "MCP",
+        ],
+        [
+          "도구 서비스 실행",
+          "검증이 끝난 도구만 Vault 동적 자격증명 경계로 전달합니다.",
+          "TOOL",
+        ],
+        [
+          "응답과 감사 이벤트 연결",
+          "MCP 응답과 Vault 이벤트를 동일한 request ID로 연결합니다.",
+          "TRACE",
+        ],
+      ],
+      checks: [
+        ["프로토콜", "MCP 2025-11-25 · JSON-RPC 2.0"],
+        ["토큰", "RS256 · issuer/audience/exp/JTI"],
+        ["권한", "scope=vault.db.read"],
+        ["도구", `${toolName} · 스키마 통과`],
+      ],
+      codeViews: {
+        request: JSON.stringify(
+          {
+            jsonrpc: "2.0",
+            id: "<REQUEST_ID>",
+            method: "tools/call",
+            params: { name: activeTool, arguments: toolArguments },
+          },
+          null,
+          2,
+        ),
+        response: JSON.stringify(
+          {
+            jsonrpc: "2.0",
+            id: "<REQUEST_ID>",
+            result: {
+              content: [{ type: "text", text: "<SANITIZED_TOOL_RESULT>" }],
+              isError: false,
+            },
+          },
+          null,
+          2,
+        ),
+        execution: [
+          "const claims = await verifyOboJwt(bearerToken, {",
+          '  audience: "bob-vault-orders", scope: "vault.db.read",',
+          "  validateJti: true",
+          "});",
+          "const input = toolSchemas[request.params.name].parse(",
+          "  request.params.arguments",
+          ");",
+          "return toolService.execute(request.params.name, input, claims);",
+        ].join("\n"),
+      },
+    },
+    vault: {
+      substeps: [
+        [
+          "Vault JWT Auth 로그인",
+          "OBO JWT와 bob-orders 역할을 namespace의 JWT auth mount에 제출합니다.",
+          "AUTH/JWT",
+        ],
+        [
+          "JWT 역할과 bound claims 평가",
+          "issuer, audience, scope, 사용자 subject와 Agent client_id를 역할 조건과 비교합니다.",
+          "ROLE",
+        ],
+        [
+          "최소 권한 정책 부여",
+          "database/creds/bob-orders-readonly의 read capability만 부여합니다.",
+          "POLICY",
+        ],
+        [
+          "민감 역할 분리와 차단",
+          "bob-payment-pii 같은 민감 역할은 Agent 경로에서 사용할 수 없습니다.",
+          "DENY",
+        ],
+        [
+          "동적 PostgreSQL 계정 발급",
+          "Database secrets engine이 짧은 TTL의 고유 사용자와 비밀번호를 생성합니다.",
+          "LEASE",
+        ],
+        [
+          "Vault 감사 로그 기록",
+          "토큰·비밀번호를 HMAC 처리한 상태로 인증·정책·발급 이벤트를 기록합니다.",
+          "AUDIT",
+        ],
+      ],
+      checks: [
+        ["JWT 역할", "bob-orders · bound audience/claims"],
+        ["정책", "DB read-only 경로만 허용"],
+        ["자격증명", "요청별 동적 계정 · 짧은 TTL"],
+        ["감사", "파일 audit device · 민감값 HMAC"],
+      ],
+      codeViews: {
+        request: [
+          "POST /v1/auth/jwt/login",
+          "X-Vault-Namespace: demo",
+          "",
+          '{ "role": "bob-orders", "jwt": "<OBO_JWT_REDACTED>" }',
+          "",
+          "GET /v1/database/creds/bob-orders-readonly",
+          "X-Vault-Token: <WRAPPED_VAULT_TOKEN>",
+        ].join("\n"),
+        response: JSON.stringify(
+          {
+            lease_id: "database/creds/bob-orders-readonly/<LEASE_ID>",
+            lease_duration: 60,
+            renewable: false,
+            data: {
+              username: "v-token-bob-<RANDOM>",
+              password: "<DYNAMIC_PASSWORD_REDACTED>",
+            },
+          },
+          null,
+          2,
+        ),
+        execution: [
+          'path "database/creds/bob-orders-readonly" {',
+          '  capabilities = ["read"]',
+          "}",
+          'bound_audiences = ["bob-vault-orders"]',
+          'bound_claims = { scope = "vault.db.read" }',
+          'token_policies = ["bob-orders-readonly"]',
+          "token_ttl = 60",
+        ].join("\n"),
+      },
+    },
+    database: {
+      substeps: [
+        [
+          "TLS 데이터베이스 연결",
+          "Vault 동적 사용자로 private RDS endpoint에 암호화 연결을 생성합니다.",
+          "TLS",
+        ],
+        [
+          "읽기 전용 역할 확인",
+          "동적 사용자는 허용 schema의 SELECT와 제한된 view 접근 권한만 가집니다.",
+          "RBAC",
+        ],
+        [
+          "고정·매개변수화 SQL 실행",
+          "자연어를 SQL로 직접 바꾸지 않고 고정 쿼리에 검증된 인자만 바인딩합니다.",
+          "QUERY",
+        ],
+        [
+          "결과 최소화와 응답 정제",
+          "행 수 제한과 허용 컬럼을 적용하고 MCP 응답 스키마로 직렬화합니다.",
+          "OUTPUT",
+        ],
+        [
+          "연결 종료와 자격증명 수명 종료",
+          "연결을 닫고 자격증명을 폐기하며 lease는 TTL 만료 또는 revoke로 종료됩니다.",
+          "REVOKE",
+        ],
+      ],
+      checks: [
+        ["네트워크", "Private subnet · TLS 연결"],
+        ["DB 역할", "SELECT · 제한된 view"],
+        ["SQL", "고정 statement · parameter binding"],
+        ["수명", "연결 종료 · lease TTL/revoke"],
+      ],
+      codeViews: {
+        request: JSON.stringify(
+          {
+            role: "bob-orders-readonly",
+            username: "<DYNAMIC_USERNAME>",
+            ssl: { rejectUnauthorized: true },
+            query: activeTool,
+            parameters: toolArguments,
+          },
+          null,
+          2,
+        ),
+        response: JSON.stringify(
+          {
+            rows: [
+              {
+                order_id: "ORD-1001",
+                payment_status: "PAID",
+                delivery_status: "IN_TRANSIT",
+                updated_at: "<TIMESTAMP>",
+              },
+            ],
+            rowCount: 1,
+            credentialState: "released",
+          },
+          null,
+          2,
+        ),
+        execution: (
+          readOnlyQueries[activeTool] ?? readOnlyQueries.get_order_status
+        ).join("\n"),
+      },
+    },
+  };
+
+  const detail = details[stage];
+  if (!detail) return {};
+  return {
+    ...detail,
+    substeps: detail.substeps.map(([title, description, tag]) => ({
+      title,
+      description,
+      tag,
+    })),
+  };
 }
 
 function openStageDialog(stage, trigger) {
@@ -367,9 +770,41 @@ function openStageDialog(stage, trigger) {
   }`;
   stageDialogTime.textContent = time;
   stageDialogAction.textContent = detail.action;
-  stageDialogCode.textContent = detail.code;
+  stageDialogSubsteps.replaceChildren();
+  detail.substeps.forEach((substep, index) => {
+    const item = document.createElement("li");
+    const copy = element("div", "stage-substep-copy");
+    copy.append(
+      element("strong", "", substep.title),
+      element("p", "", substep.description),
+    );
+    item.append(
+      element("span", "stage-substep-index", String(index + 1)),
+      copy,
+      element("span", "stage-substep-tag", substep.tag),
+    );
+    stageDialogSubsteps.append(item);
+  });
+  stageDialogChecks.replaceChildren();
+  detail.checks.forEach(([label, value]) => {
+    const row = document.createElement("div");
+    row.append(element("dt", "", label), element("dd", "", value));
+    stageDialogChecks.append(row);
+  });
+  currentStageDetail = detail;
+  renderStageCodeView("request");
   stageCodeCopy.textContent = "코드 복사";
   stageDialog.showModal();
+}
+
+function renderStageCodeView(view) {
+  if (!currentStageDetail?.codeViews?.[view]) return;
+  stageDialogCode.textContent = currentStageDetail.codeViews[view];
+  stageCodeViewButtons.forEach((button) => {
+    const selected = button.dataset.stageCodeView === view;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  });
 }
 
 function closeStageDialog() {
@@ -1554,6 +1989,12 @@ stageCodeCopy?.addEventListener("click", async () => {
   }
 });
 
+stageCodeViewButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    renderStageCodeView(button.dataset.stageCodeView);
+  });
+});
+
 function setUnauthenticatedStage(stage, label, status = "neutral") {
   const item = document.querySelector(`[data-unauth-stage="${stage}"]`);
   if (!item) return;
@@ -1563,9 +2004,9 @@ function setUnauthenticatedStage(stage, label, status = "neutral") {
 }
 
 function resetUnauthenticatedDemo() {
-  setUnauthenticatedStage("verify", "신원 없음");
-  setUnauthenticatedStage("agent", "미실행");
-  setUnauthenticatedStage("mcp", "대기");
+  setUnauthenticatedStage("verify", "로그인 대기");
+  setUnauthenticatedStage("agent", "권한 대기");
+  setUnauthenticatedStage("mcp", "미실행");
   setUnauthenticatedStage("vault", "미실행");
   setUnauthenticatedStage("database", "미실행");
   if (unauthResult) {
@@ -1574,69 +2015,95 @@ function resetUnauthenticatedDemo() {
   }
   if (unauthOutcome) {
     unauthOutcome.textContent =
-      "버튼을 누르면 인증 헤더가 없는 실제 요청을 전송합니다.";
+      "데모 사용자는 인증되지만 Lab 접근 권한은 부여되지 않습니다.";
     unauthOutcome.className = "unauth-outcome";
   }
   if (unauthTest) {
     unauthTest.disabled = false;
-    unauthTest.textContent = "인증 없이 접근 테스트";
+    unauthTest.textContent = "미승인 사용자로 로그인";
   }
 }
 
-async function runUnauthenticatedDemo() {
-  if (!unauthTest || unauthTest.disabled) return;
-  unauthTest.disabled = true;
-  unauthTest.textContent = "접근 시도 중…";
-  setUnauthenticatedStage("verify", "JWT 없음", "denied");
-  setUnauthenticatedStage("agent", "미실행");
-  setUnauthenticatedStage("mcp", "검사 중", "active");
+function resetVerifyDemoDialog() {
+  verifyDemoForm.hidden = false;
+  verifyDemoResultPanel.hidden = true;
+  verifyDemoUsername.value = "";
+  verifyDemoPassword.value = "";
+  verifyDemoPassword.type = "password";
+  verifyDemoPasswordToggle.setAttribute("aria-label", "비밀번호 표시");
+  verifyDemoError.hidden = true;
+  verifyDemoSubmit.disabled = false;
+  verifyDemoSubmit.textContent = "사인인";
+}
+
+function openVerifyDemo() {
+  if (!verifyDemoDialog || verifyDemoDialog.open) return;
+  resetVerifyDemoDialog();
+  verifyDemoDialog.showModal();
+  window.setTimeout(() => verifyDemoUsername.focus(), 80);
+}
+
+function closeVerifyDemo() {
+  if (!verifyDemoDialog?.open) return;
+  verifyDemoDialog.close();
+  unauthTest?.focus();
+}
+
+function applyUnapprovedUserResult() {
+  setUnauthenticatedStage("verify", "인증 성공", "complete");
+  setUnauthenticatedStage("agent", "권한 차단", "denied");
+  setUnauthenticatedStage("mcp", "미실행");
   setUnauthenticatedStage("vault", "미실행");
   setUnauthenticatedStage("database", "미실행");
-  unauthResult.textContent = "검증 중";
-  unauthResult.className = "unauth-demo-result active";
+  unauthResult.textContent = "403 권한 차단";
+  unauthResult.className = "unauth-demo-result denied";
   unauthOutcome.textContent =
-    "Authorization 헤더 없이 get_recent_orders 도구 호출을 전송했습니다.";
-  unauthOutcome.className = "unauth-outcome active";
-
-  try {
-    const response = await fetch("/mcp", {
-      method: "POST",
-      headers: {
-        accept: "application/json, text/event-stream",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "unauthenticated-demo",
-        method: "tools/call",
-        params: { name: "get_recent_orders", arguments: { limit: 5 } },
-      }),
-    });
-
-    if (response.status !== 401) {
-      throw new Error(`unexpected status ${String(response.status)}`);
-    }
-
-    setUnauthenticatedStage("mcp", "차단", "denied");
-    unauthResult.textContent = "401 차단";
-    unauthResult.className = "unauth-demo-result denied";
-    unauthOutcome.textContent =
-      "MCP 입구에서 요청을 차단했습니다. Vault 정책 평가와 DB 자격증명 발급은 실행되지 않았습니다.";
-    unauthOutcome.className = "unauth-outcome denied";
-  } catch {
-    setUnauthenticatedStage("mcp", "확인 필요", "error");
-    unauthResult.textContent = "테스트 오류";
-    unauthResult.className = "unauth-demo-result error";
-    unauthOutcome.textContent =
-      "예상한 401 응답을 확인하지 못했습니다. 서비스 상태를 확인해 주세요.";
-    unauthOutcome.className = "unauth-outcome error";
-  } finally {
-    unauthTest.disabled = false;
-    unauthTest.textContent = "다시 테스트";
-  }
+    "Verify 사용자 인증과 JWT 발급은 성공했습니다. vault.lab.user entitlement가 없어 애플리케이션에서 차단했으며 Agent·MCP·Vault·DB는 실행하지 않았습니다.";
+  unauthOutcome.className = "unauth-outcome denied";
+  unauthTest.textContent = "미승인 사용자 다시 로그인";
 }
 
-unauthTest?.addEventListener("click", () => void runUnauthenticatedDemo());
+unauthTest?.addEventListener("click", openVerifyDemo);
+verifyDemoClose?.addEventListener("click", closeVerifyDemo);
+verifyDemoDialog?.addEventListener("click", (event) => {
+  if (event.target === verifyDemoDialog) closeVerifyDemo();
+});
+verifyDemoFill?.addEventListener("click", () => {
+  verifyDemoUsername.value = "unapproved.user@demo.local";
+  verifyDemoPassword.value = "DemoOnly!2026";
+  verifyDemoError.hidden = true;
+  verifyDemoUsername.focus();
+});
+verifyDemoPasswordToggle?.addEventListener("click", () => {
+  const reveal = verifyDemoPassword.type === "password";
+  verifyDemoPassword.type = reveal ? "text" : "password";
+  verifyDemoPasswordToggle.setAttribute(
+    "aria-label",
+    reveal ? "비밀번호 숨기기" : "비밀번호 표시",
+  );
+});
+verifyDemoForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const valid =
+    verifyDemoUsername.value === "unapproved.user@demo.local" &&
+    verifyDemoPassword.value === "DemoOnly!2026";
+  if (!valid) {
+    verifyDemoError.hidden = false;
+    verifyDemoUsername.focus();
+    return;
+  }
+  verifyDemoError.hidden = true;
+  verifyDemoSubmit.disabled = true;
+  verifyDemoSubmit.textContent = "신원 확인 중…";
+  await new Promise((resolve) => window.setTimeout(resolve, 650));
+  verifyDemoForm.hidden = true;
+  verifyDemoResultPanel.hidden = false;
+  verifyDemoFinish.focus();
+});
+verifyDemoFinish?.addEventListener("click", () => {
+  applyUnapprovedUserResult();
+  closeVerifyDemo();
+});
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();

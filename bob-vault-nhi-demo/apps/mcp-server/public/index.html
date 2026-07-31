@@ -9,10 +9,10 @@
       content="IBM Verify 사용자 인증, MCP 요청 제어, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 Agentic Security Lab"
     />
     <title>Agentic Security Lab | 대화 · 접근제어</title>
-    <script src="/theme.js?v=20260801-liveflow2"></script>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260801-liveflow2" />
-    <link rel="stylesheet" href="/styles.css?v=20260801-liveflow2" />
-    <script src="/app.js?v=20260801-liveflow2" type="module"></script>
+    <script src="/theme.js?v=20260801-liveflow3"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260801-liveflow3" />
+    <link rel="stylesheet" href="/styles.css?v=20260801-liveflow3" />
+    <script src="/app.js?v=20260801-liveflow3" type="module"></script>
   </head>
   <body>
     <header class="topbar">
@@ -122,7 +122,7 @@
               <span class="carbon-icon icon-launch" aria-hidden="true"></span>
             </a>
             <button class="secondary-action" id="unauth-test" type="button">
-              인증 없이 접근 테스트
+              미승인 사용자로 로그인
             </button>
           </div>
 
@@ -147,27 +147,25 @@
             <div class="unauth-demo-heading">
               <div>
                 <span>NEGATIVE PATH</span>
-                <h2 id="unauth-demo-title">
-                  인증 전 접근은 어디서 차단될까요?
-                </h2>
+                <h2 id="unauth-demo-title">로그인했지만 권한이 없다면?</h2>
               </div>
               <span class="unauth-demo-result waiting" id="unauth-result"
                 >테스트 전</span
               >
             </div>
             <p>
-              토큰 없이 실제 MCP 도구 호출을 보내고 Vault와 DB가 실행되지 않는지
-              확인합니다.
+              Verify 인증은 성공하지만 애플리케이션 entitlement가 없는 사용자가
+              어디서 차단되는지 확인합니다.
             </p>
             <ol class="unauth-path" id="unauth-path">
               <li data-unauth-stage="verify">
-                <strong>Verify</strong><span>신원 없음</span>
+                <strong>Verify</strong><span>로그인 대기</span>
               </li>
               <li data-unauth-stage="agent">
-                <strong>Agent</strong><span>미실행</span>
+                <strong>Application</strong><span>권한 대기</span>
               </li>
               <li data-unauth-stage="mcp">
-                <strong>MCP</strong><span>대기</span>
+                <strong>Agent·MCP</strong><span>미실행</span>
               </li>
               <li data-unauth-stage="vault">
                 <strong>Vault</strong><span>미실행</span>
@@ -177,7 +175,7 @@
               </li>
             </ol>
             <div class="unauth-outcome" id="unauth-outcome" role="status">
-              버튼을 누르면 인증 헤더가 없는 실제 요청을 전송합니다.
+              데모 사용자는 인증되지만 Lab 접근 권한은 부여되지 않습니다.
             </div>
           </section>
         </div>
@@ -725,6 +723,155 @@
       </section>
 
       <dialog
+        class="verify-demo-dialog"
+        id="verify-demo-dialog"
+        aria-labelledby="verify-demo-title"
+      >
+        <div class="verify-demo-shell">
+          <aside class="verify-demo-visual" aria-hidden="true">
+            <img
+              src="/images/verify-cloud-directory-demo.svg"
+              alt=""
+              width="760"
+              height="560"
+            />
+          </aside>
+
+          <section class="verify-demo-panel">
+            <button
+              class="verify-demo-close"
+              id="verify-demo-close"
+              type="button"
+              aria-label="Verify 데모 로그인 닫기"
+            >
+              ×
+            </button>
+            <span class="verify-demo-badge">DEMO SIMULATION</span>
+
+            <form class="verify-demo-form" id="verify-demo-form">
+              <div class="verify-demo-brand">IBM Verify</div>
+              <h2 id="verify-demo-title">Cloud Directory(으)로 사인인</h2>
+
+              <label for="verify-demo-username">사용자 이름</label>
+              <input
+                id="verify-demo-username"
+                name="username"
+                type="text"
+                autocomplete="off"
+                placeholder="사용자 이름"
+                required
+              />
+
+              <div class="verify-password-label">
+                <label for="verify-demo-password">비밀번호</label>
+                <button type="button" tabindex="-1">
+                  비밀번호를 잊으셨습니까?
+                </button>
+              </div>
+              <div class="verify-password-field">
+                <input
+                  id="verify-demo-password"
+                  name="password"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="비밀번호"
+                  required
+                />
+                <button
+                  id="verify-demo-password-toggle"
+                  type="button"
+                  aria-label="비밀번호 표시"
+                >
+                  ◉
+                </button>
+              </div>
+
+              <div class="verify-demo-credentials" aria-label="가상 데모 계정">
+                <span>가상 데모 계정</span>
+                <code>unapproved.user@demo.local</code>
+                <code>DemoOnly!2026</code>
+                <button id="verify-demo-fill" type="button">자동 입력</button>
+              </div>
+
+              <p
+                class="verify-demo-error"
+                id="verify-demo-error"
+                role="alert"
+                hidden
+              >
+                가상 데모 계정 정보를 확인해 주세요.
+              </p>
+
+              <div class="verify-demo-submit-row">
+                <button id="verify-demo-submit" type="submit">사인인</button>
+              </div>
+              <button class="verify-passwordless" type="button" tabindex="-1">
+                비밀번호 없이 사인인
+              </button>
+            </form>
+
+            <section
+              class="verify-demo-result-panel"
+              id="verify-demo-result-panel"
+              hidden
+            >
+              <div class="verify-demo-brand">IBM Verify</div>
+              <span class="verify-demo-result-kicker">IDENTITY VERIFIED</span>
+              <h2>인증은 성공했지만 접근 권한이 없습니다</h2>
+              <p>
+                Cloud Directory가 사용자 신원을 확인하고 데모 JWT를
+                발급했습니다. 하지만 Agentic Security Lab entitlement가 없어
+                애플리케이션이 요청을 중단했습니다.
+              </p>
+
+              <ol class="verify-demo-result-steps">
+                <li class="complete">
+                  <span>1</span>
+                  <div>
+                    <strong>사용자 인증</strong
+                    ><small>Cloud Directory 자격 증명 확인</small>
+                  </div>
+                  <b>성공</b>
+                </li>
+                <li class="complete">
+                  <span>2</span>
+                  <div>
+                    <strong>사용자 JWT</strong
+                    ><small>sub·iss·aud·exp 클레임 발급</small>
+                  </div>
+                  <b>발급</b>
+                </li>
+                <li class="denied">
+                  <span>3</span>
+                  <div>
+                    <strong>애플리케이션 권한</strong
+                    ><small>필수 entitlement: vault.lab.user</small>
+                  </div>
+                  <b>차단</b>
+                </li>
+              </ol>
+
+              <div class="verify-demo-denial">
+                <strong>403 · 애플리케이션 접근 거부</strong>
+                <span
+                  >Agent, MCP, Vault, PostgreSQL은 호출되지 않았습니다.</span
+                >
+              </div>
+              <button id="verify-demo-finish" type="button">
+                차단 결과 확인
+              </button>
+            </section>
+
+            <footer class="verify-demo-footer">
+              Licensed Materials - Property of IBM 5725-X36 © Copyright IBM
+              Corp. 2017, 2024. All rights reserved. · International Business
+              Machines 상표
+            </footer>
+          </section>
+        </div>
+      </dialog>
+
+      <dialog
         class="stage-dialog"
         id="stage-dialog"
         aria-labelledby="stage-dialog-title"
@@ -766,8 +913,24 @@
               class="stage-dialog-section"
               aria-labelledby="stage-action-title"
             >
-              <h3 id="stage-action-title">수행 내용</h3>
+              <h3 id="stage-action-title">보안 목적</h3>
               <p id="stage-dialog-action"></p>
+            </section>
+
+            <section
+              class="stage-dialog-section"
+              aria-labelledby="stage-substeps-title"
+            >
+              <h3 id="stage-substeps-title">수행 단계</h3>
+              <ol class="stage-substeps" id="stage-dialog-substeps"></ol>
+            </section>
+
+            <section
+              class="stage-dialog-section"
+              aria-labelledby="stage-checks-title"
+            >
+              <h3 id="stage-checks-title">검증 결과</h3>
+              <dl class="stage-checks" id="stage-dialog-checks"></dl>
             </section>
 
             <section
@@ -775,8 +938,40 @@
               aria-labelledby="stage-code-title"
             >
               <div class="stage-code-heading">
-                <h3 id="stage-code-title">검증 및 실행 코드</h3>
+                <h3 id="stage-code-title">요청·응답과 실행 코드</h3>
                 <button id="stage-code-copy" type="button">코드 복사</button>
+              </div>
+              <div
+                class="stage-code-tabs"
+                role="tablist"
+                aria-label="코드 보기"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected="true"
+                  data-stage-code-view="request"
+                >
+                  요청 예시
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  tabindex="-1"
+                  data-stage-code-view="response"
+                >
+                  응답 예시
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected="false"
+                  tabindex="-1"
+                  data-stage-code-view="execution"
+                >
+                  실행 코드
+                </button>
               </div>
               <pre><code id="stage-dialog-code"></code></pre>
             </section>

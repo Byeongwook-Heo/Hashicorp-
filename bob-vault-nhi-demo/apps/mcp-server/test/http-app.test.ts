@@ -160,7 +160,9 @@ describe("HTTP security boundary", () => {
     expect(html).toContain('id="trace-progress-fill"');
     expect(html).toContain('id="unauth-test"');
     expect(html).toContain('id="unauth-path"');
-    expect(html).toContain("인증 없이 접근 테스트");
+    expect(html).toContain("미승인 사용자로 로그인");
+    expect(html).toContain('id="verify-demo-dialog"');
+    expect(html).toContain("DEMO SIMULATION");
     expect(html).toContain('data-stage="vault"');
     expect(html).toContain("/icons/custom/postgresql-elephant.svg");
     expect(html).toContain("/icons/custom/hashicorp-vault.svg");
