@@ -67,11 +67,13 @@ verify-preflight: ## Validate the real Verify client assertion and issued JWT wi
 	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-preflight"
 
 verify-client-jwt-plan: ## Inspect the Verify API client and show the sanitized JWT conversion plan.
-	@PRINT_BUILD_LOGS=1 ./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-client-jwt-plan"
+	@test -n "$(VERIFY_MANAGER_CLIENT_ID)" || { echo "Set VERIFY_MANAGER_CLIENT_ID to a separate temporary Verify management client."; exit 2; }
+	@PRINT_BUILD_LOGS=1 ./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-client-jwt-plan,VERIFY_MANAGER_CLIENT_ID=$(VERIFY_MANAGER_CLIENT_ID)"
 
 verify-client-enable-jwt: ## Issue JWT access tokens and remove temporary Verify client admin access.
+	@test -n "$(VERIFY_MANAGER_CLIENT_ID)" || { echo "Set VERIFY_MANAGER_CLIENT_ID to a separate temporary Verify management client."; exit 2; }
 	@test "$(CONFIRM_VERIFY_CLIENT_UPDATE)" = "$(PROJECT)" || { echo "Set CONFIRM_VERIFY_CLIENT_UPDATE=$(PROJECT)"; exit 2; }
-	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-client-enable-jwt,CONFIRM_VERIFY_CLIENT_UPDATE=$(CONFIRM_VERIFY_CLIENT_UPDATE)"
+	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=verify-client-enable-jwt,VERIFY_MANAGER_CLIENT_ID=$(VERIFY_MANAGER_CLIENT_ID),CONFIRM_VERIFY_CLIENT_UPDATE=$(CONFIRM_VERIFY_CLIENT_UPDATE)"
 
 configure-verify: ## Store IBM Verify public integration values from VERIFY_* environment variables.
 	@./scripts/configure-verify.sh

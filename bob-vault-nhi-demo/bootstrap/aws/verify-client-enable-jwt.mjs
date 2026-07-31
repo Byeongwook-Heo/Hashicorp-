@@ -19,6 +19,7 @@ const requiredNames = [
   "VERIFY_TOKEN_URL",
   "VERIFY_ISSUER",
   "VERIFY_CLIENT_ID",
+  "VERIFY_MANAGER_CLIENT_ID",
   "VERIFY_KMS_KEY_ID",
 ];
 for (const name of requiredNames) {
@@ -34,6 +35,11 @@ if (
     "CONFIRM_VERIFY_CLIENT_UPDATE must equal PROJECT_NAME for apply",
   );
 }
+if (process.env.VERIFY_MANAGER_CLIENT_ID === process.env.VERIFY_CLIENT_ID) {
+  throw new Error(
+    "VERIFY_MANAGER_CLIENT_ID must be a separate temporary management client, not the target client",
+  );
+}
 
 const tokenUrl = requireHttpsUrl(
   process.env.VERIFY_TOKEN_URL,
@@ -47,10 +53,14 @@ const managementUrl = buildVerifyManagementUrl(
 const signer = new KmsClientAssertionSigner({
   region: process.env.AWS_REGION,
   keyId: process.env.VERIFY_KMS_KEY_ID,
-  clientId: process.env.VERIFY_CLIENT_ID,
+  clientId: process.env.VERIFY_MANAGER_CLIENT_ID,
   audience: process.env.VERIFY_TOKEN_URL,
 });
-const accessToken = await requestAccessToken(signer, tokenUrl);
+const accessToken = await requestAccessToken(
+  signer,
+  tokenUrl,
+  process.env.VERIFY_MANAGER_CLIENT_ID,
+);
 const currentClient = await requestJson(managementUrl, {
   method: "GET",
   accessToken,
@@ -60,7 +70,10 @@ const updatedClient = prepareVerifyClientUpdate(
   currentClient,
   process.env.VERIFY_CLIENT_ID,
 );
-const plan = sanitizedUpdatePlan(currentClient, updatedClient);
+const plan = {
+  ...sanitizedUpdatePlan(currentClient, updatedClient),
+  usesSeparateManagerClient: true,
+};
 
 console.log(JSON.stringify(plan, null, 2));
 if (mode === "plan") {
@@ -86,11 +99,11 @@ console.log(
   "IBM Verify accepted the API client update: JWT access tokens enabled and temporary manageAPIClients entitlement removed.",
 );
 
-async function requestAccessToken(clientAssertionSigner, url) {
+async function requestAccessToken(clientAssertionSigner, url, clientId) {
   const assertion = await clientAssertionSigner.sign();
   const body = new URLSearchParams({
     grant_type: "client_credentials",
-    client_id: process.env.VERIFY_CLIENT_ID,
+    client_id: clientId,
     client_assertion_type:
       "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
     client_assertion: assertion,

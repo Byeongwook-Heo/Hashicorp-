@@ -82,16 +82,20 @@ The preflight prints only validation outcomes. It never prints the assertion or 
 
 Some Verify tenants expose `Private key JWT` and custom scopes in the Admin UI
 but do not expose the API client's access-token format. If preflight reaches
-JWT verification and fails because Verify issued an opaque token, temporarily
-grant only `Manage API clients` to the same client. Do not add the setting to
-Additional properties.
+JWT verification and fails because Verify issued an opaque token, create a
+separate temporary API client with only `Manage API clients`. Configure that
+temporary client with `Private key JWT`, JTI validation, and the same public
+JWKS URI as the target client. Do not add the setting to Additional properties
+and do not grant the target client authority to update itself.
 
 Commit and upload the source before invoking the CodeBuild-only workflow:
 
 ```bash
 make upload-source
-make verify-client-jwt-plan
-CONFIRM_VERIFY_CLIENT_UPDATE=bob-vault-nhi-demo make verify-client-enable-jwt
+VERIFY_MANAGER_CLIENT_ID='<temporary-client-id>' make verify-client-jwt-plan
+VERIFY_MANAGER_CLIENT_ID='<temporary-client-id>' \
+  CONFIRM_VERIFY_CLIENT_UPDATE=bob-vault-nhi-demo \
+  make verify-client-enable-jwt
 make verify-preflight
 ```
 
@@ -99,7 +103,9 @@ The plan is read-only and prints no token or client secret. The guarded update
 reads the complete client definition, refuses to continue if the response
 omits the existing client secret, changes `accessTokenType` to `jwt`, and
 removes `manageAPIClients` in the same request. The update is intentionally
-one-shot because the client no longer has management access afterward.
+one-shot because the target client no longer has management access afterward.
+Delete the temporary management client in the Verify Admin UI after preflight
+succeeds.
 
 ## Vault claim mapping
 
