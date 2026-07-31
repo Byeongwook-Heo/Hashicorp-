@@ -5,11 +5,18 @@ import { z } from "zod";
 
 import type { AppConfig } from "./config.js";
 import { ExternalServiceError, NotFoundError } from "./errors.js";
-import { failedPaymentSummaryQuery, orderStatusQuery } from "./queries.js";
+import {
+  failedPaymentSummaryQuery,
+  failedPaymentTrendQuery,
+  orderStatusQuery,
+  recentOrdersQuery,
+} from "./queries.js";
 import type {
   DynamicDatabaseCredentials,
   FailedPaymentSummary,
+  FailedPaymentTrend,
   OrderStatus,
+  RecentOrders,
 } from "./types.js";
 
 const orderRowSchema = z.object({
@@ -24,6 +31,12 @@ const summaryRowSchema = z.object({
   count: z.number().int().nonnegative(),
 });
 
+const trendRowSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  total_count: z.number().int().nonnegative(),
+  failed_count: z.number().int().nonnegative(),
+});
+
 export interface OrdersDatabase {
   getOrderStatus(
     credentials: DynamicDatabaseCredentials,
@@ -33,6 +46,14 @@ export interface OrdersDatabase {
     credentials: DynamicDatabaseCredentials,
     date: string,
   ): Promise<FailedPaymentSummary>;
+  getRecentOrders(
+    credentials: DynamicDatabaseCredentials,
+    limit: number,
+  ): Promise<RecentOrders>;
+  getFailedPaymentTrend(
+    credentials: DynamicDatabaseCredentials,
+    days: number,
+  ): Promise<FailedPaymentTrend>;
 }
 
 export class PostgresOrdersDatabase implements OrdersDatabase {
@@ -78,6 +99,35 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
           0,
         ),
         by_delivery_status: byDeliveryStatus,
+      };
+    });
+  }
+
+  public async getRecentOrders(
+    credentials: DynamicDatabaseCredentials,
+    limit: number,
+  ): Promise<RecentOrders> {
+    return this.#withClient(credentials, async (client) => {
+      const result = await client.query<Record<string, unknown>>(
+        recentOrdersQuery,
+        [limit],
+      );
+      return { orders: result.rows.map((row) => mapOrder(row)) };
+    });
+  }
+
+  public async getFailedPaymentTrend(
+    credentials: DynamicDatabaseCredentials,
+    days: number,
+  ): Promise<FailedPaymentTrend> {
+    return this.#withClient(credentials, async (client) => {
+      const result = await client.query<Record<string, unknown>>(
+        failedPaymentTrendQuery,
+        [days],
+      );
+      return {
+        days,
+        points: result.rows.map((row) => trendRowSchema.parse(row)),
       };
     });
   }

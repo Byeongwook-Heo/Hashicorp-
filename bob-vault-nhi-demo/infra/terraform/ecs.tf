@@ -45,7 +45,8 @@ resource "aws_iam_role_policy" "ecs_transport_secret" {
       Action = ["secretsmanager:GetSecretValue"]
       Resource = concat(
         [data.aws_secretsmanager_secret.transport_token[0].arn],
-        var.chatbot_enabled ? [data.aws_secretsmanager_secret.chat_session[0].arn] : []
+        var.chatbot_enabled ? [data.aws_secretsmanager_secret.chat_session[0].arn] : [],
+        var.chatbot_enabled && var.inference_enabled ? [data.aws_secretsmanager_secret.agent_runtime[0].arn] : []
       )
     }]
   })
@@ -88,6 +89,11 @@ locals {
     { name = "CHATBOT_ENABLED", value = tostring(var.chatbot_enabled) },
     { name = "IDENTITY_FLOW", value = var.chatbot_enabled ? "obo" : "client_credentials" },
     { name = "MCP_AUTH_MODE", value = var.chatbot_enabled ? "user_jwt" : "static_bearer" },
+    { name = "AGENT_PLANNING_MODE", value = var.chatbot_enabled && var.inference_enabled ? "private" : "bounded" },
+    { name = "INFERENCE_BASE_URL", value = var.inference_enabled ? var.inference_base_url : "" },
+    { name = "INFERENCE_MODEL", value = var.inference_enabled ? nonsensitive(var.inference_model) : "" },
+    { name = "INFERENCE_TIMEOUT_MS", value = "12000" },
+    { name = "INFERENCE_KEEP_ALIVE", value = "30m" },
     { name = "SERVICE_VERSION", value = var.service_version },
     { name = "AWS_REGION", value = var.aws_region },
     { name = "ALLOWED_ORIGINS", value = "https://${local.fqdn}" },
@@ -144,6 +150,10 @@ locals {
     var.chatbot_enabled ? [{
       name      = "SESSION_SECRET"
       valueFrom = data.aws_secretsmanager_secret.chat_session[0].arn
+    }] : [],
+    var.chatbot_enabled && var.inference_enabled ? [{
+      name      = "INFERENCE_API_TOKEN"
+      valueFrom = data.aws_secretsmanager_secret.agent_runtime[0].arn
     }] : []
   ) : []
 }

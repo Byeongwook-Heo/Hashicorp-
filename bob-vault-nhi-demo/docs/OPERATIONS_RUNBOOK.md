@@ -30,7 +30,10 @@ After IBM Verify chatbot setup:
 ```bash
 make configure-chatbot-verify
 make bootstrap-chat-session-secret
+# Inject AGENT_RUNTIME_TOKEN from an approved secret source without printing it.
+make bootstrap-agent-runtime-secret
 make vault-bootstrap
+make agent-runtime-start
 make deploy-chatbot
 make smoke
 make demo-status
@@ -46,8 +49,15 @@ make smoke
 
 Confirm ECS has one healthy task, the target group is healthy, Verify login
 redirects correctly, Vault is initialized and unsealed, and RDS is available.
-The `/ops` dashboard contains sanitized in-memory decisions for 30 minutes,
-maximum 100 events.
+The integrated control panel contains sanitized in-memory decisions for 30
+minutes, maximum 100 events. It must show either **AI 계획 준비됨** or **안전
+모드 준비됨** before the demo begins.
+
+After the live-demo window, stop the GPU runtime to avoid idle cost:
+
+```bash
+make agent-runtime-stop
+```
 
 ## Source CIDR change
 
@@ -66,6 +76,8 @@ egress ranges.
 
 - Chat session key: create a new Secrets Manager version and force a new ECS
   deployment. Existing sessions become invalid.
+- Agent runtime token: copy the approved source secret into the project-scoped
+  secret without printing it, then force a new ECS deployment.
 - Legacy transport token: retained only for bootstrap compatibility and not
   accepted by the chatbot MCP mode.
 - Verify signing key: create/register a second KMS public JWK before changing the task key.

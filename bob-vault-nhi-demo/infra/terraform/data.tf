@@ -73,6 +73,11 @@ data "aws_secretsmanager_secret" "chat_session" {
   name  = "${var.project_name}/chat/session-secret"
 }
 
+data "aws_secretsmanager_secret" "agent_runtime" {
+  count = var.deploy_service && var.chatbot_enabled && var.inference_enabled ? 1 : 0
+  name  = "${var.project_name}/chat/agent-runtime-token"
+}
+
 locals {
   fqdn                   = "${var.hostname}.${var.public_zone_name}"
   allowed_source_cidrs   = split(",", nonsensitive(data.aws_ssm_parameter.allowed_source_cidrs.value))

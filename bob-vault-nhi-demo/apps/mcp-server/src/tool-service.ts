@@ -9,8 +9,12 @@ import type {
   DynamicDatabaseCredentials,
   FailedPaymentSummary,
   FailedPaymentSummaryResult,
+  FailedPaymentTrend,
+  FailedPaymentTrendResult,
   OrderStatus,
   OrderStatusResult,
+  RecentOrders,
+  RecentOrdersResult,
   SensitivePaymentDenial,
 } from "./types.js";
 
@@ -46,6 +50,32 @@ export class ToolService {
       "get_failed_payment_summary",
       identityContext,
       (credentials) => this.database.getFailedPaymentSummary(credentials, date),
+    );
+  }
+
+  public async getRecentOrders(
+    requestId: string,
+    limit: number,
+    identityContext?: IdentityContext,
+  ): Promise<RecentOrdersResult> {
+    return this.#runAuthorized(
+      requestId,
+      "get_recent_orders",
+      identityContext,
+      (credentials) => this.database.getRecentOrders(credentials, limit),
+    );
+  }
+
+  public async getFailedPaymentTrend(
+    requestId: string,
+    days: number,
+    identityContext?: IdentityContext,
+  ): Promise<FailedPaymentTrendResult> {
+    return this.#runAuthorized(
+      requestId,
+      "get_failed_payment_trend",
+      identityContext,
+      (credentials) => this.database.getFailedPaymentTrend(credentials, days),
     );
   }
 
@@ -94,7 +124,10 @@ export class ToolService {
     }
   }
 
-  async #runAuthorized<T extends OrderStatus | FailedPaymentSummary>(
+  async #runAuthorized<
+    T extends
+      OrderStatus | FailedPaymentSummary | RecentOrders | FailedPaymentTrend,
+  >(
     requestId: string,
     action: string,
     identityContext: IdentityContext | undefined,

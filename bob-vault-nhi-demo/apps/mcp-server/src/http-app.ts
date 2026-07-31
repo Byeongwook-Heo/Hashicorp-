@@ -53,6 +53,8 @@ const summaryDateSchema = z
     (value) => !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`)),
     "Invalid date",
   );
+const recentOrdersLimitSchema = z.coerce.number().int().min(1).max(5);
+const failedPaymentDaysSchema = z.coerce.number().int().min(1).max(7);
 const chatMessageSchema = z.object({
   message: z.string().trim().min(1).max(500),
 });
@@ -139,7 +141,13 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
       chatbot: {
         enabled: config.chatbotEnabled,
         identityFlow: config.identityFlow,
-        agent: "bounded-mcp",
+        agent: "policy-bound-ai",
+        planning: dependencies.agent?.getStatus?.() ?? {
+          configured: false,
+          ready: false,
+          mode: "safe-fallback",
+          fallbackReady: true,
+        },
       },
       version: config.serviceVersion,
       protocol: "2025-11-25",
@@ -215,6 +223,40 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
       }
     },
   );
+  app.post("/api/preflight", async (request, response, next) => {
+    try {
+      if (!dependencies.agent?.preflight) {
+        throw new AppError(
+          "The agent planning service is not configured",
+          503,
+          "AGENT_UNAVAILABLE",
+        );
+      }
+      const session = await requireUserSession(
+        userAuth,
+        request.header("cookie"),
+      );
+      requireCsrf(request, session);
+      response.setHeader("cache-control", "no-store");
+      response.json(await dependencies.agent.preflight());
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.post("/api/demo/reset-session", async (request, response, next) => {
+    try {
+      const session = await requireUserSession(
+        userAuth,
+        request.header("cookie"),
+      );
+      requireCsrf(request, session);
+      events.clear();
+      dependencies.agent?.reset?.(session.subject);
+      response.status(204).end();
+    } catch (error) {
+      next(error);
+    }
+  });
   const listEvents = (
     request: Request,
     response: Response,
@@ -448,6 +490,90 @@ function createMcpServer(
   );
 
   server.registerTool(
+    "get_recent_orders",
+    {
+      title: "Get recent orders",
+      description:
+        "Return at most five recent synthetic orders using short-lived Vault credentials.",
+      inputSchema: {
+        limit: recentOrdersLimitSchema.describe(
+          "Maximum number of orders between 1 and 5",
+        ),
+      },
+      outputSchema: {
+        orders: z
+          .array(
+            z.object({
+              order_id: z.string(),
+              payment_status: z.string(),
+              delivery_status: z.string(),
+              updated_at: z.string(),
+            }),
+          )
+          .max(5),
+        access: z.object({
+          nhi: z.string(),
+          user_subject: z.string().optional(),
+          verify: z.literal("authenticated"),
+          vault: z.literal("authorized"),
+          credential_type: z.literal("dynamic"),
+          credential_ttl_seconds: z.number(),
+        }),
+      },
+    },
+    async ({ limit }) =>
+      toolResult(() =>
+        dependencies.tools.getRecentOrders(
+          requestId,
+          limit,
+          toIdentityContext(principal),
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "get_failed_payment_trend",
+    {
+      title: "Get failed payment trend",
+      description:
+        "Return a bounded, non-personal daily payment aggregate for up to seven days.",
+      inputSchema: {
+        days: failedPaymentDaysSchema.describe(
+          "Number of calendar days between 1 and 7",
+        ),
+      },
+      outputSchema: {
+        days: z.number().int().min(1).max(7),
+        points: z
+          .array(
+            z.object({
+              date: z.string(),
+              total_count: z.number().int().nonnegative(),
+              failed_count: z.number().int().nonnegative(),
+            }),
+          )
+          .max(7),
+        access: z.object({
+          nhi: z.string(),
+          user_subject: z.string().optional(),
+          verify: z.literal("authenticated"),
+          vault: z.literal("authorized"),
+          credential_type: z.literal("dynamic"),
+          credential_ttl_seconds: z.number(),
+        }),
+      },
+    },
+    async ({ days }) =>
+      toolResult(() =>
+        dependencies.tools.getFailedPaymentTrend(
+          requestId,
+          days,
+          toIdentityContext(principal),
+        ),
+      ),
+  );
+
+  server.registerTool(
     "get_sensitive_payment_data",
     {
       title: "Request sensitive payment data",
@@ -653,6 +779,8 @@ function enforceFixedToolContract(
   const allowedFields: Record<string, ReadonlySet<string>> = {
     get_order_status: new Set(["order_id"]),
     get_failed_payment_summary: new Set(["date"]),
+    get_recent_orders: new Set(["limit"]),
+    get_failed_payment_trend: new Set(["days"]),
     get_sensitive_payment_data: new Set(["customer_id"]),
   };
   if (typeof toolName !== "string") {

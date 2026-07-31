@@ -66,6 +66,8 @@ function buildApp(options?: {
       failed_count: 0,
       by_delivery_status: [],
     }),
+    getRecentOrders: vi.fn().mockResolvedValue({ orders: [] }),
+    getFailedPaymentTrend: vi.fn().mockResolvedValue({ days: 7, points: [] }),
   };
   const events = new SecurityEventStore();
   const tools = new ToolService(identity, vault, database, events);
@@ -100,6 +102,19 @@ function buildApp(options?: {
         },
       ],
     }),
+    preflight: vi.fn().mockResolvedValue({
+      configured: true,
+      ready: true,
+      mode: "enhanced",
+      fallbackReady: true,
+    }),
+    getStatus: vi.fn().mockReturnValue({
+      configured: true,
+      ready: true,
+      mode: "enhanced",
+      fallbackReady: true,
+    }),
+    reset: vi.fn(),
   };
   return {
     app: createHttpApp({
@@ -143,6 +158,7 @@ describe("HTTP security boundary", () => {
     expect(html).toContain("/icons/custom/postgresql-elephant.svg");
     expect(html).toContain("Bob AI 에이전트");
     expect(html).not.toContain("보안 결정 추이");
+    expect(html.toLowerCase()).not.toContain("ollama");
   });
 
   it("redirects legacy operations routes to the unified control center", async () => {
@@ -196,7 +212,7 @@ describe("HTTP security boundary", () => {
       .expect(401);
   });
 
-  it("lists only the three fixed tools for an authenticated client", async () => {
+  it("lists only the five fixed tools for an authenticated client", async () => {
     const { app } = buildApp();
     const response = await request(app)
       .post("/mcp")
@@ -212,7 +228,9 @@ describe("HTTP security boundary", () => {
         .sort(),
     ).toEqual([
       "get_failed_payment_summary",
+      "get_failed_payment_trend",
       "get_order_status",
+      "get_recent_orders",
       "get_sensitive_payment_data",
     ]);
   });
@@ -294,6 +312,37 @@ describe("HTTP security boundary", () => {
       "주문 ORD-1001 상태",
       authenticatedSession,
     );
+  });
+
+  it("runs a user-scoped preflight and resets only the demo session", async () => {
+    const { app, agent } = buildApp({ session: authenticatedSession });
+
+    const preflight = await request(app)
+      .post("/api/preflight")
+      .set("x-csrf-token", authenticatedSession.csrfToken)
+      .expect(200);
+    await request(app)
+      .post("/api/demo/reset-session")
+      .set("x-csrf-token", authenticatedSession.csrfToken)
+      .expect(204);
+
+    expect(preflight.body).toMatchObject({ mode: "enhanced", ready: true });
+    expect(agent.preflight).toHaveBeenCalledOnce();
+    expect(agent.reset).toHaveBeenCalledWith(authenticatedSession.subject);
+  });
+
+  it("publishes only generic planning readiness in public status", async () => {
+    const { app } = buildApp();
+
+    const response = await request(app).get("/api/status").expect(200);
+    const serialized = JSON.stringify(response.body).toLowerCase();
+
+    expect(response.body.chatbot.planning).toMatchObject({
+      mode: "enhanced",
+      ready: true,
+    });
+    expect(serialized).not.toContain("ollama");
+    expect(serialized).not.toContain("private-model");
   });
 
   it("accepts a verified user JWT as MCP transport identity", async () => {

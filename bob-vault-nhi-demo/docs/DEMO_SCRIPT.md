@@ -16,7 +16,7 @@ Ask:
 
 Expected sequence:
 
-1. The bounded Agent discovers and selects `get_order_status`.
+1. The Agent maps the natural-language request to the fixed `get_order_status` tool.
 2. The Agent calls the MCP Streamable HTTP endpoint with the Verify user token.
 3. MCP validates the user JWT.
 4. KMS signs the Agent client assertion.
@@ -39,6 +39,13 @@ Ask:
 The result contains only a bounded count and delivery-state grouping, not
 customer data.
 
+Alternative prompts are available for the two additional read-only tools:
+
+```text
+최근 주문 5건을 요약해줘
+최근 7일 실패 결제 통계를 보여줘
+```
+
 ## 3:30–4:30 — Policy denial
 
 Ask:
@@ -51,10 +58,14 @@ Expected: Verify user and Agent authentication succeeds, Vault denies
 `database/creds/bob-payment-pii`, and no database query runs. The security trace
 ends at **Vault 정책 · 차단**.
 
+Then ask `왜 방금 요청이 차단됐어?` to show the decision explanation without
+performing a second database request.
+
 ## 4:30–5:00 — Operations evidence
 
-Open `/ops` in another tab. Show the sanitized identity, Vault, policy, and
-database events. Close with:
+Use the integrated **NHI 접근 제어** panel to show the sanitized identity,
+Vault, policy, database events, and the released credential state. The
+**초기화** button clears only the current in-memory demo session. Close with:
 
 > The user is known, the Agent is bound, and the permission disappears when the
 > task is done.

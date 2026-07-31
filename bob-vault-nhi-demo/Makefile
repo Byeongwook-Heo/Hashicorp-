@@ -16,6 +16,7 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: verify-client-jwt-plan verify-client-enable-jwt
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
 .PHONY: configure-verify configure-chatbot-verify bootstrap-chat-session-secret
+.PHONY: bootstrap-agent-runtime-secret agent-runtime-start agent-runtime-stop
 .PHONY: deploy-chatbot copy-bob-token smoke demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
 .PHONY: event-ssh-plan event-ssh-apply
@@ -84,6 +85,15 @@ configure-chatbot-verify: ## Store Verify OIDC user-login and OBO STS public met
 
 bootstrap-chat-session-secret: ## Create the encrypted chatbot session key without printing it.
 	@./bootstrap/aws/bootstrap-chat-session-secret.sh
+
+bootstrap-agent-runtime-secret: ## Store the private planning runtime token without printing it.
+	@./bootstrap/aws/bootstrap-agent-runtime-secret.sh
+
+agent-runtime-start: ## Start and health-check the private planning runtime for the event.
+	@./scripts/agent-runtime-start.sh
+
+agent-runtime-stop: ## Stop the private planning runtime after the event to control cost.
+	@./scripts/agent-runtime-stop.sh
 
 copy-bob-token: ## Copy the MCP transport token to the macOS clipboard without printing it.
 	@./scripts/copy-bob-token.sh

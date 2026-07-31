@@ -5,27 +5,45 @@ import { z } from "zod";
 import { AppError, ExternalServiceError } from "./errors.js";
 import type { UserPrincipal } from "./user-auth.js";
 
-const orderResultSchema = z.object({
+const accessSchema = z.object({
+  nhi: z.string(),
+  user_subject: z.string().optional(),
+  verify: z.literal("authenticated"),
+  vault: z.literal("authorized"),
+  credential_type: z.literal("dynamic"),
+  credential_ttl_seconds: z.number().int().positive(),
+});
+const orderDataSchema = z.object({
   order_id: z.string(),
   payment_status: z.string(),
   delivery_status: z.string(),
   updated_at: z.string(),
-  access: z.object({
-    nhi: z.string(),
-    user_subject: z.string().optional(),
-    verify: z.literal("authenticated"),
-    vault: z.literal("authorized"),
-    credential_type: z.literal("dynamic"),
-    credential_ttl_seconds: z.number(),
-  }),
 });
+const orderResultSchema = orderDataSchema.extend({ access: accessSchema });
 const paymentSummarySchema = z.object({
   date: z.string(),
   failed_count: z.number(),
   by_delivery_status: z.array(
     z.object({ delivery_status: z.string(), count: z.number() }),
   ),
-  access: orderResultSchema.shape.access,
+  access: accessSchema,
+});
+const recentOrdersSchema = z.object({
+  orders: z.array(orderDataSchema).max(5),
+  access: accessSchema,
+});
+const failedPaymentTrendSchema = z.object({
+  days: z.number().int().min(1).max(7),
+  points: z
+    .array(
+      z.object({
+        date: z.string(),
+        total_count: z.number().int().nonnegative(),
+        failed_count: z.number().int().nonnegative(),
+      }),
+    )
+    .max(7),
+  access: accessSchema,
 });
 const denialSchema = z.object({
   status: z.literal("denied"),
@@ -34,9 +52,54 @@ const denialSchema = z.object({
   reason: z.string(),
 });
 
-type AgentToolName =
+const orderIdSchema = z.string().regex(/^ORD-[0-9]{4,12}$/);
+const customerIdSchema = z.string().regex(/^CUS-[0-9]{4,12}$/);
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+export const agentPlanSchema = z.discriminatedUnion("intent", [
+  z
+    .object({ intent: z.literal("order_status"), order_id: orderIdSchema })
+    .strict(),
+  z
+    .object({
+      intent: z.literal("failed_payment_summary"),
+      date: dateSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      intent: z.literal("recent_orders"),
+      limit: z.number().int().min(1).max(5).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      intent: z.literal("failed_payment_trend"),
+      days: z.number().int().min(1).max(7).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      intent: z.literal("sensitive_payment_data"),
+      customer_id: customerIdSchema,
+    })
+    .strict(),
+  z.object({ intent: z.literal("explain_last_decision") }).strict(),
+  z
+    .object({
+      intent: z.literal("explain_lab"),
+      topic: z.enum(["nhi", "verify", "vault", "mcp", "security_flow"]),
+    })
+    .strict(),
+  z.object({ intent: z.literal("unsupported") }).strict(),
+]);
+
+export type AgentPlan = z.infer<typeof agentPlanSchema>;
+export type AgentToolName =
   | "get_order_status"
   | "get_failed_payment_summary"
+  | "get_recent_orders"
+  | "get_failed_payment_trend"
   | "get_sensitive_payment_data";
 
 export interface AgentTraceStep {
@@ -45,22 +108,48 @@ export interface AgentTraceStep {
   status: "verified" | "allowed" | "issued" | "denied";
 }
 
+export interface AgentSuggestion {
+  label: string;
+  prompt: string;
+}
+
 export interface AgentReply {
   reply: string;
   tool: AgentToolName | null;
   trace: AgentTraceStep[];
+  suggestions?: AgentSuggestion[];
+  credential?: {
+    initialTtlSeconds: number;
+    state: "released";
+  };
+}
+
+export interface AgentPlanningStatus {
+  configured: boolean;
+  ready: boolean;
+  mode: "enhanced" | "safe-fallback";
+  fallbackReady: true;
 }
 
 export interface McpToolCaller {
   callTool(
     tool: AgentToolName,
-    argumentsValue: Record<string, string>,
+    argumentsValue: Record<string, string | number>,
     accessToken: string,
   ): Promise<Record<string, unknown>>;
 }
 
+export interface MessagePlanner {
+  plan(message: string): Promise<AgentPlan>;
+  prewarm?(): Promise<void>;
+  status?(): AgentPlanningStatus;
+}
+
 export interface ChatAgent {
   respond(message: string, principal: UserPrincipal): Promise<AgentReply>;
+  preflight?(): Promise<AgentPlanningStatus>;
+  getStatus?(): AgentPlanningStatus;
+  reset?(subject: string): void;
 }
 
 export class HttpMcpToolCaller implements McpToolCaller {
@@ -71,7 +160,7 @@ export class HttpMcpToolCaller implements McpToolCaller {
 
   public async callTool(
     tool: AgentToolName,
-    argumentsValue: Record<string, string>,
+    argumentsValue: Record<string, string | number>,
     accessToken: string,
   ): Promise<Record<string, unknown>> {
     const client = new Client(
@@ -124,8 +213,141 @@ export class HttpMcpToolCaller implements McpToolCaller {
   }
 }
 
+export class RuleBasedPlanner implements MessagePlanner {
+  public plan(message: string): Promise<AgentPlan> {
+    const normalized = message.trim();
+
+    if (
+      /(왜|이유|설명).*(차단|거부|허용|권한|요청)|(차단|거부|허용).*(왜|이유|설명)|임시.*(권한|자격증명)|직전.*(결정|요청)/i.test(
+        normalized,
+      )
+    ) {
+      return Promise.resolve({ intent: "explain_last_decision" });
+    }
+
+    const sensitiveCustomer = /\bCUS-[0-9]{4,12}\b/i.exec(normalized);
+    if (
+      sensitiveCustomer &&
+      /(민감|카드|원문|개인|payment data|sensitive)/i.test(normalized)
+    ) {
+      return Promise.resolve({
+        intent: "sensitive_payment_data",
+        customer_id: sensitiveCustomer[0].toUpperCase(),
+      });
+    }
+
+    if (/(최근|최신).*(주문)|(주문).*(최근|최신)/i.test(normalized)) {
+      return Promise.resolve({
+        intent: "recent_orders",
+        limit: boundedNumber(normalized, 5, 1, 5),
+      });
+    }
+
+    if (
+      /(실패|failed).*(결제|payment).*(추이|통계|날짜별)|(추이|통계|날짜별).*(실패|failed).*(결제|payment)/i.test(
+        normalized,
+      )
+    ) {
+      return Promise.resolve({
+        intent: "failed_payment_trend",
+        days: boundedNumber(normalized, 7, 1, 7),
+      });
+    }
+
+    const order = /\bORD-[0-9]{4,12}\b/i.exec(normalized);
+    if (order) {
+      return Promise.resolve({
+        intent: "order_status",
+        order_id: order[0].toUpperCase(),
+      });
+    }
+
+    if (
+      /(실패|실패한|failed).*(결제|payment)|(결제|payment).*(실패|failed)/i.test(
+        normalized,
+      )
+    ) {
+      const date = /\b\d{4}-\d{2}-\d{2}\b/.exec(normalized)?.[0];
+      return Promise.resolve({
+        intent: "failed_payment_summary",
+        ...(date ? { date } : {}),
+      });
+    }
+
+    const topic = labTopic(normalized);
+    if (topic) {
+      return Promise.resolve({ intent: "explain_lab", topic });
+    }
+
+    return Promise.resolve({ intent: "unsupported" });
+  }
+}
+
+export class ResilientPlanner implements MessagePlanner {
+  #lastMode: AgentPlanningStatus["mode"] = "safe-fallback";
+
+  public constructor(
+    private readonly primary: MessagePlanner,
+    private readonly fallback: MessagePlanner,
+    private readonly onFallback?: (error: unknown) => void,
+  ) {}
+
+  public async plan(message: string): Promise<AgentPlan> {
+    try {
+      const primaryPlan = await this.primary.plan(message);
+      this.#lastMode = "enhanced";
+      if (primaryPlan.intent !== "unsupported") {
+        return primaryPlan;
+      }
+      const fallbackPlan = await this.fallback.plan(message);
+      return fallbackPlan.intent === "unsupported" ? primaryPlan : fallbackPlan;
+    } catch (error) {
+      this.#lastMode = "safe-fallback";
+      this.onFallback?.(error);
+      return this.fallback.plan(message);
+    }
+  }
+
+  public async prewarm(): Promise<void> {
+    if (!this.primary.prewarm) {
+      this.#lastMode = "safe-fallback";
+      return;
+    }
+    try {
+      await this.primary.prewarm();
+      this.#lastMode = "enhanced";
+    } catch (error) {
+      this.#lastMode = "safe-fallback";
+      this.onFallback?.(error);
+    }
+  }
+
+  public status(): AgentPlanningStatus {
+    const primaryStatus = this.primary.status?.();
+    return {
+      configured: primaryStatus?.configured ?? true,
+      ready: this.#lastMode === "enhanced" && (primaryStatus?.ready ?? true),
+      mode: this.#lastMode,
+      fallbackReady: true,
+    };
+  }
+}
+
+interface RememberedDecision {
+  at: number;
+  reply: AgentReply;
+}
+
+const decisionRetentionMs = 15 * 60 * 1000;
+const maximumRememberedUsers = 100;
+
 export class BoundedChatAgent implements ChatAgent {
-  public constructor(private readonly mcp: McpToolCaller) {}
+  readonly #lastDecisions = new Map<string, RememberedDecision>();
+
+  public constructor(
+    private readonly mcp: McpToolCaller,
+    private readonly planner: MessagePlanner = new RuleBasedPlanner(),
+  ) {}
 
   public async respond(
     message: string,
@@ -136,92 +358,233 @@ export class BoundedChatAgent implements ChatAgent {
       throw new AppError("Message is required", 400, "INVALID_CHAT_MESSAGE");
     }
 
-    const sensitiveCustomer = /\bCUS-[0-9]{4,12}\b/i.exec(normalized);
-    if (
-      sensitiveCustomer &&
-      /(민감|카드|원문|개인|payment data|sensitive)/i.test(normalized)
-    ) {
-      const customerId = sensitiveCustomer[0].toUpperCase();
-      const result = denialSchema.parse(
-        await this.mcp.callTool(
-          "get_sensitive_payment_data",
-          { customer_id: customerId },
-          principal.accessToken,
-        ),
-      );
-      return {
-        reply:
-          `요청은 차단되었습니다. 사용자 인증은 성공했지만 Agent의 Vault 정책에는 ` +
-          `${customerId}의 민감 결제 정보 권한이 없습니다.`,
-        tool: "get_sensitive_payment_data",
-        trace: deniedTrace(principal, result.reason),
-      };
+    const plan = agentPlanSchema.parse(await this.planner.plan(normalized));
+    const reply = await this.#execute(plan, principal);
+    if (reply.tool) {
+      this.#remember(principal.subject, reply);
     }
+    return reply;
+  }
 
-    const order = /\bORD-[0-9]{4,12}\b/i.exec(normalized);
-    if (order) {
-      const orderId = order[0].toUpperCase();
-      const result = orderResultSchema.parse(
-        await this.mcp.callTool(
+  public async preflight(): Promise<AgentPlanningStatus> {
+    await this.planner.prewarm?.();
+    return this.getStatus();
+  }
+
+  public getStatus(): AgentPlanningStatus {
+    return (
+      this.planner.status?.() ?? {
+        configured: false,
+        ready: false,
+        mode: "safe-fallback",
+        fallbackReady: true,
+      }
+    );
+  }
+
+  public reset(subject: string): void {
+    this.#lastDecisions.delete(subject);
+  }
+
+  async #execute(
+    plan: AgentPlan,
+    principal: UserPrincipal,
+  ): Promise<AgentReply> {
+    switch (plan.intent) {
+      case "sensitive_payment_data": {
+        const result = denialSchema.parse(
+          await this.mcp.callTool(
+            "get_sensitive_payment_data",
+            { customer_id: plan.customer_id },
+            principal.accessToken,
+          ),
+        );
+        void result.reason;
+        return {
+          reply:
+            `요청은 차단되었습니다. 사용자 인증은 성공했지만 Agent의 Vault 정책에는 ` +
+            `${plan.customer_id}의 민감 결제 정보 권한이 없습니다. 데이터베이스 조회는 실행되지 않았습니다.`,
+          tool: "get_sensitive_payment_data",
+          trace: deniedTrace(principal),
+          suggestions: decisionSuggestions(true),
+        };
+      }
+      case "order_status": {
+        const result = orderResultSchema.parse(
+          await this.mcp.callTool(
+            "get_order_status",
+            { order_id: plan.order_id },
+            principal.accessToken,
+          ),
+        );
+        return allowedReply(
+          `주문 ${result.order_id}는 현재 ${translateDeliveryStatus(
+            result.delivery_status,
+          )} 상태이며, 결제 상태는 ${translatePaymentStatus(
+            result.payment_status,
+          )}입니다.`,
           "get_order_status",
-          { order_id: orderId },
-          principal.accessToken,
-        ),
-      );
-      return {
-        reply: `주문 ${result.order_id}는 현재 ${translateDeliveryStatus(
-          result.delivery_status,
-        )} 상태이며, 결제 상태는 ${translatePaymentStatus(
-          result.payment_status,
-        )}입니다.`,
-        tool: "get_order_status",
-        trace: allowedTrace(principal, result.access.credential_ttl_seconds),
-      };
-    }
-
-    if (
-      /(실패|실패한|failed).*(결제|payment)|(결제|payment).*(실패|failed)/i.test(
-        normalized,
-      )
-    ) {
-      const date =
-        /\b\d{4}-\d{2}-\d{2}\b/.exec(normalized)?.[0] ?? todayInSeoul();
-      const result = paymentSummarySchema.parse(
-        await this.mcp.callTool(
+          principal,
+          result.access.credential_ttl_seconds,
+          [
+            { label: "최근 주문 5건", prompt: "최근 주문 5건을 요약해줘" },
+            ...decisionSuggestions(false),
+          ],
+        );
+      }
+      case "failed_payment_summary": {
+        const date = plan.date ?? todayInSeoul();
+        const result = paymentSummarySchema.parse(
+          await this.mcp.callTool(
+            "get_failed_payment_summary",
+            { date },
+            principal.accessToken,
+          ),
+        );
+        return allowedReply(
+          `${result.date} 실패 결제는 ${String(result.failed_count)}건입니다.` +
+            formatDeliveryBreakdown(result.by_delivery_status),
           "get_failed_payment_summary",
-          { date },
-          principal.accessToken,
-        ),
-      );
+          principal,
+          result.access.credential_ttl_seconds,
+          [
+            {
+              label: "7일 실패 결제 통계",
+              prompt: "최근 7일 실패 결제 통계를 보여줘",
+            },
+            ...decisionSuggestions(false),
+          ],
+        );
+      }
+      case "recent_orders": {
+        const limit = plan.limit ?? 5;
+        const result = recentOrdersSchema.parse(
+          await this.mcp.callTool(
+            "get_recent_orders",
+            { limit },
+            principal.accessToken,
+          ),
+        );
+        const orderSummary = result.orders.length
+          ? result.orders
+              .map(
+                (order) =>
+                  `${order.order_id} ${translateDeliveryStatus(order.delivery_status)}·${translatePaymentStatus(order.payment_status)}`,
+              )
+              .join(", ")
+          : "조회된 주문이 없습니다";
+        return allowedReply(
+          `최근 주문 ${String(result.orders.length)}건을 확인했습니다. ${orderSummary}.`,
+          "get_recent_orders",
+          principal,
+          result.access.credential_ttl_seconds,
+          [
+            {
+              label: "실패 결제 통계",
+              prompt: "최근 7일 실패 결제 통계를 보여줘",
+            },
+            ...decisionSuggestions(false),
+          ],
+        );
+      }
+      case "failed_payment_trend": {
+        const days = plan.days ?? 7;
+        const result = failedPaymentTrendSchema.parse(
+          await this.mcp.callTool(
+            "get_failed_payment_trend",
+            { days },
+            principal.accessToken,
+          ),
+        );
+        const trend = result.points.length
+          ? result.points
+              .map(
+                (point) =>
+                  `${point.date} ${String(point.failed_count)}건/${String(point.total_count)}건`,
+              )
+              .join(", ")
+          : "해당 기간에 주문 데이터가 없습니다";
+        return allowedReply(
+          `최근 ${String(result.days)}일 실패 결제 통계입니다. ${trend}.`,
+          "get_failed_payment_trend",
+          principal,
+          result.access.credential_ttl_seconds,
+          [
+            { label: "오늘 실패 결제", prompt: "오늘 실패한 결제를 요약해줘" },
+            ...decisionSuggestions(false),
+          ],
+        );
+      }
+      case "explain_last_decision":
+        return this.#explainLastDecision(principal);
+      case "explain_lab":
+        return explainLab(plan.topic, principal);
+      case "unsupported":
+        return unsupportedReply(principal);
+    }
+  }
+
+  #explainLastDecision(principal: UserPrincipal): AgentReply {
+    const remembered = this.#lastDecisions.get(principal.subject);
+    if (!remembered || Date.now() - remembered.at > decisionRetentionMs) {
+      this.#lastDecisions.delete(principal.subject);
       return {
         reply:
-          `${result.date} 실패 결제는 ${String(result.failed_count)}건입니다.` +
-          formatDeliveryBreakdown(result.by_delivery_status),
-        tool: "get_failed_payment_summary",
-        trace: allowedTrace(principal, result.access.credential_ttl_seconds),
+          "아직 설명할 접근 결정이 없습니다. 주문 조회나 정책 차단 요청을 먼저 실행해 주세요.",
+        tool: null,
+        trace: policyOnlyTrace(principal),
+        suggestions: defaultSuggestions(),
       };
     }
 
+    const previous = remembered.reply;
+    const denied = previous.trace.some((step) => step.status === "denied");
+    const tool = previous.tool ? toolDisplayName(previous.tool) : "직전 요청";
+    const credential = previous.credential;
     return {
-      reply:
-        "이 데모 Agent는 안전하게 제한된 세 가지 요청만 처리합니다. " +
-        "“주문 ORD-1001 상태”, “2026-07-30 실패 결제”, 또는 " +
-        "“CUS-1001 민감 결제 정보” 중 하나를 요청해 보세요.",
+      reply: denied
+        ? `직전 ${tool} 요청은 IBM Verify 인증과 OBO 신원 검증까지 성공했지만 Vault 최소 권한 정책에서 차단되었습니다. 민감 데이터 조회와 DB 자격증명 발급은 수행되지 않았습니다.`
+        : `직전 ${tool} 요청은 IBM Verify 사용자와 Agent OBO 신원을 검증한 뒤 Vault의 읽기 전용 역할로 허용되었습니다. ${credential ? `자격증명의 최초 TTL 상한은 ${String(credential.initialTtlSeconds)}초였고 요청 종료와 함께 사용이 끝났습니다.` : "추가 자격증명은 사용하지 않았습니다."}`,
       tool: null,
-      trace: [
-        {
-          label: "IBM Verify 사용자",
-          detail: safeIdentityLabel(principal),
-          status: "verified",
-        },
-        {
-          label: "Agent 정책",
-          detail: "허용된 MCP 도구와 입력 형식만 선택",
-          status: "allowed",
-        },
-      ],
+      trace: previous.trace,
+      ...(credential ? { credential } : {}),
+      suggestions: defaultSuggestions(),
     };
   }
+
+  #remember(subject: string, reply: AgentReply): void {
+    const now = Date.now();
+    for (const [key, value] of this.#lastDecisions) {
+      if (now - value.at > decisionRetentionMs) {
+        this.#lastDecisions.delete(key);
+      }
+    }
+    if (
+      this.#lastDecisions.size >= maximumRememberedUsers &&
+      !this.#lastDecisions.has(subject)
+    ) {
+      const oldest = this.#lastDecisions.keys().next().value;
+      if (oldest) this.#lastDecisions.delete(oldest);
+    }
+    this.#lastDecisions.delete(subject);
+    this.#lastDecisions.set(subject, { at: now, reply });
+  }
+}
+
+function allowedReply(
+  reply: string,
+  tool: Exclude<AgentToolName, "get_sensitive_payment_data">,
+  principal: UserPrincipal,
+  ttlSeconds: number,
+  suggestions: AgentSuggestion[],
+): AgentReply {
+  return {
+    reply,
+    tool,
+    trace: allowedTrace(principal, ttlSeconds),
+    credential: { initialTtlSeconds: ttlSeconds, state: "released" },
+    suggestions,
+  };
 }
 
 function allowedTrace(
@@ -241,21 +604,18 @@ function allowedTrace(
     },
     {
       label: "Vault 정책",
-      detail: "bob-orders 역할 허용",
+      detail: "bob-orders 읽기 전용 역할 허용",
       status: "allowed",
     },
     {
       label: "동적 DB 자격증명",
-      detail: `TTL ${String(ttlSeconds)}초 · 사용 후 폐기`,
+      detail: `최초 TTL ${String(ttlSeconds)}초 · 요청 종료 시 사용 종료`,
       status: "issued",
     },
   ];
 }
 
-function deniedTrace(
-  principal: UserPrincipal,
-  reason: string,
-): AgentTraceStep[] {
+function deniedTrace(principal: UserPrincipal): AgentTraceStep[] {
   return [
     {
       label: "사용자 JWT",
@@ -269,10 +629,111 @@ function deniedTrace(
     },
     {
       label: "Vault 정책",
-      detail: reason,
+      detail: "민감 결제 정보 역할은 현재 Agent 정책에서 허용되지 않음",
       status: "denied",
     },
   ];
+}
+
+function policyOnlyTrace(principal: UserPrincipal): AgentTraceStep[] {
+  return [
+    {
+      label: "IBM Verify 사용자",
+      detail: safeIdentityLabel(principal),
+      status: "verified",
+    },
+    {
+      label: "Agent 정책",
+      detail: "허용된 안내와 MCP 도구 범위만 응답",
+      status: "allowed",
+    },
+  ];
+}
+
+function explainLab(
+  topic: Extract<AgentPlan, { intent: "explain_lab" }>["topic"],
+  principal: UserPrincipal,
+): AgentReply {
+  const replies = {
+    nhi: "NHI는 사람이 아닌 애플리케이션과 Agent가 사용하는 신원입니다. 이 Lab에서는 Agent 신원과 로그인한 사용자의 subject를 결합해 요청 주체를 증명합니다.",
+    verify:
+      "IBM Verify는 사용자를 로그인시키고 JWT를 발급합니다. 이후 Agent는 사용자 subject가 포함된 OBO 토큰을 받아 다음 보안 경계로 전달합니다.",
+    vault:
+      "Vault는 OBO JWT의 issuer, audience, Agent claim을 검증하고 허용된 역할에만 짧은 TTL의 읽기 전용 DB 자격증명을 발급합니다.",
+    mcp: "MCP Server는 Agent가 사용할 수 있는 도구와 입력 스키마를 고정합니다. 임의 SQL이나 등록되지 않은 도구는 실행할 수 없습니다.",
+    security_flow:
+      "이 Lab의 흐름은 IBM Verify 사용자 인증 → Agent OBO 신원 위임 → MCP 도구 검증 → Vault 정책 평가 → 짧은 TTL의 PostgreSQL 접근 순서입니다.",
+  } as const;
+  return {
+    reply: replies[topic],
+    tool: null,
+    trace: policyOnlyTrace(principal),
+    suggestions: defaultSuggestions(),
+  };
+}
+
+function unsupportedReply(principal: UserPrincipal): AgentReply {
+  return {
+    reply:
+      "이 Lab에서는 주문 상태, 최근 주문, 실패 결제 요약·통계, 접근 결정 설명과 보안 구성 안내를 처리합니다. 모든 데이터 요청은 등록된 읽기 전용 MCP 도구로 제한됩니다.",
+    tool: null,
+    trace: policyOnlyTrace(principal),
+    suggestions: defaultSuggestions(),
+  };
+}
+
+function defaultSuggestions(): AgentSuggestion[] {
+  return [
+    { label: "주문 상태 확인", prompt: "ORD-1001 배송 상태가 어떻게 돼?" },
+    { label: "최근 주문 요약", prompt: "최근 주문 5건을 요약해줘" },
+    { label: "보안 흐름 안내", prompt: "이 Lab의 보안 흐름을 설명해줘" },
+  ];
+}
+
+function decisionSuggestions(denied: boolean): AgentSuggestion[] {
+  return [
+    {
+      label: denied ? "차단 이유 설명" : "접근 결정 설명",
+      prompt: denied
+        ? "왜 방금 요청이 차단됐어?"
+        : "방금 접근이 왜 허용됐는지 설명해줘",
+    },
+  ];
+}
+
+function toolDisplayName(tool: AgentToolName): string {
+  const labels: Record<AgentToolName, string> = {
+    get_order_status: "주문 상태 조회",
+    get_failed_payment_summary: "실패 결제 요약",
+    get_recent_orders: "최근 주문 조회",
+    get_failed_payment_trend: "실패 결제 통계",
+    get_sensitive_payment_data: "민감 정보 접근",
+  };
+  return labels[tool];
+}
+
+function labTopic(
+  message: string,
+): Extract<AgentPlan, { intent: "explain_lab" }>["topic"] | undefined {
+  if (/\bNHI\b|비인간|비-인간|머신 신원/i.test(message)) return "nhi";
+  if (/IBM Verify|Verify 역할|사용자 인증/i.test(message)) return "verify";
+  if (/Vault.*(역할|필요|설명)|왜.*Vault/i.test(message)) return "vault";
+  if (/\bMCP\b.*(역할|필요|설명)|MCP는/i.test(message)) return "mcp";
+  if (/보안 흐름|인증 흐름|신원 경로|Lab.*(구성|흐름)/i.test(message)) {
+    return "security_flow";
+  }
+  return undefined;
+}
+
+function boundedNumber(
+  message: string,
+  defaultValue: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const candidate = /\b([0-9]{1,2})\b/.exec(message)?.[1];
+  if (!candidate) return defaultValue;
+  return Math.min(maximum, Math.max(minimum, Number(candidate)));
 }
 
 function safeIdentityLabel(principal: UserPrincipal): string {
@@ -308,6 +769,7 @@ function translateDeliveryStatus(value: string): string {
     SHIPPED: "배송 중",
     DELIVERED: "배송 완료",
     CANCELLED: "취소",
+    ON_HOLD: "보류",
   };
   return labels[value] ?? value;
 }

@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { BoundedChatAgent, type McpToolCaller } from "../src/agent.js";
+import {
+  BoundedChatAgent,
+  type McpToolCaller,
+  ResilientPlanner,
+  RuleBasedPlanner,
+  type MessagePlanner,
+} from "../src/agent.js";
 import type { UserPrincipal } from "../src/user-auth.js";
 
 const principal: UserPrincipal = {
@@ -94,7 +100,123 @@ describe("BoundedChatAgent", () => {
     const reply = await agent.respond("서버에서 셸을 실행해줘", principal);
 
     expect(reply.tool).toBeNull();
-    expect(reply.reply).toContain("세 가지 요청만");
+    expect(reply.reply).toContain("등록된 읽기 전용 MCP 도구");
     expect(mcp.callTool).not.toHaveBeenCalled();
   });
+
+  it("routes recent-order and seven-day aggregate requests to fixed tools", async () => {
+    const mcp: McpToolCaller = {
+      callTool: vi
+        .fn()
+        .mockResolvedValueOnce({
+          orders: [
+            {
+              order_id: "ORD-1001",
+              payment_status: "PAID",
+              delivery_status: "DELIVERED",
+              updated_at: "2026-07-30T00:00:00.000Z",
+            },
+          ],
+          access: accessResult(),
+        })
+        .mockResolvedValueOnce({
+          days: 7,
+          points: [{ date: "2026-07-30", total_count: 4, failed_count: 1 }],
+          access: accessResult(),
+        }),
+    };
+    const agent = new BoundedChatAgent(mcp);
+
+    const recent = await agent.respond("최근 주문 5건을 요약해줘", principal);
+    const trend = await agent.respond(
+      "최근 7일 실패 결제 통계를 보여줘",
+      principal,
+    );
+
+    expect(recent.tool).toBe("get_recent_orders");
+    expect(trend.tool).toBe("get_failed_payment_trend");
+    expect(mcp.callTool).toHaveBeenNthCalledWith(
+      1,
+      "get_recent_orders",
+      { limit: 5 },
+      principal.accessToken,
+    );
+    expect(mcp.callTool).toHaveBeenNthCalledWith(
+      2,
+      "get_failed_payment_trend",
+      { days: 7 },
+      principal.accessToken,
+    );
+  });
+
+  it("explains the last real access decision and credential release", async () => {
+    const { agent } = buildAgent({
+      order_id: "ORD-1001",
+      payment_status: "PAID",
+      delivery_status: "DELIVERED",
+      updated_at: "2026-07-30T00:00:00.000Z",
+      access: accessResult(),
+    });
+
+    await agent.respond("ORD-1001 상태를 알려줘", principal);
+    const explanation = await agent.respond(
+      "방금 접근이 왜 허용됐는지 설명해줘",
+      principal,
+    );
+
+    expect(explanation.tool).toBeNull();
+    expect(explanation.reply).toContain("최초 TTL 상한은 120초");
+    expect(explanation.reply).toContain("요청 종료와 함께 사용이 끝났습니다");
+  });
+
+  it("answers the static lab guide without calling MCP", async () => {
+    const { agent, mcp } = buildAgent({});
+
+    const reply = await agent.respond(
+      "이 Lab의 보안 흐름을 설명해줘",
+      principal,
+    );
+
+    expect(reply.reply).toContain("IBM Verify 사용자 인증");
+    expect(reply.tool).toBeNull();
+    expect(mcp.callTool).not.toHaveBeenCalled();
+  });
+
+  it("falls back to deterministic routing when enhanced planning fails", async () => {
+    const primary: MessagePlanner = {
+      plan: vi.fn().mockRejectedValue(new Error("planning unavailable")),
+    };
+    const fallback = new RuleBasedPlanner();
+    const onFallback = vi.fn();
+    const mcp: McpToolCaller = {
+      callTool: vi.fn().mockResolvedValue({
+        order_id: "ORD-1001",
+        payment_status: "PAID",
+        delivery_status: "DELIVERED",
+        updated_at: "2026-07-30T00:00:00.000Z",
+        access: accessResult(),
+      }),
+    };
+    const agent = new BoundedChatAgent(
+      mcp,
+      new ResilientPlanner(primary, fallback, onFallback),
+    );
+
+    const reply = await agent.respond("ORD-1001 상태를 알려줘", principal);
+
+    expect(reply.tool).toBe("get_order_status");
+    expect(onFallback).toHaveBeenCalledOnce();
+    expect(agent.getStatus().mode).toBe("safe-fallback");
+  });
 });
+
+function accessResult() {
+  return {
+    nhi: "chat-agent",
+    user_subject: "user-123",
+    verify: "authenticated",
+    vault: "authorized",
+    credential_type: "dynamic",
+    credential_ttl_seconds: 120,
+  } as const;
+}

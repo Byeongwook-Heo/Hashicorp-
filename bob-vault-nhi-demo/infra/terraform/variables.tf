@@ -93,6 +93,41 @@ variable "chatbot_enabled" {
   default     = false
 }
 
+variable "inference_enabled" {
+  description = "Enable the private intent-planning service with deterministic fallback."
+  type        = bool
+  default     = false
+}
+
+variable "inference_base_url" {
+  description = "Private URL for the intent-planning service."
+  type        = string
+  default     = "http://10.70.20.182:11434"
+
+  validation {
+    condition     = can(regex("^http://10\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}:[0-9]{2,5}$", var.inference_base_url))
+    error_message = "inference_base_url must be an explicit private 10/8 HTTP endpoint with a port."
+  }
+}
+
+variable "inference_model" {
+  description = "Server-side intent-planning model identifier; never returned by the public API."
+  type        = string
+  default     = "qwen3:8b"
+  sensitive   = true
+}
+
+variable "inference_security_group_id" {
+  description = "Existing security group on the private intent-planning instance."
+  type        = string
+  default     = "sg-089073fb16b9c197b"
+
+  validation {
+    condition     = can(regex("^sg-[0-9a-f]{8,17}$", var.inference_security_group_id))
+    error_message = "inference_security_group_id must be a security group ID."
+  }
+}
+
 variable "service_version" {
   description = "Reader-facing release identifier."
   type        = string

@@ -138,6 +138,28 @@ resource "aws_vpc_security_group_egress_rule" "ecs_to_database" {
   referenced_security_group_id = aws_security_group.database.id
 }
 
+resource "aws_vpc_security_group_egress_rule" "ecs_to_agent_runtime" {
+  count = var.inference_enabled ? 1 : 0
+
+  security_group_id            = aws_security_group.ecs.id
+  description                  = "ECS to private agent planning runtime"
+  ip_protocol                  = "tcp"
+  from_port                    = 11434
+  to_port                      = 11434
+  referenced_security_group_id = var.inference_security_group_id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "agent_runtime_from_ecs" {
+  count = var.inference_enabled ? 1 : 0
+
+  security_group_id            = var.inference_security_group_id
+  description                  = "Private agent planning requests from the lab ECS service"
+  ip_protocol                  = "tcp"
+  from_port                    = 11434
+  to_port                      = 11434
+  referenced_security_group_id = aws_security_group.ecs.id
+}
+
 resource "aws_vpc_security_group_egress_rule" "vault_https" {
   security_group_id = aws_security_group.vault.id
   description       = "AWS APIs through NAT"

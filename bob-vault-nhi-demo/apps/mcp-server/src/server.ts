@@ -2,7 +2,12 @@ import { createServer } from "node:http";
 
 import type { Logger } from "pino";
 
-import { BoundedChatAgent, HttpMcpToolCaller } from "./agent.js";
+import {
+  BoundedChatAgent,
+  HttpMcpToolCaller,
+  ResilientPlanner,
+  RuleBasedPlanner,
+} from "./agent.js";
 import { loadConfig } from "./config.js";
 import { PostgresOrdersDatabase } from "./database.js";
 import { SecurityEventStore } from "./event-store.js";
@@ -15,6 +20,7 @@ import {
 } from "./identity-client.js";
 import { KmsClientAssertionSigner } from "./kms-signer.js";
 import { createLogger } from "./logger.js";
+import { RemoteMessagePlanner } from "./remote-planner.js";
 import { ToolService } from "./tool-service.js";
 import {
   UnconfiguredUserAuth,
@@ -32,11 +38,7 @@ const userAuth = createUserAuth();
 const vault = new VaultClient(config.vault);
 const database = new PostgresOrdersDatabase(config.database);
 const tools = new ToolService(identity, vault, database, events, "chat-agent");
-const agent = config.chatbotEnabled
-  ? new BoundedChatAgent(
-      new HttpMcpToolCaller(config.mcpInternalUrl, config.serviceVersion),
-    )
-  : undefined;
+const agent = config.chatbotEnabled ? createAgent() : undefined;
 const app = createHttpApp({
   config,
   logger,
@@ -55,9 +57,48 @@ httpServer.listen(config.port, "0.0.0.0", () => {
       mode: config.appMode,
       protocol: "2025-11-25",
     },
-    "MCP gateway is ready",
+    "secure agent service is ready",
   );
+  if (agent) {
+    void agent.preflight().then((status) => {
+      logger.info(
+        { ready: status.ready, mode: status.mode },
+        "agent planning preflight completed",
+      );
+    });
+  }
 });
+
+function createAgent(): BoundedChatAgent {
+  const fallback = new RuleBasedPlanner();
+  const planning = config.agentPlanning;
+  const planner =
+    planning.mode === "private" &&
+    planning.baseUrl &&
+    planning.model &&
+    planning.apiToken
+      ? new ResilientPlanner(
+          new RemoteMessagePlanner({
+            baseUrl: planning.baseUrl,
+            model: planning.model,
+            apiToken: planning.apiToken,
+            timeoutMs: planning.timeoutMs,
+            keepAlive: planning.keepAlive,
+          }),
+          fallback,
+          (error) => {
+            logger.warn(
+              { err: error },
+              "agent planning service unavailable; safe routing is active",
+            );
+          },
+        )
+      : fallback;
+  return new BoundedChatAgent(
+    new HttpMcpToolCaller(config.mcpInternalUrl, config.serviceVersion),
+    planner,
+  );
+}
 
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {

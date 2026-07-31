@@ -39,6 +39,20 @@ function buildService() {
       failed_count: 0,
       by_delivery_status: [],
     }),
+    getRecentOrders: vi.fn().mockResolvedValue({
+      orders: [
+        {
+          order_id: "ORD-1001",
+          payment_status: "PAID",
+          delivery_status: "PREPARING",
+          updated_at: "2026-07-30T00:00:00.000Z",
+        },
+      ],
+    }),
+    getFailedPaymentTrend: vi.fn().mockResolvedValue({
+      days: 7,
+      points: [{ date: "2026-07-30", total_count: 1, failed_count: 0 }],
+    }),
   };
   const events = new SecurityEventStore();
   return {
@@ -96,5 +110,23 @@ describe("ToolService", () => {
       stage: "vault",
       status: "denied",
     });
+  });
+
+  it("executes the bounded recent-order and failure-trend queries", async () => {
+    const fixture = buildService();
+
+    const recent = await fixture.service.getRecentOrders("request-123", 5);
+    const trend = await fixture.service.getFailedPaymentTrend("request-456", 7);
+
+    expect(recent.orders).toHaveLength(1);
+    expect(trend.points).toHaveLength(1);
+    expect(fixture.database.getRecentOrders).toHaveBeenCalledWith(
+      expect.objectContaining({ username: "dynamic-user" }),
+      5,
+    );
+    expect(fixture.database.getFailedPaymentTrend).toHaveBeenCalledWith(
+      expect.objectContaining({ username: "dynamic-user" }),
+      7,
+    );
   });
 });

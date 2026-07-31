@@ -17,6 +17,7 @@ describe("loadConfig", () => {
     expect(config.port).toBe(8080);
     expect(config.vault.jwtAuthPath).toBe("jwt");
     expect(config.database.caFile).toBe("/app/certs/rds-ca.pem");
+    expect(config.agentPlanning.mode).toBe("bounded");
   });
 
   it("rejects short transport bearer secrets", () => {
@@ -75,5 +76,31 @@ describe("loadConfig", () => {
     expect(config.chatbotEnabled).toBe(true);
     expect(config.mcpAuthMode).toBe("user_jwt");
     expect(config.verify.obo.clientId).toBe("agent-sts-client");
+  });
+
+  it("requires all private planning boundaries when enabled", () => {
+    expect(() =>
+      loadConfig({
+        ...baseEnvironment,
+        AGENT_PLANNING_MODE: "private",
+      }),
+    ).toThrow(/INFERENCE_BASE_URL/);
+  });
+
+  it("loads private planning configuration without exposing it elsewhere", () => {
+    const config = loadConfig({
+      ...baseEnvironment,
+      AGENT_PLANNING_MODE: "private",
+      INFERENCE_BASE_URL: "http://10.70.20.182:11434",
+      INFERENCE_MODEL: "private-model",
+      INFERENCE_API_TOKEN: "t".repeat(32),
+    });
+
+    expect(config.agentPlanning).toMatchObject({
+      mode: "private",
+      baseUrl: "http://10.70.20.182:11434",
+      model: "private-model",
+      timeoutMs: 12_000,
+    });
   });
 });

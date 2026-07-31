@@ -22,6 +22,17 @@ const environmentSchema = z
     MCP_AUTH_MODE: z
       .enum(["static_bearer", "user_jwt"])
       .default("static_bearer"),
+    AGENT_PLANNING_MODE: z.enum(["bounded", "private"]).default("bounded"),
+    INFERENCE_BASE_URL: optionalUrl,
+    INFERENCE_MODEL: optionalNonEmpty,
+    INFERENCE_API_TOKEN: z.string().min(16).optional(),
+    INFERENCE_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(1000)
+      .max(30_000)
+      .default(12_000),
+    INFERENCE_KEEP_ALIVE: z.string().min(1).max(32).default("30m"),
     SERVICE_VERSION: z.string().min(1).max(80).default("dev"),
     AWS_REGION: z.string().min(1).default("ap-northeast-2"),
     TRANSPORT_BEARER_TOKEN: z.string().min(32),
@@ -146,6 +157,13 @@ const environmentSchema = z
         });
       }
     }
+    if (value.AGENT_PLANNING_MODE === "private") {
+      required.push(
+        "INFERENCE_BASE_URL",
+        "INFERENCE_MODEL",
+        "INFERENCE_API_TOKEN",
+      );
+    }
 
     for (const field of required) {
       if (!value[field]) {
@@ -173,6 +191,14 @@ export interface AppConfig {
   chatbotEnabled: boolean;
   identityFlow: "client_credentials" | "obo";
   mcpAuthMode: "static_bearer" | "user_jwt";
+  agentPlanning: {
+    mode: "bounded" | "private";
+    baseUrl?: string;
+    model?: string;
+    apiToken?: string;
+    timeoutMs: number;
+    keepAlive: string;
+  };
   serviceVersion: string;
   awsRegion: string;
   transportBearerToken: string;
@@ -256,6 +282,18 @@ export function loadConfig(
     chatbotEnabled: value.CHATBOT_ENABLED === "true",
     identityFlow: value.IDENTITY_FLOW,
     mcpAuthMode: value.MCP_AUTH_MODE,
+    agentPlanning: {
+      mode: value.AGENT_PLANNING_MODE,
+      ...(value.INFERENCE_BASE_URL
+        ? { baseUrl: value.INFERENCE_BASE_URL }
+        : {}),
+      ...(value.INFERENCE_MODEL ? { model: value.INFERENCE_MODEL } : {}),
+      ...(value.INFERENCE_API_TOKEN
+        ? { apiToken: value.INFERENCE_API_TOKEN }
+        : {}),
+      timeoutMs: value.INFERENCE_TIMEOUT_MS,
+      keepAlive: value.INFERENCE_KEEP_ALIVE,
+    },
     serviceVersion: value.SERVICE_VERSION,
     awsRegion: value.AWS_REGION,
     transportBearerToken: value.TRANSPORT_BEARER_TOKEN,

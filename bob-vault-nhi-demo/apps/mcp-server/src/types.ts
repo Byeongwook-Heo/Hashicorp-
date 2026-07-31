@@ -20,14 +20,16 @@ export interface OrderStatus {
 }
 
 export interface OrderStatusResult extends OrderStatus {
-  access: {
-    nhi: string;
-    user_subject?: string;
-    verify: "authenticated";
-    vault: "authorized";
-    credential_type: "dynamic";
-    credential_ttl_seconds: number;
-  };
+  access: AccessMetadata;
+}
+
+export interface AccessMetadata {
+  nhi: string;
+  user_subject?: string;
+  verify: "authenticated";
+  vault: "authorized";
+  credential_type: "dynamic";
+  credential_ttl_seconds: number;
 }
 
 export interface FailedPaymentSummary {
@@ -40,14 +42,28 @@ export interface FailedPaymentSummary {
 }
 
 export interface FailedPaymentSummaryResult extends FailedPaymentSummary {
-  access: {
-    nhi: string;
-    user_subject?: string;
-    verify: "authenticated";
-    vault: "authorized";
-    credential_type: "dynamic";
-    credential_ttl_seconds: number;
-  };
+  access: AccessMetadata;
+}
+
+export interface RecentOrders {
+  orders: OrderStatus[];
+}
+
+export interface RecentOrdersResult extends RecentOrders {
+  access: AccessMetadata;
+}
+
+export interface FailedPaymentTrend {
+  days: number;
+  points: {
+    date: string;
+    total_count: number;
+    failed_count: number;
+  }[];
+}
+
+export interface FailedPaymentTrendResult extends FailedPaymentTrend {
+  access: AccessMetadata;
 }
 
 export interface SensitivePaymentDenial {

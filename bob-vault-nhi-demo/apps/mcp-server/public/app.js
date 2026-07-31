@@ -24,9 +24,11 @@ const input = document.querySelector("#chat-input");
 const send = document.querySelector("#send");
 const logout = document.querySelector("#logout");
 const readiness = document.querySelector("#readiness");
+const planningReadiness = document.querySelector("#planning-readiness");
 const mode = document.querySelector("#mode");
 const eventList = document.querySelector("#events");
 const refresh = document.querySelector("#refresh");
+const demoReset = document.querySelector("#demo-reset");
 const refreshLabel = document.querySelector(".refresh-label");
 const refreshAnnouncement = document.querySelector("#refresh-announcement");
 const lastUpdated = document.querySelector("#last-updated");
@@ -57,11 +59,15 @@ const pathSteps = {
 };
 
 const defaultTraceMarkup = trace.innerHTML;
+const defaultConversationMarkup = conversation.innerHTML;
 const themeStorageKey = "bob-vault-demo-theme";
 const allowedStatuses = new Set(["allowed", "denied", "error", "ok"]);
 const toolLabels = {
   get_order_status: "주문 상태 조회",
   get_failed_payment_summary: "실패 결제 요약 조회",
+  get_recent_orders: "최근 주문 조회",
+  get_failed_payment_trend: "실패 결제 통계 조회",
+  get_sensitive_payment_data: "민감 정보 정책 확인",
 };
 const statusLabels = {
   allowed: "허용",
@@ -86,6 +92,8 @@ const actionLabels = {
   dynamic_credentials_issued: "동적 DB 자격증명 발급",
   get_order_status: "주문 상태 조회",
   get_failed_payment_summary: "실패 결제 요약 조회",
+  get_recent_orders: "최근 주문 조회",
+  get_failed_payment_trend: "실패 결제 통계 조회",
   vault_policy_denied: "Vault 정책 거부",
   vault_policy_allowed: "Vault 정책 허용",
   pii_access_denied: "민감 정보 접근 차단",
@@ -103,6 +111,7 @@ const seoulTimeFormatter = new Intl.DateTimeFormat("ko-KR", {
 let csrfToken = "";
 let eventsRequestInFlight = false;
 let eventsInterval = null;
+let latestCredential = null;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -244,6 +253,47 @@ async function loadSession() {
     agentGreeting.textContent = `안녕하세요, ${displayName}님!`;
   }
   showWorkspace();
+  void runPreflight();
+}
+
+function setPlanningState(kind, label) {
+  if (!planningReadiness) return;
+  planningReadiness.className = `planning-chip ${kind}`;
+  planningReadiness.textContent = label;
+}
+
+async function runPreflight() {
+  setPlanningState("checking", "계획 점검 중");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch("/api/preflight", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "x-csrf-token": csrfToken,
+        },
+        signal: window.AbortSignal.timeout(15_000),
+      });
+      if (response.status === 401) {
+        window.location.assign("/auth/login");
+        return;
+      }
+      if (!response.ok) throw new Error("preflight unavailable");
+      const status = await response.json();
+      setPlanningState(
+        status.mode === "enhanced" && status.ready ? "ready" : "fallback",
+        status.mode === "enhanced" && status.ready
+          ? "AI 계획 준비됨"
+          : "안전 모드 준비됨",
+      );
+      return;
+    } catch {
+      if (attempt === 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, 700));
+      }
+    }
+  }
+  setPlanningState("fallback", "안전 모드 준비됨");
 }
 
 function initialsFor(displayName) {
@@ -355,6 +405,20 @@ function appendQueryPreview(article, tool) {
       "ORDER BY delivery_status",
       "LIMIT 20;",
     ],
+    get_recent_orders: [
+      "SELECT order_id, payment_status, delivery_status, updated_at",
+      "FROM v_bob_order_status",
+      "ORDER BY updated_at DESC",
+      "LIMIT $1;",
+    ],
+    get_failed_payment_trend: [
+      "SELECT (updated_at AT TIME ZONE 'Asia/Seoul')::date AS date,",
+      "       COUNT(*)::int AS total_count,",
+      "       COUNT(*) FILTER (WHERE payment_status = 'FAILED')::int AS failed_count",
+      "FROM v_bob_order_status",
+      "WHERE updated_at >= CURRENT_DATE - ($1::int - 1)",
+      "GROUP BY 1 ORDER BY 1;",
+    ],
   };
   const lines = queries[tool];
   if (!lines) return;
@@ -389,12 +453,15 @@ function setBusy(busy) {
   send.disabled = busy;
   conversation.setAttribute("aria-busy", String(busy));
   document
-    .querySelectorAll(".suggestions button")
+    .querySelectorAll(".suggestions button, .follow-up-suggestions button")
     .forEach((button) => (button.disabled = busy));
 }
 
 function addThinking() {
-  const article = addMessage("agent", "MCP 도구와 권한을 확인하고 있습니다…");
+  const article = addMessage(
+    "agent",
+    "요청 의도와 허용된 권한 경로를 확인하고 있습니다…",
+  );
   article.classList.add("thinking");
   article.setAttribute("role", "status");
   return article;
@@ -545,21 +612,56 @@ async function sendMessage(message) {
         : "에이전트 정책 안내",
     );
     appendQueryPreview(responseMessage, String(payload.tool ?? ""));
+    appendFollowUpSuggestions(responseMessage, payload.suggestions);
     renderTrace(Array.isArray(payload.trace) ? payload.trace : []);
+    if (payload.credential?.state === "released") {
+      const ttl = Number(payload.credential.initialTtlSeconds);
+      if (Number.isFinite(ttl) && ttl > 0) {
+        latestCredential = `사용 종료 · 최초 TTL ${String(ttl)}초`;
+        accessStatusCredentials.textContent = latestCredential;
+      }
+    } else if (payload.tool === "get_sensitive_payment_data") {
+      latestCredential = null;
+    }
     void loadEvents();
   } catch (error) {
     thinking.remove();
     if (!input.value) input.value = retryValue;
-    addMessage(
+    const failureMessage = addMessage(
       "agent",
       error instanceof Error
         ? error.message
         : "요청을 안전하게 완료하지 못했습니다.",
       "요청 실패",
     );
+    appendFollowUpSuggestions(failureMessage, [
+      { label: "다시 시도", prompt: retryValue },
+    ]);
   } finally {
     setBusy(false);
     input.focus();
+  }
+}
+
+function appendFollowUpSuggestions(article, values) {
+  if (!Array.isArray(values) || values.length === 0) return;
+  const suggestions = element("div", "follow-up-suggestions");
+  suggestions.setAttribute("aria-label", "후속 질문");
+  for (const value of values.slice(0, 3)) {
+    const label = String(value?.label ?? "")
+      .trim()
+      .slice(0, 40);
+    const prompt = String(value?.prompt ?? "")
+      .trim()
+      .slice(0, 500);
+    if (!label || !prompt) continue;
+    const button = element("button", "", label);
+    button.type = "button";
+    button.dataset.prompt = prompt;
+    suggestions.append(button);
+  }
+  if (suggestions.childElementCount > 0) {
+    article.querySelector(".message-body")?.append(suggestions);
   }
 }
 
@@ -734,6 +836,9 @@ function renderCurrentAccessStatus(events, loadFailed = false) {
   accessStatusStage.textContent = stage;
   accessStatusPolicy.textContent = copy.policy;
   accessStatusCredentials.textContent = copy.credentials;
+  if (kind === "allowed" && latestCredential) {
+    accessStatusCredentials.textContent = latestCredential;
+  }
   accessStatusAction.textContent = action;
   accessStatusAction.title = action;
   accessStatusSummary.setAttribute(
@@ -939,6 +1044,39 @@ menuButton?.addEventListener("click", () => {
   );
 });
 refresh?.addEventListener("click", () => void loadEvents(true));
+demoReset?.addEventListener("click", () => void resetDemoSession());
+
+async function resetDemoSession() {
+  demoReset.disabled = true;
+  try {
+    const response = await fetch("/api/demo/reset-session", {
+      method: "POST",
+      headers: { "x-csrf-token": csrfToken },
+    });
+    if (response.status === 401) {
+      window.location.assign("/auth/login");
+      return;
+    }
+    if (!response.ok) throw new Error("reset unavailable");
+    latestCredential = null;
+    conversation.innerHTML = defaultConversationMarkup;
+    renderTrace([]);
+    renderEvents([]);
+    renderCurrentAccessStatus([]);
+    lastUpdated.textContent = "데모 세션이 초기화되었습니다";
+    input.value = "";
+    input.focus();
+    void runPreflight();
+  } catch {
+    addMessage(
+      "agent",
+      "현재 데모 세션을 초기화하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      "초기화 실패",
+    );
+  } finally {
+    demoReset.disabled = false;
+  }
+}
 
 document.querySelectorAll(".side-rail a").forEach((link) => {
   link.addEventListener("click", () => {
@@ -968,11 +1106,11 @@ input.addEventListener("input", () => {
   input.style.height = `${Math.min(input.scrollHeight, 132)}px`;
 });
 
-document.querySelectorAll("[data-prompt]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const prompt = button.getAttribute("data-prompt");
-    if (prompt) void sendMessage(prompt);
-  });
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("button[data-prompt]");
+  if (!button || button.disabled) return;
+  const prompt = button.getAttribute("data-prompt");
+  if (prompt) void sendMessage(prompt);
 });
 
 logout.addEventListener("click", async () => {

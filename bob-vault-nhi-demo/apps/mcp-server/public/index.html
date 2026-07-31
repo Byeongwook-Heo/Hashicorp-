@@ -9,10 +9,10 @@
       content="IBM Verify 사용자 인증, MCP 요청 제어, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 Agentic Security Lab"
     />
     <title>Agentic Security Lab | 대화 · NHI 접근 제어</title>
-    <script src="/theme.js?v=20260731-console1"></script>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-console1" />
-    <link rel="stylesheet" href="/styles.css?v=20260731-console1" />
-    <script src="/app.js?v=20260731-console1" type="module"></script>
+    <script src="/theme.js?v=20260731-console2"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260731-console2" />
+    <link rel="stylesheet" href="/styles.css?v=20260731-console2" />
+    <script src="/app.js?v=20260731-console2" type="module"></script>
   </head>
   <body>
     <header class="topbar">
@@ -251,6 +251,16 @@
                     </button>
                     <button
                       type="button"
+                      data-prompt="최근 주문 5건을 요약해줘"
+                    >
+                      <span
+                        class="carbon-icon icon-cloud-auditing"
+                        aria-hidden="true"
+                      ></span>
+                      최근 주문 5건 요약
+                    </button>
+                    <button
+                      type="button"
                       data-prompt="오늘 실패한 결제를 요약해줘"
                     >
                       <span
@@ -258,6 +268,16 @@
                         aria-hidden="true"
                       ></span>
                       오늘 실패 결제 요약
+                    </button>
+                    <button
+                      type="button"
+                      data-prompt="최근 7일 실패 결제 통계를 보여줘"
+                    >
+                      <span
+                        class="carbon-icon icon-chart-bar"
+                        aria-hidden="true"
+                      ></span>
+                      7일 실패 결제 통계
                     </button>
                     <button
                       type="button"
@@ -271,13 +291,13 @@
                     </button>
                     <button
                       type="button"
-                      data-prompt="2026-07-30 실패한 결제를 요약해줘"
+                      data-prompt="이 Lab의 보안 흐름을 설명해줘"
                     >
                       <span
-                        class="carbon-icon icon-cloud-auditing"
+                        class="carbon-icon icon-security"
                         aria-hidden="true"
                       ></span>
-                      지정일 보안 조회 실행
+                      Lab 보안 흐름 안내
                     </button>
                   </div>
                 </div>
@@ -360,9 +380,24 @@
                 <strong id="readiness" role="status" aria-live="polite"
                   >확인 중</strong
                 >
+                <span
+                  class="planning-chip checking"
+                  id="planning-readiness"
+                  role="status"
+                  aria-live="polite"
+                  >계획 점검 중</span
+                >
                 <span class="sr-only" id="mode"
                   >구성 상태를 확인하고 있습니다</span
                 >
+                <button
+                  id="demo-reset"
+                  type="button"
+                  aria-label="현재 데모 세션 초기화"
+                  title="데모 세션 초기화"
+                >
+                  초기화
+                </button>
                 <button
                   id="refresh"
                   type="button"

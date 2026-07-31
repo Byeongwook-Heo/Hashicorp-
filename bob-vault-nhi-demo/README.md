@@ -1,9 +1,11 @@
 # Verify authenticates. The Agent uses MCP. Vault authorizes.
 
 `bob-vault-nhi-demo` is an AWS-hosted Agentic Identity lab. A sample chatbot
-authenticates the human user with IBM Verify, its bounded Agent invokes a
-narrowly defined MCP tool, IBM Verify exchanges the user token for an Agent-bound
-OBO JWT, and Vault authorizes a short-lived PostgreSQL credential.
+authenticates the human user with IBM Verify, a private planning service maps
+natural language to a fixed MCP tool, IBM Verify exchanges the user token for
+an Agent-bound OBO JWT, and Vault authorizes a short-lived PostgreSQL
+credential. Deterministic routing remains available if the planning service is
+not ready.
 
 > 사용자는 Verify로 로그인하고, Agent는 MCP를 사용하며, Vault는 필요한
 > 순간에만 DB 접근 권한을 제공합니다.
@@ -14,6 +16,7 @@ OBO JWT, and Vault authorizes a short-lived PostgreSQL credential.
 - The ECS task uses its IAM role to call KMS. The Agent private key never leaves KMS.
 - Verify OBO preserves the user subject while binding the Agent workload.
 - Verify access tokens, Vault tokens, and dynamic database credentials exist only in process memory.
+- The planning boundary receives only the user message (maximum 500 characters); it never receives tokens, credentials, or tool results.
 - SQL is fixed and parameterized. No generic SQL or secret-reading MCP tool exists.
 - RDS and Vault have no public address. Vault administration uses Systems Manager.
 - All deployment builds run in AWS CodeBuild and images are stored in ECR; Docker Desktop is not used.
@@ -25,6 +28,7 @@ Local source → S3 source artifact → CodeBuild → ECR → ECS Fargate
                                  └→ Terraform → AWS infrastructure
 
 User → Verify login → Chat Agent → MCP → Verify OBO → Vault → RDS PostgreSQL
+                         └→ Private intent planning (message only)
 ```
 
 Deployed bootstrap endpoint:
@@ -35,6 +39,8 @@ https://bob-vault-demo.byeongwook-heo.sbx.hashidemos.io
 
 The chatbot and MCP runtime share one private ECS task. IBM Verify user OIDC and
 STS client IDs are external tenant inputs before the OBO path can be deployed.
+The planning runtime remains on a private peered network and is started only for
+event preparation and live-demo windows.
 
 Start or verify with:
 
