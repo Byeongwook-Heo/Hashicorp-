@@ -8,9 +8,18 @@ const loginPanel = document.querySelector("#login-panel");
 const workspace = document.querySelector("#workspace");
 const headerLogin = document.querySelector("#header-login");
 const identity = document.querySelector("#identity");
+const identityState = document.querySelector("#identity-state");
 const userName = document.querySelector("#user-name");
 const userInitial = document.querySelector("#user-initial");
 const agentGreeting = document.querySelector("#agent-greeting");
+const accessContext = document.querySelector("#access-context");
+const accessModeBanner = document.querySelector("#access-mode-banner");
+const accessModeIcon = accessModeBanner.querySelector(".carbon-icon");
+const accessModeTitle = document.querySelector("#access-mode-title");
+const accessModeDescription = document.querySelector(
+  "#access-mode-description",
+);
+const accessModeLogin = document.querySelector("#access-mode-login");
 const loginError = document.querySelector("#login-error");
 const previewStatus = document.querySelector("#preview-status");
 const unauthTest = document.querySelector("#unauth-test");
@@ -139,6 +148,7 @@ const actionLabels = {
   invalid_bearer_token: "잘못된 Bearer 토큰 차단",
   invalid_user_jwt: "잘못된 사용자 JWT 차단",
   user_session_authenticated: "Verify 사용자 세션 인증",
+  protected_data_requires_verify: "미승인 사용자의 보호 데이터 조회 차단",
   agent_plan_failed: "에이전트 계획 오류",
   verify_obo_jwt_validated: "사용자·에이전트 OBO JWT 검증",
   verify_jwt_validated: "Verify JWT 검증",
@@ -200,6 +210,7 @@ const seoulTimeFormatter = new Intl.DateTimeFormat("ko-KR", {
 });
 
 let csrfToken = "";
+let isApprovedUser = false;
 let eventsRequestInFlight = false;
 let eventsInterval = null;
 let latestCredential = null;
@@ -734,7 +745,133 @@ function richStageDetail(stage, activeTool) {
     },
   };
 
-  const detail = details[stage];
+  let detail = details[stage];
+  if (!isApprovedUser && stage === "verify") {
+    detail = {
+      ...detail,
+      summary:
+        "현재 브라우저에는 IBM Verify 사용자 세션이 없습니다. 챗봇 안내는 사용할 수 있지만 보호 데이터용 사용자 JWT는 발급되지 않은 상태입니다.",
+      action:
+        "일반 안내 요청은 Agent로 전달하고, 데이터 조회 요청은 사용자 JWT 없이 MCP 경계로 전달하지 않습니다.",
+      substeps: [
+        [
+          "공개 챗봇 세션 확인",
+          "서버가 Verify 세션 쿠키가 없음을 확인하고 미승인 사용자 컨텍스트를 생성합니다.",
+          "PUBLIC CHAT",
+        ],
+        [
+          "사용자 JWT 미발급",
+          "OIDC 로그인과 access token 발급을 수행하지 않았으므로 보호 데이터 권한은 부여되지 않습니다.",
+          "NO JWT",
+        ],
+        [
+          "최소 권한 상태 유지",
+          "MCP에 전달할 Bearer 토큰, Vault OBO JWT, DB 자격증명은 생성하지 않습니다.",
+          "DENY BY DEFAULT",
+        ],
+      ],
+      checks: [
+        ["챗봇", "일반 안내 사용 가능"],
+        ["Verify 세션", "없음"],
+        ["보호 데이터", "조회 불가"],
+        ["후속 경계", "MCP·Vault·DB 토큰 미발급"],
+      ],
+      codeViews: {
+        request: JSON.stringify(
+          {
+            authenticated: false,
+            authorization: "unapproved",
+            capability: "general-chat-only",
+          },
+          null,
+          2,
+        ),
+        response: JSON.stringify(
+          {
+            user: "미승인 사용자",
+            chat: "allowed",
+            protectedData: "denied",
+          },
+          null,
+          2,
+        ),
+        execution: [
+          "const session = await readVerifySession(cookie);",
+          "if (!session) {",
+          "  return { authorization: 'unapproved', chat: 'allowed' };",
+          "}",
+        ].join("\n"),
+      },
+    };
+  } else if (!isApprovedUser && stage === "agent") {
+    detail = {
+      ...detail,
+      summary:
+        "Agent가 미승인 사용자의 요청을 일반 안내와 보호 데이터 작업으로 분류합니다. 데이터 작업은 이 단계에서 차단합니다.",
+      action:
+        "보호 데이터 계획이면 `protected_data_requires_verify` 결정을 기록하고 MCP 호출 전에 반환합니다.",
+      substeps: [
+        [
+          "미승인 사용자 컨텍스트 수신",
+          "access token이 없는 공개 챗봇 사용자 상태로 요청을 받습니다.",
+          "UNAPPROVED",
+        ],
+        [
+          "요청 의도 분류",
+          "Lab 안내인지 주문·결제 데이터 조회인지 고정 스키마로 분류합니다.",
+          "INTENT",
+        ],
+        [
+          "보호 데이터 권한 검사",
+          "데이터 도구 계획에는 승인된 Verify 사용자 access token이 반드시 있어야 합니다.",
+          "POLICY",
+        ],
+        [
+          "MCP 이전 차단",
+          "권한이 없으면 MCP, Vault, PostgreSQL을 호출하지 않고 안전한 거부 응답을 만듭니다.",
+          "SHORT CIRCUIT",
+        ],
+        [
+          "감사 이벤트 기록",
+          "토큰이나 메시지 원문 없이 request ID와 차단 사유만 기록합니다.",
+          "AUDIT",
+        ],
+      ],
+      checks: [
+        ["일반 안내", "허용"],
+        ["데이터 조회", "Verify 승인 필수"],
+        ["MCP 호출", "0회"],
+        ["감사 결정", "protected_data_requires_verify"],
+      ],
+      codeViews: {
+        request: JSON.stringify(
+          {
+            requestId: "<REQUEST_ID>",
+            principal: { authorization: "unapproved" },
+            message: "주문 ORD-1001 상태를 확인해줘",
+          },
+          null,
+          2,
+        ),
+        response: JSON.stringify(
+          {
+            status: "denied",
+            reason: "protected_data_requires_verify",
+            downstream: { mcp: false, vault: false, database: false },
+          },
+          null,
+          2,
+        ),
+        execution: [
+          "const plan = await planner.plan(message);",
+          "if (planUsesMcp(plan) && !principal.accessToken) {",
+          "  audit.record('protected_data_requires_verify');",
+          "  return denyBeforeMcp();",
+          "}",
+        ].join("\n"),
+      },
+    };
+  }
   if (!detail) return {};
   return {
     ...detail,
@@ -849,7 +986,7 @@ async function loadStatus() {
 
     const isConfigured = Boolean(status.configured);
     previewStatus.textContent = isConfigured
-      ? "서비스 구성 완료 · 로그인 후 챗봇과 제어 센터를 사용할 수 있습니다."
+      ? "서비스 구성 완료 · 챗봇 안내는 누구나, 보호 데이터 조회는 승인된 사용자만 사용할 수 있습니다."
       : "초기 설정이 아직 완료되지 않았습니다.";
 
     readiness.textContent = isConfigured
@@ -873,15 +1010,12 @@ async function loadSession() {
     headers: { accept: "application/json" },
     cache: "no-store",
   });
-  if (response.status === 401) {
-    showLogin();
-    return;
-  }
   if (!response.ok) {
     throw new Error("session unavailable");
   }
   const session = await response.json();
-  csrfToken = String(session.csrfToken);
+  isApprovedUser = Boolean(session.authenticated);
+  csrfToken = isApprovedUser ? String(session.csrfToken ?? "") : "";
   const displayName = String(session.user.displayName).slice(0, 80);
   userName.textContent = displayName;
   if (userInitial) {
@@ -890,8 +1024,12 @@ async function loadSession() {
   if (agentGreeting) {
     agentGreeting.textContent = `안녕하세요, ${displayName}님!`;
   }
-  showWorkspace();
-  void runPreflight();
+  showWorkspace(isApprovedUser);
+  if (isApprovedUser) {
+    void runPreflight();
+  } else {
+    setPlanningState("fallback", "안전 안내 모드");
+  }
 }
 
 function setPlanningState(kind, label) {
@@ -947,31 +1085,47 @@ function initialsFor(displayName) {
 }
 
 function showLogin() {
-  stopRequestProgressPolling();
-  resetRequestProgressDock();
-  document.body.classList.remove("authenticated");
-  workspace.hidden = true;
-  identity.hidden = true;
-  topnav.hidden = true;
-  headerLogin.hidden = false;
-  loginPanel.hidden = false;
-  loginError.hidden = !new window.URLSearchParams(window.location.search).has(
-    "auth_error",
-  );
+  isApprovedUser = false;
+  csrfToken = "";
   resetUnauthenticatedDemo();
-  if (eventsInterval) {
-    window.clearInterval(eventsInterval);
-    eventsInterval = null;
-  }
+  userName.textContent = "미승인 사용자";
+  userInitial.textContent = "미";
+  agentGreeting.textContent = "안녕하세요! 챗봇 안내는 바로 이용할 수 있어요.";
+  showWorkspace(false);
 }
 
-function showWorkspace() {
+function showWorkspace(approved = false) {
   document.body.classList.add("authenticated");
+  document.body.classList.toggle("approved-user", approved);
   identity.hidden = false;
   topnav.hidden = true;
-  headerLogin.hidden = true;
+  headerLogin.hidden = approved;
+  logout.hidden = !approved;
   loginPanel.hidden = true;
   workspace.hidden = false;
+  identityState.textContent = approved
+    ? "Verify 인증 완료 · 조회 허용"
+    : "미승인 · 보호 데이터 조회 불가";
+  identityState.classList.toggle("unapproved", !approved);
+  accessContext.textContent = approved
+    ? "Verify 승인 · 읽기 전용"
+    : "챗봇 사용 가능 · 조회 불가";
+  accessModeBanner.className = `access-mode-banner ${approved ? "approved" : "unapproved"}`;
+  accessModeIcon.className = `carbon-icon ${approved ? "icon-check-filled" : "icon-locked"}`;
+  accessModeTitle.textContent = approved
+    ? "승인된 사용자 모드"
+    : "미승인 사용자 모드";
+  accessModeDescription.textContent = approved
+    ? "IBM Verify 인증이 완료되었습니다. 등록된 읽기 전용 도구로 보호 데이터를 조회할 수 있습니다."
+    : "일반 대화와 Lab 안내는 사용할 수 있지만 주문·결제 데이터 조회는 Agent 단계에서 차단됩니다.";
+  accessModeLogin.hidden = approved;
+  demoReset.hidden = !approved;
+  document.querySelectorAll("[data-protected='true']").forEach((button) => {
+    button.classList.toggle("requires-approval", !approved);
+    button.title = approved
+      ? "승인된 읽기 전용 데이터 요청"
+      : "요청은 가능하지만 미승인 상태에서는 Agent가 조회를 차단합니다";
+  });
   activeRequestId = null;
   resetRequestProgressDock();
   resetTelemetryPath();
@@ -1260,19 +1414,34 @@ function beginRequestPath() {
   requestProgressId.textContent = `요청 ${activeRequestId.slice(0, 8)}`;
   startRequestElapsedTimer();
   resetVisiblePath();
-  updatePathStep("verify", activePathCopy.verify.state, "active", "—", true);
-  updatePathOverview("verify", "active", activePathCopy.verify.detail);
+  if (isApprovedUser) {
+    updatePathStep("verify", activePathCopy.verify.state, "active", "—", true);
+    updatePathOverview("verify", "active", activePathCopy.verify.detail);
+  } else {
+    updatePathStep("verify", "미인증", "neutral", "—");
+    updatePathStep("agent", activePathCopy.agent.state, "active", "—", true);
+    updatePathOverview(
+      "agent",
+      "active",
+      "미승인 사용자 요청을 분류하고 보호 데이터 접근 여부를 확인합니다.",
+    );
+  }
   accessStatusSummary.className = "access-status-summary active";
   accessStatusBadge.className = "access-status-badge active";
   accessStatusRequest.textContent = "새 요청";
-  accessStatusResult.textContent = "사용자 신원 확인 중";
-  accessStatusDescription.textContent =
-    "현재 요청의 Verify 신원부터 순서대로 평가합니다.";
+  accessStatusResult.textContent = isApprovedUser
+    ? "사용자 신원 확인 중"
+    : "요청 유형과 조회 권한 확인 중";
+  accessStatusDescription.textContent = isApprovedUser
+    ? "현재 요청의 Verify 신원부터 순서대로 평가합니다."
+    : "일반 안내는 응답하고 보호 데이터 요청은 Agent에서 차단합니다.";
   accessStatusBadge.textContent = "처리 중";
-  accessStatusStage.textContent = "Verify 신원";
+  accessStatusStage.textContent = isApprovedUser ? "Verify 신원" : "Agent 정책";
   accessStatusPolicy.textContent = "평가 전";
   accessStatusCredentials.textContent = "미발급";
-  accessStatusAction.textContent = "사용자 세션 검증";
+  accessStatusAction.textContent = isApprovedUser
+    ? "사용자 세션 검증"
+    : "요청 범위 분류";
 }
 
 function renderTrace(steps) {
@@ -1329,14 +1498,15 @@ async function sendMessage(message) {
   setBusy(true);
   const thinking = addThinking();
   try {
+    const headers = {
+      accept: "application/json",
+      "content-type": "application/json",
+      "x-request-id": activeRequestId,
+    };
+    if (isApprovedUser) headers["x-csrf-token"] = csrfToken;
     const response = await fetch("/api/chat", {
       method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-        "x-csrf-token": csrfToken,
-        "x-request-id": activeRequestId,
-      },
+      headers,
       body: JSON.stringify({ message: trimmed }),
     });
     if (response.status === 401) {
@@ -1352,17 +1522,25 @@ async function sendMessage(message) {
     }
     activeRequestId = String(payload.requestId ?? "") || activeRequestId;
     thinking.remove();
+    const traceSteps = Array.isArray(payload.trace) ? payload.trace : [];
+    const deniedByPolicy = traceSteps.some(
+      (step) => String(step.status) === "denied",
+    );
     const responseMessage = addMessage(
       "agent",
       String(payload.reply),
-      payload.tool
-        ? `MCP 도구 · ${toolLabels[String(payload.tool)] ?? String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
-        : "에이전트 정책 안내",
+      payload.tool && deniedByPolicy
+        ? `보호 데이터 조회 차단 · 요청 ${String(payload.requestId).slice(0, 8)}`
+        : payload.tool
+          ? `MCP 도구 · ${toolLabels[String(payload.tool)] ?? String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
+          : "에이전트 정책 안내",
     );
-    latestTool = String(payload.tool ?? "");
-    appendQueryPreview(responseMessage, String(payload.tool ?? ""));
+    latestTool = deniedByPolicy ? "" : String(payload.tool ?? "");
+    if (!deniedByPolicy) {
+      appendQueryPreview(responseMessage, String(payload.tool ?? ""));
+    }
     appendFollowUpSuggestions(responseMessage, payload.suggestions);
-    renderTrace(Array.isArray(payload.trace) ? payload.trace : []);
+    renderTrace(traceSteps);
     if (payload.credential?.state === "released") {
       const ttl = Number(payload.credential.initialTtlSeconds);
       if (Number.isFinite(ttl) && ttl > 0) {
@@ -1591,6 +1769,14 @@ function renderCurrentAccessStatus(
     : stageKey === "vault"
       ? "정책 차단"
       : "평가 완료";
+  const protectedDataDenied = requestEvents.some(
+    (event) => String(event.action ?? "") === "protected_data_requires_verify",
+  );
+  if (protectedDataDenied) {
+    deniedResultByStage.policy = "미승인 사용자의 보호 데이터 조회 차단";
+    deniedDescriptionByStage.policy =
+      "챗봇 이용은 허용되지만 Verify 사용자 세션이 없어 데이터 조회를 중단했습니다. MCP, Vault, PostgreSQL은 호출하지 않았습니다.";
+  }
   const errorPolicy = preVaultStages.has(stageKey)
     ? "평가 전"
     : stageKey === "vault"
@@ -1631,7 +1817,7 @@ function renderCurrentAccessStatus(
         deniedDescriptionByStage[stageKey] ??
         `${stage} 단계에서 요청을 차단했습니다. 이후 데이터 접근은 수행되지 않았습니다.`,
       badge: "차단",
-      policy: deniedPolicy,
+      policy: protectedDataDenied ? "Verify 승인 필요" : deniedPolicy,
       credentials: credentialsIssued ? "발급 후 사용 차단" : "미발급",
     },
     error: {
@@ -1682,6 +1868,18 @@ function updatePathFromEvents(events) {
     database: "database",
   };
   const requestEvents = latestRequestEvents(events);
+  const unapprovedRequest = requestEvents.some(
+    (event) =>
+      String(event.action ?? "") === "protected_data_requires_verify" ||
+      (String(event.stage ?? "") === "policy" &&
+        String(event.action ?? "").startsWith("agent_response_") &&
+        !requestEvents.some(
+          (candidate) => String(candidate.stage ?? "") === "identity",
+        )),
+  );
+  if (unapprovedRequest) {
+    updatePathStep("verify", "미인증", "neutral", "—");
+  }
   const eventsByPath = new Map();
   for (const event of requestEvents) {
     const key = pathByStage[String(event.stage ?? "")];
@@ -1774,6 +1972,9 @@ function updatePathFromEvents(events) {
   }
 
   if (responseOnly) {
+    if (unapprovedRequest) {
+      updatePathStep("verify", "미인증", "neutral", "—");
+    }
     for (const key of ["mcp", "vault", "database"]) {
       updatePathStep(key, "미실행", "neutral");
     }

@@ -283,6 +283,8 @@ describe("HTTP security boundary", () => {
     const response = await request(app).get("/api/me").expect(200);
 
     expect(response.body).toMatchObject({
+      authenticated: true,
+      authorization: "approved",
       user: {
         displayName: "Demo User",
         email: "demo@example.test",
@@ -294,16 +296,36 @@ describe("HTTP security boundary", () => {
     );
   });
 
-  it("requires an authenticated session for the chatbot", async () => {
+  it("returns an unapproved browser state without exposing credentials", async () => {
+    const { app } = buildApp();
+
+    const response = await request(app).get("/api/me").expect(200);
+
+    expect(response.body).toEqual({
+      authenticated: false,
+      authorization: "unapproved",
+      user: { displayName: "미승인 사용자" },
+    });
+    expect(response.body).not.toHaveProperty("csrfToken");
+  });
+
+  it("passes an unapproved chatbot request to the agent boundary", async () => {
     const { app, agent, vault } = buildApp();
 
     await request(app)
       .post("/api/chat")
-      .set("x-csrf-token", authenticatedSession.csrfToken)
       .send({ message: "주문 ORD-1001 상태" })
-      .expect(401);
+      .expect(200);
 
-    expect(agent.respond).not.toHaveBeenCalled();
+    expect(agent.respond).toHaveBeenCalledWith(
+      "주문 ORD-1001 상태",
+      {
+        subject: "public-unapproved-user",
+        displayName: "미승인 사용자",
+        authorization: "unapproved",
+      },
+      expect.any(String),
+    );
     expect(vault.withDatabaseCredentials).not.toHaveBeenCalled();
   });
 

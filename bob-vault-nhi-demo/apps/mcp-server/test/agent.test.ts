@@ -23,6 +23,57 @@ function buildAgent(result: Record<string, unknown>) {
 }
 
 describe("BoundedChatAgent", () => {
+  it("lets an unapproved user use general chat without calling MCP", async () => {
+    const { agent, mcp } = buildAgent({});
+
+    const reply = await agent.respond("이 Lab의 보안 흐름을 설명해줘", {
+      subject: "public-unapproved-user",
+      displayName: "미승인 사용자",
+      authorization: "unapproved",
+    });
+
+    expect(reply.reply).toContain("IBM Verify 사용자 인증");
+    expect(reply.trace[0]).toMatchObject({
+      label: "챗봇 사용자",
+      status: "allowed",
+    });
+    expect(mcp.callTool).not.toHaveBeenCalled();
+  });
+
+  it("blocks an unapproved data request before MCP, Vault, or DB", async () => {
+    const mcp: McpToolCaller = { callTool: vi.fn() };
+    const reportProgress = vi.fn();
+    const agent = new BoundedChatAgent(
+      mcp,
+      new RuleBasedPlanner(),
+      reportProgress,
+    );
+    const requestId = "unapproved-request-123";
+
+    const reply = await agent.respond(
+      "주문 ORD-1001 상태를 알려줘",
+      {
+        subject: "public-unapproved-user",
+        displayName: "미승인 사용자",
+        authorization: "unapproved",
+      },
+      requestId,
+    );
+
+    expect(reply.reply).toContain("승인된 사용자만");
+    expect(reply.reply).toContain(
+      "MCP, Vault, PostgreSQL을 호출하지 않았습니다",
+    );
+    expect(reply.trace.at(-1)?.status).toBe("denied");
+    expect(reportProgress).toHaveBeenCalledWith({
+      stage: "policy",
+      status: "denied",
+      action: "protected_data_requires_verify",
+      requestId,
+    });
+    expect(mcp.callTool).not.toHaveBeenCalled();
+  });
+
   it("reports the selected plan and propagates the request ID to MCP", async () => {
     const mcp: McpToolCaller = {
       callTool: vi.fn().mockResolvedValue({

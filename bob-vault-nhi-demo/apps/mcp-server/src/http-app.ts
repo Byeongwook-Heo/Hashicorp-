@@ -164,12 +164,19 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
   });
   app.get("/api/me", async (request, response, next) => {
     try {
-      const session = await requireUserSession(
-        userAuth,
-        request.header("cookie"),
-      );
+      const session = await userAuth.readSession(request.header("cookie"));
       response.setHeader("cache-control", "no-store");
+      if (!session) {
+        response.json({
+          authenticated: false,
+          authorization: "unapproved",
+          user: { displayName: "미승인 사용자" },
+        });
+        return;
+      }
       response.json({
+        authenticated: true,
+        authorization: "approved",
         user: {
           displayName: session.displayName,
           ...(session.email ? { email: session.email } : {}),
@@ -196,6 +203,12 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
   });
   app.post(
     "/api/chat",
+    rateLimit({
+      windowMs: 60_000,
+      limit: 30,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+    }),
     express.json({ limit: "16kb", strict: true }),
     async (request, response, next) => {
       try {
@@ -206,22 +219,25 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
             "CHATBOT_UNAVAILABLE",
           );
         }
-        const session = await requireUserSession(
-          userAuth,
-          request.header("cookie"),
-        );
-        requireCsrf(request, session);
+        const session = await userAuth.readSession(request.header("cookie"));
+        if (session) requireCsrf(request, session);
         const input = chatMessageSchema.parse(request.body);
         const requestId = response.locals["requestId"] as string;
-        events.record({
-          stage: "identity",
-          status: "allowed",
-          action: "user_session_authenticated",
-          requestId,
-        });
+        if (session) {
+          events.record({
+            stage: "identity",
+            status: "allowed",
+            action: "user_session_authenticated",
+            requestId,
+          });
+        }
         const reply = await dependencies.agent.respond(
           input.message,
-          session,
+          session ?? {
+            subject: "public-unapproved-user",
+            displayName: "미승인 사용자",
+            authorization: "unapproved",
+          },
           requestId,
         );
         response.setHeader("cache-control", "no-store");

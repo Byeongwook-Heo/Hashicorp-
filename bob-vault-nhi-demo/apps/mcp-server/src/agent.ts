@@ -5,6 +5,14 @@ import { z } from "zod";
 import { AppError, ExternalServiceError } from "./errors.js";
 import type { UserPrincipal } from "./user-auth.js";
 
+export interface UnapprovedChatPrincipal {
+  subject: string;
+  displayName: string;
+  authorization: "unapproved";
+}
+
+export type ChatPrincipal = UserPrincipal | UnapprovedChatPrincipal;
+
 const accessSchema = z.object({
   nhi: z.string(),
   user_subject: z.string().optional(),
@@ -159,7 +167,7 @@ export interface MessagePlanner {
 export interface ChatAgent {
   respond(
     message: string,
-    principal: UserPrincipal,
+    principal: ChatPrincipal,
     requestId?: string,
   ): Promise<AgentReply>;
   preflight?(): Promise<AgentPlanningStatus>;
@@ -169,7 +177,7 @@ export interface ChatAgent {
 
 export type AgentProgressReporter = (event: {
   stage: "policy";
-  status: "allowed" | "error";
+  status: "allowed" | "denied" | "error";
   action: string;
   requestId: string;
 }) => void;
@@ -385,7 +393,7 @@ export class BoundedChatAgent implements ChatAgent {
 
   public async respond(
     message: string,
-    principal: UserPrincipal,
+    principal: ChatPrincipal,
     requestId?: string,
   ): Promise<AgentReply> {
     const normalized = message.trim();
@@ -407,6 +415,19 @@ export class BoundedChatAgent implements ChatAgent {
       }
       throw error;
     }
+    if (planUsesMcp(plan) && !isApprovedPrincipal(principal)) {
+      if (requestId) {
+        this.reportProgress?.({
+          stage: "policy",
+          status: "denied",
+          action: "protected_data_requires_verify",
+          requestId,
+        });
+      }
+      const reply = unapprovedDataReply(plan, principal);
+      this.#remember(principal.subject, reply);
+      return reply;
+    }
     if (requestId) {
       this.reportProgress?.({
         stage: "policy",
@@ -417,7 +438,9 @@ export class BoundedChatAgent implements ChatAgent {
         requestId,
       });
     }
-    const reply = await this.#execute(plan, principal, requestId);
+    const reply = isApprovedPrincipal(principal)
+      ? await this.#execute(plan, principal, requestId)
+      : this.#executeUnapproved(plan, principal);
     if (reply.tool) {
       this.#remember(principal.subject, reply);
     }
@@ -442,6 +465,22 @@ export class BoundedChatAgent implements ChatAgent {
 
   public reset(subject: string): void {
     this.#lastDecisions.delete(subject);
+  }
+
+  #executeUnapproved(
+    plan: AgentPlan,
+    principal: UnapprovedChatPrincipal,
+  ): AgentReply {
+    switch (plan.intent) {
+      case "explain_last_decision":
+        return this.#explainLastDecision(principal);
+      case "explain_lab":
+        return explainLab(plan.topic, principal);
+      case "unsupported":
+        return unsupportedReply(principal);
+      default:
+        return unapprovedDataReply(plan, principal);
+    }
   }
 
   async #execute(
@@ -599,7 +638,7 @@ export class BoundedChatAgent implements ChatAgent {
       : this.mcp.callTool(tool, argumentsValue, accessToken);
   }
 
-  #explainLastDecision(principal: UserPrincipal): AgentReply {
+  #explainLastDecision(principal: ChatPrincipal): AgentReply {
     const remembered = this.#lastDecisions.get(principal.subject);
     if (!remembered || Date.now() - remembered.at > decisionRetentionMs) {
       this.#lastDecisions.delete(principal.subject);
@@ -710,12 +749,16 @@ function deniedTrace(principal: UserPrincipal): AgentTraceStep[] {
   ];
 }
 
-function policyOnlyTrace(principal: UserPrincipal): AgentTraceStep[] {
+function policyOnlyTrace(principal: ChatPrincipal): AgentTraceStep[] {
   return [
     {
-      label: "IBM Verify 사용자",
-      detail: safeIdentityLabel(principal),
-      status: "verified",
+      label: isApprovedPrincipal(principal)
+        ? "IBM Verify 사용자"
+        : "챗봇 사용자",
+      detail: isApprovedPrincipal(principal)
+        ? safeIdentityLabel(principal)
+        : `${safeIdentityLabel(principal)} · Verify 미인증`,
+      status: isApprovedPrincipal(principal) ? "verified" : "allowed",
     },
     {
       label: "Agent 정책",
@@ -727,7 +770,7 @@ function policyOnlyTrace(principal: UserPrincipal): AgentTraceStep[] {
 
 function explainLab(
   topic: Extract<AgentPlan, { intent: "explain_lab" }>["topic"],
-  principal: UserPrincipal,
+  principal: ChatPrincipal,
 ): AgentReply {
   const replies = {
     nhi: "NHI는 사람이 아닌 애플리케이션과 Agent가 사용하는 신원입니다. 이 Lab에서는 Agent 신원과 로그인한 사용자의 subject를 결합해 요청 주체를 증명합니다.",
@@ -747,7 +790,7 @@ function explainLab(
   };
 }
 
-function unsupportedReply(principal: UserPrincipal): AgentReply {
+function unsupportedReply(principal: ChatPrincipal): AgentReply {
   return {
     reply:
       "이 Lab에서는 주문 상태, 최근 주문, 실패 결제 요약·통계, 접근 결정 설명과 보안 구성 안내를 처리합니다. 모든 데이터 요청은 등록된 읽기 전용 MCP 도구로 제한됩니다.",
@@ -811,8 +854,60 @@ function boundedNumber(
   return Math.min(maximum, Math.max(minimum, Number(candidate)));
 }
 
-function safeIdentityLabel(principal: UserPrincipal): string {
+function safeIdentityLabel(principal: ChatPrincipal): string {
   return principal.displayName.slice(0, 80);
+}
+
+function isApprovedPrincipal(
+  principal: ChatPrincipal,
+): principal is UserPrincipal {
+  return "accessToken" in principal && principal.accessToken.length > 0;
+}
+
+function unapprovedDataReply(
+  plan: AgentPlan,
+  principal: UnapprovedChatPrincipal,
+): AgentReply {
+  const tool = toolForPlan(plan);
+  return {
+    reply:
+      "챗봇 안내는 누구나 이용할 수 있지만 주문·결제 데이터 조회는 승인된 사용자만 가능합니다. " +
+      "IBM Verify로 로그인한 뒤 다시 요청해 주세요. 이번 요청은 Agent 권한 검사에서 중단되어 MCP, Vault, PostgreSQL을 호출하지 않았습니다.",
+    tool,
+    trace: [
+      {
+        label: "챗봇 이용",
+        detail: `${safeIdentityLabel(principal)} · 일반 안내 사용 가능`,
+        status: "allowed",
+      },
+      {
+        label: "보호 데이터 권한",
+        detail: "IBM Verify 사용자 세션 없음 · 조회 권한 미부여",
+        status: "denied",
+      },
+    ],
+    suggestions: [
+      { label: "Lab 보안 흐름", prompt: "이 Lab의 보안 흐름을 설명해줘" },
+      { label: "NHI 설명", prompt: "NHI가 무엇인지 설명해줘" },
+    ],
+  };
+}
+
+function toolForPlan(plan: AgentPlan): AgentToolName | null {
+  switch (plan.intent) {
+    case "order_status":
+      return "get_order_status";
+    case "failed_payment_summary":
+      return "get_failed_payment_summary";
+    case "recent_orders":
+      return "get_recent_orders";
+    case "failed_payment_trend":
+      return "get_failed_payment_trend";
+    case "sensitive_payment_data":
+      return "get_sensitive_payment_data";
+    default:
+      return null;
+  }
 }
 
 function todayInSeoul(): string {

@@ -249,6 +249,10 @@ img {
   font-size: 10px;
 }
 
+.identity-copy small.unapproved {
+  color: var(--amber-text);
+}
+
 .identity-copy strong {
   overflow: hidden;
   font-size: 13px;
@@ -1239,6 +1243,81 @@ body.authenticated > .site-footer {
   flex-direction: column;
 }
 
+.access-mode-banner {
+  position: sticky;
+  z-index: 8;
+  top: 0;
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 20px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 3px 12px rgb(0 0 0 / 4%);
+  backdrop-filter: blur(12px);
+}
+
+.access-mode-banner::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--amber);
+  content: "";
+}
+
+.access-mode-banner.approved::before {
+  background: var(--green);
+}
+
+.access-mode-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--amber-soft);
+  color: var(--amber-text);
+}
+
+.access-mode-banner.approved .access-mode-icon {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.access-mode-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.access-mode-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.access-mode-copy span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.access-mode-banner > a {
+  min-height: 32px;
+  padding: 6px 12px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.access-mode-banner > a:hover {
+  background: var(--blue-hover);
+}
+
 .agent-intro {
   display: grid;
   grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
@@ -1302,6 +1381,20 @@ body.authenticated > .site-footer {
   border-color: var(--blue);
   background: var(--blue-soft);
   color: var(--text);
+}
+
+.suggestions button.requires-approval {
+  border-color: color-mix(in srgb, var(--amber) 60%, var(--line));
+  background: color-mix(in srgb, var(--amber-soft) 56%, var(--surface));
+}
+
+.suggestions button.requires-approval::after {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--amber-text);
+  font-size: 9px;
+  font-weight: 600;
+  content: "승인 필요";
 }
 
 .suggestions button:disabled {

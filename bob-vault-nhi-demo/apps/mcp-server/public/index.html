@@ -9,10 +9,10 @@
       content="IBM Verify 사용자 인증, MCP 요청 제어, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 Agentic Security Lab"
     />
     <title>Agentic Security Lab | 대화 · 접근제어</title>
-    <script src="/theme.js?v=20260801-liveflow3"></script>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260801-liveflow3" />
-    <link rel="stylesheet" href="/styles.css?v=20260801-liveflow3" />
-    <script src="/app.js?v=20260801-liveflow3" type="module"></script>
+    <script src="/theme.js?v=20260801-accessmode2"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260801-accessmode2" />
+    <link rel="stylesheet" href="/styles.css?v=20260801-accessmode2" />
+    <script src="/app.js?v=20260801-accessmode2" type="module"></script>
   </head>
   <body>
     <header class="topbar">
@@ -55,7 +55,7 @@
             >U</span
           >
           <span class="identity-copy">
-            <small>Verify 인증 완료</small>
+            <small id="identity-state">Verify 인증 완료</small>
             <strong id="user-name">—</strong>
           </span>
           <button class="logout-button" id="logout" type="button">
@@ -254,10 +254,32 @@
                 <span class="carbon-icon icon-bot" aria-hidden="true"></span>
                 <h2 id="chat-title">대화</h2>
               </div>
-              <span class="panel-context">읽기 전용 · 최소 권한</span>
+              <span class="panel-context" id="access-context"
+                >사용자 상태 확인 중</span
+              >
             </header>
 
             <div class="chat-scroll">
+              <section
+                class="access-mode-banner unapproved"
+                id="access-mode-banner"
+                aria-live="polite"
+              >
+                <span class="access-mode-icon" aria-hidden="true">
+                  <span class="carbon-icon icon-locked"></span>
+                </span>
+                <span class="access-mode-copy">
+                  <strong id="access-mode-title">미승인 사용자 모드</strong>
+                  <span id="access-mode-description"
+                    >일반 대화와 Lab 안내는 사용할 수 있지만 보호 데이터 조회는
+                    차단됩니다.</span
+                  >
+                </span>
+                <a href="/auth/login" id="access-mode-login"
+                  >IBM Verify 로그인</a
+                >
+              </section>
+
               <section class="agent-intro" aria-labelledby="agent-title">
                 <div class="agent-figure">
                   <img
@@ -278,6 +300,7 @@
                   <div class="suggestions" aria-label="빠른 요청">
                     <button
                       type="button"
+                      data-protected="true"
                       data-prompt="주문 ORD-1001 상태를 확인해줘"
                     >
                       <span
@@ -288,6 +311,7 @@
                     </button>
                     <button
                       type="button"
+                      data-protected="true"
                       data-prompt="최근 주문 5건을 요약해줘"
                     >
                       <span
@@ -298,6 +322,7 @@
                     </button>
                     <button
                       type="button"
+                      data-protected="true"
                       data-prompt="오늘 실패한 결제를 요약해줘"
                     >
                       <span
@@ -308,6 +333,7 @@
                     </button>
                     <button
                       type="button"
+                      data-protected="true"
                       data-prompt="최근 7일 실패 결제 통계를 보여줘"
                     >
                       <span
@@ -318,6 +344,7 @@
                     </button>
                     <button
                       type="button"
+                      data-protected="true"
                       data-prompt="CUS-1001의 민감 결제 정보를 보여줘"
                     >
                       <span
