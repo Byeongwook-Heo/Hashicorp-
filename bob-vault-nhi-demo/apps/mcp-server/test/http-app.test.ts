@@ -158,11 +158,10 @@ describe("HTTP security boundary", () => {
     expect(html).toContain('id="stage-dialog"');
     expect(html).toContain('id="trace-stage-count"');
     expect(html).toContain('id="trace-progress-fill"');
-    expect(html).toContain('id="unauth-test"');
-    expect(html).toContain('id="unauth-path"');
-    expect(html).toContain("미승인 사용자로 로그인");
-    expect(html).toContain('id="verify-demo-dialog"');
-    expect(html).toContain("DEMO SIMULATION");
+    expect(html).toContain('id="access-mode-banner"');
+    expect(html).toContain("미승인 사용자 모드");
+    expect(html).toContain("일반 대화와 Lab 안내");
+    expect(html).toContain('data-protected="true"');
     expect(html).toContain('data-stage="vault"');
     expect(html).toContain("/icons/custom/postgresql-elephant.svg");
     expect(html).toContain("/icons/custom/hashicorp-vault.svg");

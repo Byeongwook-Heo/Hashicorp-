@@ -17,11 +17,25 @@ if [[ "$(printf '%s' "${status_json}" | jq -r '.chatbot.enabled')" == "true" ]];
     "${base_url}/auth/login")"
   test "${login_status}" = "302"
 
-  session_status="$(curl --silent --show-error \
-    --output /dev/null \
-    --write-out '%{http_code}' \
+  session_json="$(curl --fail --silent --show-error \
     "${base_url}/api/me")"
-  test "${session_status}" = "401"
+  test "$(printf '%s' "${session_json}" | jq -r '.authenticated')" = "false"
+  test "$(printf '%s' "${session_json}" | jq -r '.authorization')" = "unapproved"
+
+  public_chat_json="$(curl --fail --silent --show-error \
+    --header "accept: application/json" \
+    --header "content-type: application/json" \
+    --data '{"message":"이 Lab의 보안 흐름을 설명해줘"}' \
+    "${base_url}/api/chat")"
+  test "$(printf '%s' "${public_chat_json}" | jq -r '.tool')" = "null"
+
+  protected_chat_json="$(curl --fail --silent --show-error \
+    --header "accept: application/json" \
+    --header "content-type: application/json" \
+    --data '{"message":"주문 ORD-1001 상태를 확인해줘"}' \
+    "${base_url}/api/chat")"
+  test "$(printf '%s' "${protected_chat_json}" | jq -r '[.trace[].status] | any(. == "denied")')" = "true"
+  test "$(printf '%s' "${protected_chat_json}" | jq -r '.credential // "not-issued"')" = "not-issued"
 
   mcp_status="$(curl --silent --show-error \
     --output /dev/null \
@@ -31,7 +45,7 @@ if [[ "$(printf '%s' "${status_json}" | jq -r '.chatbot.enabled')" == "true" ]];
     --data '{"jsonrpc":"2.0","id":"smoke-1","method":"tools/list","params":{}}' \
     "${base_url}/mcp")"
   test "${mcp_status}" = "401"
-  echo "Public health, Verify login redirect, and unauthenticated deny checks passed."
+  echo "Public chatbot, Verify login redirect, protected-data deny, and MCP authentication checks passed."
   exit 0
 fi
 
