@@ -2318,15 +2318,31 @@ input.addEventListener("keydown", (event) => {
   }
 });
 
-input.addEventListener("input", () => {
+function resizeComposerInput() {
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 132)}px`;
-});
+}
+
+function populateComposer(message) {
+  const prompt = String(message ?? "").trim();
+  if (!prompt || input.disabled) return;
+  input.value = prompt;
+  resizeComposerInput();
+  input.focus({ preventScroll: true });
+  input.setSelectionRange(prompt.length, prompt.length);
+  input.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+input.addEventListener("input", resizeComposerInput);
 
 document.addEventListener("click", (event) => {
   const button = event.target.closest?.("button[data-prompt]");
   if (!button || button.disabled) return;
   const prompt = button.getAttribute("data-prompt");
+  if (prompt && button.closest(".suggestions")) {
+    populateComposer(prompt);
+    return;
+  }
   if (prompt) void sendMessage(prompt);
 });
 
