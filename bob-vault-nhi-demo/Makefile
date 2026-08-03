@@ -19,7 +19,7 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: bootstrap-agent-runtime-secret agent-runtime-start agent-runtime-stop
 .PHONY: chatbot-plan deploy-chatbot copy-bob-token smoke demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
-.PHONY: event-ssh-plan event-ssh-apply
+.PHONY: source-cidr-add event-ssh-plan event-ssh-apply
 .PHONY: verify-jwks-plan verify-jwks-apply
 
 help:
@@ -127,6 +127,10 @@ event-access-apply: ## Apply time-bounded, audited SSM access without opening SS
 
 event-access-connect: ## Assume the event operator role and open the approved SSM shell.
 	@./scripts/start-event-ssm-session.sh
+
+source-cidr-add: ## Add one source CIDR without replacing existing approved networks.
+	@test -n "$(SOURCE_CIDR)" || { echo "Set SOURCE_CIDR to an explicit IPv4 CIDR such as 203.0.113.10/32."; exit 2; }
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=source-cidr-add,SOURCE_CIDR=$(SOURCE_CIDR)"
 
 event-ssh-plan: ## Plan the CGC public-key path through the restricted bastion.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-ssh-plan"

@@ -67,6 +67,15 @@ Opening `ssh bob-vault-bastion` directly is intentionally denied. The bastion ke
 
 If CGC is not on an already approved network, add only CGC's current public IPv4 address as `/32`, then reapply the public-key access plan. Never open SSH to `0.0.0.0/0`.
 
+Use the merge-safe CodeBuild target so existing approved networks are retained:
+
+```bash
+make upload-source
+SOURCE_CIDR="203.0.113.10/32" make source-cidr-add
+make event-ssh-plan
+make event-ssh-apply
+```
+
 ## Deployment
 
 ```bash
