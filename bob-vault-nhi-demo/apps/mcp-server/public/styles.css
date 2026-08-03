@@ -3300,6 +3300,44 @@ body,
   background: var(--layer-01);
 }
 
+/* Request-stage motion
+ * One-shot transitions communicate hand-off, completion, and the exact stop
+ * point. Persistent processing remains limited to the existing status pulse.
+ */
+.request-progress-stages li.motion-active {
+  animation: dock-stage-focus 360ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+
+.request-progress-stages li.motion-complete .dock-stage-marker,
+.identity-path li.motion-complete .path-node {
+  animation: marker-check-settle 420ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+
+.request-progress-stages li.motion-stopped {
+  animation: dock-stage-stop 360ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+
+.identity-path li.motion-stopped {
+  animation: stage-stop-settle 360ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+
+.identity-path li.motion-active {
+  animation: path-stage-focus 380ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+
+.identity-path li.motion-complete {
+  animation: path-stage-complete 420ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+
+.identity-path li.motion-complete:not(:last-child)::after {
+  transform-origin: top;
+  animation: connector-fill 360ms cubic-bezier(0.2, 0, 0.2, 1) 90ms both;
+}
+
+.identity-path li.motion-active .path-icon {
+  animation: stage-icon-focus 420ms cubic-bezier(0.2, 0, 0.2, 1) both;
+}
+
 @keyframes console-enter {
   from {
     opacity: 0;
@@ -3377,6 +3415,102 @@ body,
   }
   50% {
     opacity: 1;
+  }
+}
+
+@keyframes dock-stage-focus {
+  0% {
+    opacity: 0.68;
+    transform: translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes path-stage-focus {
+  0% {
+    opacity: 0.72;
+    box-shadow: inset 0 0 0 transparent;
+    transform: translateX(2px);
+  }
+  100% {
+    opacity: 1;
+    box-shadow: inset 4px 0 0 var(--blue);
+    transform: translateX(0);
+  }
+}
+
+@keyframes path-stage-complete {
+  0% {
+    border-color: var(--blue);
+    background: var(--blue-soft);
+  }
+  100% {
+    border-color: color-mix(in srgb, var(--green) 34%, var(--border-subtle));
+    background: color-mix(in srgb, var(--green-soft) 26%, var(--layer-01));
+  }
+}
+
+@keyframes marker-check-settle {
+  0% {
+    opacity: 0.4;
+    transform: scale(0.72);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes stage-stop-settle {
+  0% {
+    opacity: 0.7;
+    box-shadow: inset 4px 0 0 var(--blue);
+  }
+  100% {
+    opacity: 1;
+    box-shadow: inset 4px 0 0 var(--red);
+  }
+}
+
+@keyframes dock-stage-stop {
+  0% {
+    opacity: 0.68;
+    transform: translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes connector-fill {
+  0% {
+    background: var(--blue);
+    transform: scaleY(0);
+  }
+  100% {
+    background: var(--green);
+    transform: scaleY(1);
+  }
+}
+
+@keyframes stage-icon-focus {
+  0% {
+    border-color: var(--border-subtle);
+    background: var(--layer-02);
+    transform: scale(0.96);
+  }
+  100% {
+    border-color: color-mix(in srgb, var(--blue) 52%, var(--border-subtle));
+    background: var(--blue-soft);
+    transform: scale(1);
   }
 }
 

@@ -1417,7 +1417,38 @@ const activePathCopy = {
   },
 };
 
-function updatePathStep(key, label, status, time = "—", active = false) {
+const stageMotionClasses = [
+  "motion-active",
+  "motion-complete",
+  "motion-stopped",
+];
+
+function applyStageMotion(node, nextState) {
+  if (!node) return;
+  const previousState = node.dataset.motionState ?? "neutral";
+  if (previousState === nextState) return;
+  node.classList.remove(...stageMotionClasses);
+  node.dataset.motionState = nextState;
+
+  const motionClass =
+    nextState === "active"
+      ? "motion-active"
+      : nextState === "allowed"
+        ? "motion-complete"
+        : nextState === "denied" || nextState === "error"
+          ? "motion-stopped"
+          : "";
+  if (motionClass) node.classList.add(motionClass);
+}
+
+function updatePathStep(
+  key,
+  label,
+  status,
+  time = "—",
+  active = false,
+  animateMotion = true,
+) {
   const step = pathSteps[key];
   if (!step) return;
   step.classList.toggle("active", active);
@@ -1432,6 +1463,9 @@ function updatePathStep(key, label, status, time = "—", active = false) {
   const timestamp = step.querySelector("time");
   if (timestamp) timestamp.textContent = time;
 
+  const visualState = active ? "active" : status;
+  if (animateMotion) applyStageMotion(step, visualState);
+
   const dockStep = dockSteps[key];
   if (dockStep) {
     dockStep.classList.toggle("active", active);
@@ -1442,12 +1476,23 @@ function updatePathStep(key, label, status, time = "—", active = false) {
       "aria-label",
       `${dockStep.textContent.trim()} ${label}`,
     );
+    if (animateMotion) applyStageMotion(dockStep, visualState);
   }
 }
 
-function resetVisiblePath() {
+function resetVisiblePath(preserveMotionState = false) {
   for (const [key, value] of Object.entries(defaultPathStates)) {
-    updatePathStep(key, value.label, value.status);
+    updatePathStep(key, value.label, value.status, "—", false, false);
+  }
+  if (!preserveMotionState) {
+    for (const node of [
+      ...Object.values(pathSteps),
+      ...Object.values(dockSteps),
+    ]) {
+      if (!node) continue;
+      node.classList.remove(...stageMotionClasses);
+      node.dataset.motionState = "neutral";
+    }
   }
 }
 
@@ -1533,6 +1578,36 @@ function beginRequestPath() {
   accessStatusAction.textContent = isApprovedUser
     ? "사용자 세션 검증"
     : "요청 범위 분류";
+}
+
+function settleRequestFailure() {
+  const failedStage =
+    pathOrder.find((key) => pathSteps[key]?.classList.contains("active")) ??
+    (isApprovedUser ? "verify" : "agent");
+  const failedIndex = pathOrder.indexOf(failedStage);
+
+  updatePathStep(failedStage, "오류", "error", "—");
+  for (const key of pathOrder.slice(failedIndex + 1)) {
+    updatePathStep(key, "미실행", "neutral");
+  }
+  updatePathOverview(
+    failedStage,
+    "error",
+    `${activePathCopy[failedStage].label.replace(" 중", "")} 단계에서 오류가 발생해 요청을 중단했습니다. 이후 단계는 실행하지 않았습니다.`,
+  );
+  accessStatusSummary.className = "access-status-summary error";
+  accessStatusBadge.className = "access-status-badge error";
+  accessStatusResult.textContent = "요청을 처리하지 못했습니다";
+  accessStatusDescription.textContent =
+    "현재 단계에서 오류가 발생해 이후 접근 단계는 실행하지 않았습니다.";
+  accessStatusBadge.textContent = "오류";
+  accessStatusStage.textContent = activePathCopy[failedStage].label.replace(
+    " 중",
+    "",
+  );
+  accessStatusPolicy.textContent = "평가 중단";
+  accessStatusCredentials.textContent = "미발급";
+  accessStatusAction.textContent = "요청 중단";
 }
 
 function renderTrace(steps) {
@@ -1644,21 +1719,7 @@ async function sendMessage(message) {
     void loadEvents();
   } catch (error) {
     thinking.remove();
-    if (!activeRequestId) {
-      updatePathStep("verify", "오류", "error", "—", true);
-      traceLiveState.textContent = "요청 오류";
-      traceLiveState.className = "live-state error";
-      accessStatusSummary.className = "access-status-summary error";
-      accessStatusBadge.className = "access-status-badge error";
-      accessStatusResult.textContent = "요청을 처리하지 못했습니다";
-      accessStatusDescription.textContent =
-        "서버 응답을 확인하지 못해 이후 접근 단계는 실행하지 않았습니다.";
-      accessStatusBadge.textContent = "오류";
-      accessStatusStage.textContent = "Verify 신원";
-      accessStatusPolicy.textContent = "평가 전";
-      accessStatusCredentials.textContent = "미발급";
-      accessStatusAction.textContent = "요청 중단";
-    }
+    settleRequestFailure();
     if (!input.value) input.value = retryValue;
     const failureMessage = addMessage(
       "agent",
@@ -1950,7 +2011,7 @@ function updatePathFromEvents(events) {
   if (!Array.isArray(events) || events.length === 0) {
     return;
   }
-  resetVisiblePath();
+  resetVisiblePath(true);
   const pathByStage = {
     identity: "verify",
     policy: "agent",

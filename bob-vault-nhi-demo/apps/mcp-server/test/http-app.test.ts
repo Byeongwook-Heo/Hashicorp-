@@ -199,6 +199,21 @@ describe("HTTP security boundary", () => {
     expect(html.toLowerCase()).not.toContain("ollama");
   });
 
+  it("ships restrained request-stage motion with reduced-motion support", async () => {
+    const [script, styles] = await Promise.all([
+      readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+      readFile(new URL("../public/styles.css", import.meta.url), "utf8"),
+    ]);
+
+    expect(script).toContain("applyStageMotion");
+    expect(script).toContain("resetVisiblePath(true)");
+    expect(script).toContain("settleRequestFailure");
+    expect(styles).toContain(".identity-path li.motion-active");
+    expect(styles).toContain("marker-check-settle");
+    expect(styles).toContain("connector-fill");
+    expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+
   it("redirects legacy operations routes to the unified control center", async () => {
     const { app } = buildApp();
 
