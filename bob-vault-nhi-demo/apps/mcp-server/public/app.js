@@ -101,6 +101,22 @@ const stageDialogCode = document.querySelector("#stage-dialog-code");
 const stageCodeCopy = document.querySelector("#stage-code-copy");
 const stageDialogSubsteps = document.querySelector("#stage-dialog-substeps");
 const stageDialogChecks = document.querySelector("#stage-dialog-checks");
+const stageDialogDestinationTitle = document.querySelector(
+  "#stage-dialog-destination-title",
+);
+const stageDialogDestinationNote = document.querySelector(
+  "#stage-dialog-destination-note",
+);
+const stageDialogOpenLink = document.querySelector("#stage-dialog-open-link");
+const stageDialogOpenLinkLabel = document.querySelector(
+  "#stage-dialog-open-link-label",
+);
+const stageDialogOpenAction = document.querySelector(
+  "#stage-dialog-open-action",
+);
+const stageDialogSecondaryAction = document.querySelector(
+  "#stage-dialog-secondary-action",
+);
 const stageCodeViewButtons = document.querySelectorAll(
   "[data-stage-code-view]",
 );
@@ -199,6 +215,48 @@ const toolExampleArguments = {
   get_failed_payment_summary: { date: "YYYY-MM-DD" },
   get_recent_orders: { limit: 5 },
   get_failed_payment_trend: { days: 7 },
+};
+
+const vaultTunnelCommand = String.raw`ssh -N \
+  -L 8200:127.0.0.1:8200 \
+  -o IdentitiesOnly=yes \
+  -i "$HOME/Downloads/CGC-bob-vault-event.pem" \
+  -o 'ProxyCommand=ssh -o IdentitiesOnly=yes -i "$HOME/Downloads/CGC-bob-vault-event.pem" -W %h:%p cgc@bob-vault-bastion.byeongwook-heo.sbx.hashidemos.io' \
+  cgc@vault.bob-vault-nhi-demo.internal`;
+
+const stageDestinations = {
+  verify: {
+    title: "IBM Verify 관리 UI",
+    note: "Verify 관리자 인증이 필요합니다. 토큰과 자격증명은 링크에 포함되지 않습니다.",
+    label: "Verify UI 열기",
+    href: "https://ceiam.verify.ibm.com/ui/admin",
+  },
+  agent: {
+    title: "현재 Agent 대화",
+    note: "이 페이지의 대화 입력창으로 돌아가 Agent 계획과 응답을 계속 확인합니다.",
+    label: "Agent 대화로 이동",
+    action: "focus-agent",
+  },
+  mcp: {
+    title: "MCP Server Inspector",
+    note: "공개 상태·보안 제어·도구 카탈로그만 표시하는 읽기 전용 화면입니다.",
+    label: "MCP Inspector 열기",
+    href: "/mcp-inspector.html",
+  },
+  vault: {
+    title: "HashiCorp Vault UI",
+    note: "Bastion 소스 CIDR 허용과 SSH 포트포워딩이 완료된 운영자 환경에서만 열립니다.",
+    label: "Vault UI 열기",
+    href: "http://127.0.0.1:8200/ui/",
+    secondaryLabel: "터널 명령 복사",
+    copyText: vaultTunnelCommand,
+  },
+  database: {
+    title: "Amazon RDS · PostgreSQL",
+    note: "AWS Console 권한이 필요합니다. DB는 private subnet에 있으며 공개 DB 관리 UI는 제공하지 않습니다.",
+    label: "RDS 콘솔 열기",
+    href: "https://ap-northeast-2.console.aws.amazon.com/rds/home?region=ap-northeast-2#database:id=bob-vault-nhi-demo-orders;is-cluster=false",
+  },
 };
 
 const seoulTimeFormatter = new Intl.DateTimeFormat("ko-KR", {
@@ -930,8 +988,41 @@ function openStageDialog(stage, trigger) {
   });
   currentStageDetail = detail;
   renderStageCodeView("request");
+  renderStageDestination(stage);
   stageCodeCopy.textContent = "코드 복사";
   stageDialog.showModal();
+}
+
+function renderStageDestination(stage) {
+  const destination = stageDestinations[stage];
+  if (!destination) return;
+
+  stageDialogDestinationTitle.textContent = destination.title;
+  stageDialogDestinationNote.textContent = destination.note;
+  stageDialogOpenLink.hidden = !destination.href;
+  stageDialogOpenAction.hidden = !destination.action;
+  stageDialogSecondaryAction.hidden = !destination.copyText;
+
+  if (destination.href) {
+    stageDialogOpenLink.href = destination.href;
+    stageDialogOpenLinkLabel.textContent = destination.label;
+  } else {
+    stageDialogOpenLink.removeAttribute("href");
+  }
+
+  if (destination.action) {
+    stageDialogOpenAction.dataset.action = destination.action;
+    stageDialogOpenAction.textContent = destination.label;
+  } else {
+    delete stageDialogOpenAction.dataset.action;
+  }
+
+  if (destination.copyText) {
+    stageDialogSecondaryAction.dataset.copyText = destination.copyText;
+    stageDialogSecondaryAction.textContent = destination.secondaryLabel;
+  } else {
+    delete stageDialogSecondaryAction.dataset.copyText;
+  }
 }
 
 function renderStageCodeView(view) {
@@ -2178,6 +2269,33 @@ stageDialog?.addEventListener("click", (event) => {
 stageDialog?.addEventListener("close", () => {
   if (stageDialogTrigger?.isConnected) stageDialogTrigger.focus();
   stageDialogTrigger = null;
+});
+
+stageDialogOpenAction?.addEventListener("click", () => {
+  if (stageDialogOpenAction.dataset.action !== "focus-agent") return;
+  closeStageDialog();
+  window.requestAnimationFrame(() => {
+    document.querySelector("#chat-section")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    input?.focus({ preventScroll: true });
+  });
+});
+
+stageDialogSecondaryAction?.addEventListener("click", async () => {
+  const copyText = stageDialogSecondaryAction.dataset.copyText;
+  if (!copyText) return;
+  const originalLabel = stageDialogSecondaryAction.textContent;
+  try {
+    await window.navigator.clipboard.writeText(copyText);
+    stageDialogSecondaryAction.textContent = "명령 복사됨";
+  } catch {
+    stageDialogSecondaryAction.textContent = "복사 불가";
+  }
+  window.setTimeout(() => {
+    stageDialogSecondaryAction.textContent = originalLabel;
+  }, 1400);
 });
 
 stageCodeCopy?.addEventListener("click", async () => {

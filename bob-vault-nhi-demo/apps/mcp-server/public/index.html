@@ -9,10 +9,10 @@
       content="IBM Verify 사용자 인증, MCP 요청 제어, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 Agentic Security Lab"
     />
     <title>Agentic Security Lab | 대화 · 접근제어</title>
-    <script src="/theme.js?v=20260803-promptfix1"></script>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260803-promptfix1" />
-    <link rel="stylesheet" href="/styles.css?v=20260803-promptfix1" />
-    <script src="/app.js?v=20260803-promptfix1" type="module"></script>
+    <script src="/theme.js?v=20260803-systemlinks1"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260803-systemlinks1" />
+    <link rel="stylesheet" href="/styles.css?v=20260803-systemlinks1" />
+    <script src="/app.js?v=20260803-systemlinks1" type="module"></script>
   </head>
   <body>
     <header class="topbar">
@@ -1005,10 +1005,49 @@
           </div>
 
           <footer class="stage-dialog-footer">
-            <span
-              >표시된 값은 데모용이며 토큰과 자격증명은 포함하지 않습니다.</span
-            >
-            <button type="button" data-stage-dialog-close>확인</button>
+            <div class="stage-dialog-destination">
+              <span>실제 시스템 연결</span>
+              <strong id="stage-dialog-destination-title">연결 대상</strong>
+              <small id="stage-dialog-destination-note"
+                >운영자 인증과 네트워크 조건을 확인해 주세요.</small
+              >
+            </div>
+            <div class="stage-dialog-footer-actions">
+              <button
+                class="stage-dialog-secondary-action"
+                id="stage-dialog-secondary-action"
+                type="button"
+                hidden
+              >
+                연결 명령 복사
+              </button>
+              <a
+                class="stage-dialog-primary-action"
+                id="stage-dialog-open-link"
+                href="#"
+                target="_blank"
+                rel="noopener noreferrer"
+                hidden
+              >
+                <span id="stage-dialog-open-link-label">실제 UI 열기</span>
+                <span class="carbon-icon icon-launch" aria-hidden="true"></span>
+              </a>
+              <button
+                class="stage-dialog-primary-action"
+                id="stage-dialog-open-action"
+                type="button"
+                hidden
+              >
+                Agent 대화로 이동
+              </button>
+              <button
+                class="stage-dialog-close-action"
+                type="button"
+                data-stage-dialog-close
+              >
+                닫기
+              </button>
+            </div>
           </footer>
         </div>
       </dialog>

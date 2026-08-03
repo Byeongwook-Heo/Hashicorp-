@@ -156,6 +156,8 @@ describe("HTTP security boundary", () => {
     expect(html).toContain('id="control-center"');
     expect(html).toContain('id="current-access-status"');
     expect(html).toContain('id="stage-dialog"');
+    expect(html).toContain('id="stage-dialog-open-link"');
+    expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain('id="trace-stage-count"');
     expect(html).toContain('id="trace-progress-fill"');
     expect(html).toContain('id="access-mode-banner"');
@@ -170,6 +172,30 @@ describe("HTTP security boundary", () => {
     expect(html).not.toContain("composer-tabs");
     expect(html).not.toContain("side-rail");
     expect(html).not.toContain("보안 결정 추이");
+    expect(html.toLowerCase()).not.toContain("ollama");
+  });
+
+  it("serves a read-only MCP Inspector without credential inputs", async () => {
+    const { app } = buildApp();
+
+    const response = await request(app).get("/mcp-inspector.html");
+    const html =
+      response.status === 200
+        ? response.text
+        : await readFile(
+            new URL("../public/mcp-inspector.html", import.meta.url),
+            "utf8",
+          );
+
+    expect(html).toContain("MCP Server Inspector");
+    expect(html).toContain("읽기 전용");
+    expect(html).toContain("/api/status");
+    expect(html).toContain("get_order_status");
+    expect(html).toContain("get_sensitive_payment_data");
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain('type="password"');
+    expect(html.toLowerCase()).not.toContain("client_secret");
+    expect(html.toLowerCase()).not.toContain("vault_token");
     expect(html.toLowerCase()).not.toContain("ollama");
   });
 

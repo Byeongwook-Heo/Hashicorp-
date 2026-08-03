@@ -2409,27 +2409,90 @@ body.authenticated > .site-footer {
 
 .stage-dialog-footer {
   display: flex;
-  min-height: 64px;
+  min-height: 88px;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 12px 14px 12px 22px;
+  gap: 24px;
+  padding: 14px 16px 14px 24px;
   border-top: 1px solid var(--line);
   background: var(--surface-soft);
 }
 
-.stage-dialog-footer span {
-  color: var(--muted);
-  font-size: 10px;
+.stage-dialog-destination {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
 }
 
-.stage-dialog-footer button {
-  min-width: 88px;
-  min-height: 40px;
+.stage-dialog-destination > span {
+  color: var(--blue);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stage-dialog-destination strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stage-dialog-destination small {
+  max-width: 540px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.stage-dialog-footer-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: stretch;
+}
+
+.stage-dialog-footer-actions > a,
+.stage-dialog-footer-actions > button {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
   padding: 0 16px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.stage-dialog-primary-action {
+  min-width: 174px;
   background: var(--blue);
   color: #fff;
-  font-weight: 600;
+}
+
+.stage-dialog-primary-action:hover {
+  background: var(--blue-hover);
+}
+
+.stage-dialog-primary-action .carbon-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.stage-dialog-secondary-action {
+  min-width: 132px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.stage-dialog-secondary-action:hover,
+.stage-dialog-close-action:hover {
+  background: var(--surface-hover);
+}
+
+.stage-dialog-close-action {
+  min-width: 76px;
+  background: transparent;
+  color: var(--text);
 }
 
 .events-heading {
@@ -3208,8 +3271,8 @@ body,
 }
 
 .stage-dialog-footer {
-  min-height: 64px;
-  padding: 12px 16px 12px 24px;
+  min-height: 88px;
+  padding: 14px 16px 14px 24px;
   border-top-color: var(--border-strong);
 }
 
@@ -3656,6 +3719,15 @@ body,
     flex-direction: column;
     gap: 10px;
     padding: 12px 16px;
+  }
+
+  .stage-dialog-footer-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stage-dialog-primary-action {
+    min-width: 0;
   }
 }
 
