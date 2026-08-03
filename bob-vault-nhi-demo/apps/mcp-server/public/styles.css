@@ -1,11 +1,27 @@
 :root {
   color-scheme: light;
+  /* Carbon Gray 10 theme: Gray 10 canvas -> White layer -> Gray 10 nested layer. */
+  --background: #f4f4f4;
+  --layer-01: #ffffff;
+  --layer-02: #f4f4f4;
+  --layer-03: #e0e0e0;
+  --layer-hover: #e8e8e8;
+  --field: #f4f4f4;
+  --field-hover: #e8e8e8;
+  --border-subtle: #e0e0e0;
+  --border-strong: #c6c6c6;
+  --border-interactive: #8d8d8d;
+  --text-primary: #161616;
+  --text-secondary: #525252;
+  --text-helper: #6f6f6f;
+  --focus: #0f62fe;
+  --overlay: rgb(0 0 0 / 65%);
   --bg: #f4f4f4;
   --surface: #ffffff;
-  --surface-soft: #f8f8f8;
-  --surface-hover: #e8f1ff;
+  --surface-soft: #f4f4f4;
+  --surface-hover: #e8e8e8;
   --text: #161616;
-  --text-soft: #393939;
+  --text-soft: #525252;
   --muted: #6f6f6f;
   --line: #e0e0e0;
   --line-strong: #c6c6c6;
@@ -19,19 +35,36 @@
   --amber: #f1c21b;
   --amber-text: #8a6700;
   --amber-soft: #fff8e1;
-  --shadow: 0 1px 2px rgb(0 0 0 / 8%);
+  --shadow: 0 4px 12px rgb(0 0 0 / 10%);
+  --shadow-floating: 0 16px 48px rgb(0 0 0 / 18%);
   --font: "IBM Plex Sans KR", "IBM Plex Sans", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  /* Carbon Gray 100 theme: each nested layer becomes one gray step lighter. */
+  --background: #161616;
+  --layer-01: #262626;
+  --layer-02: #393939;
+  --layer-03: #525252;
+  --layer-hover: #333333;
+  --field: #393939;
+  --field-hover: #474747;
+  --border-subtle: #393939;
+  --border-strong: #525252;
+  --border-interactive: #6f6f6f;
+  --text-primary: #f4f4f4;
+  --text-secondary: #c6c6c6;
+  --text-helper: #a8a8a8;
+  --focus: #78a9ff;
+  --overlay: rgb(0 0 0 / 72%);
   --bg: #161616;
   --surface: #262626;
-  --surface-soft: #1f1f1f;
-  --surface-hover: #002d9c;
+  --surface-soft: #393939;
+  --surface-hover: #333333;
   --text: #f4f4f4;
-  --text-soft: #e0e0e0;
+  --text-soft: #c6c6c6;
   --muted: #a8a8a8;
   --line: #393939;
   --line-strong: #525252;
@@ -45,7 +78,8 @@
   --amber: #fddc69;
   --amber-text: #fddc69;
   --amber-soft: #3d2f00;
-  --shadow: 0 1px 2px rgb(0 0 0 / 32%);
+  --shadow: 0 4px 12px rgb(0 0 0 / 34%);
+  --shadow-floating: 0 20px 56px rgb(0 0 0 / 52%);
 }
 
 * {
@@ -67,6 +101,12 @@ body {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--blue);
+  color: #ffffff;
 }
 
 button,
@@ -113,7 +153,7 @@ img {
 }
 
 :focus-visible {
-  outline: 2px solid var(--blue);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 
@@ -2700,6 +2740,493 @@ body.authenticated > .site-footer {
   border-top: 1px solid var(--line);
   color: var(--muted);
   font: 10px/1 var(--mono);
+}
+
+/* Carbon visual refinement
+ * Keeps the existing information architecture and assets while aligning the
+ * shell, layers, key lines, and interaction states to IBM's 2x Grid rhythm.
+ */
+body,
+.topbar,
+.workspace,
+.request-progress-dock,
+.chat-surface,
+.control-surface,
+.panel-header,
+.access-mode-banner,
+.composer,
+.identity-path li,
+.stage-dialog {
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.topbar {
+  height: 64px;
+  border-bottom-color: var(--border-strong);
+  background: var(--layer-01);
+  box-shadow: none;
+}
+
+.brand {
+  min-width: 304px;
+  gap: 16px;
+  padding-inline: 24px;
+  border-right: 1px solid var(--border-subtle);
+  transition: background-color 120ms ease;
+}
+
+.brand:hover {
+  background: var(--layer-hover);
+}
+
+.brand strong {
+  letter-spacing: -0.015em;
+}
+
+.topbar-actions {
+  gap: 0;
+  padding: 0;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.theme-toggle {
+  min-width: 72px;
+  height: 64px;
+  gap: 8px;
+  padding: 0 16px;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--layer-01);
+  transition: background-color 120ms ease;
+}
+
+.theme-toggle:hover {
+  background: var(--layer-hover);
+}
+
+.theme-symbol {
+  color: var(--text-secondary);
+  font-size: 20px;
+}
+
+.theme-switch {
+  width: 40px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid var(--border-interactive);
+  border-radius: 10px;
+  background: var(--layer-03);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.theme-toggle-dot {
+  width: 14px;
+  height: 14px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  background: var(--layer-01);
+  box-shadow: none;
+}
+
+.theme-toggle[aria-pressed="true"] .theme-switch {
+  border-color: var(--blue);
+}
+
+.theme-toggle[aria-pressed="true"] .theme-toggle-dot {
+  transform: translateX(20px);
+}
+
+.header-login {
+  min-height: 48px;
+  margin: 8px 16px;
+  padding-inline: 16px;
+  border-color: var(--blue);
+  background: transparent;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.header-login:hover {
+  background: var(--blue-soft);
+  box-shadow: inset 0 -2px 0 var(--blue);
+}
+
+.identity {
+  min-height: 64px;
+  padding-inline: 16px;
+}
+
+.logout-button {
+  width: 40px;
+  height: 40px;
+}
+
+.workspace {
+  background: var(--background);
+}
+
+.request-progress-dock {
+  gap: 32px;
+  padding: 12px 24px;
+  border-bottom-color: var(--border-strong);
+  background: var(--layer-01);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.request-progress-summary {
+  gap: 12px;
+}
+
+.request-progress-signal {
+  width: 10px;
+  height: 10px;
+  border-color: var(--border-interactive);
+  background: var(--layer-01);
+}
+
+.request-progress-stages {
+  gap: 8px;
+}
+
+.request-progress-stages li {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-top: 2px solid var(--border-strong);
+  background: var(--layer-02);
+}
+
+.request-progress-stages li.complete {
+  border-color: color-mix(in srgb, var(--green) 34%, var(--border-subtle));
+  border-top-color: var(--green);
+}
+
+.request-progress-stages li.active {
+  border-color: color-mix(in srgb, var(--blue) 52%, var(--border-subtle));
+  border-top-color: var(--blue);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--blue) 72%, transparent);
+}
+
+.request-progress-stages li.denied,
+.request-progress-stages li.error {
+  border-color: color-mix(in srgb, var(--red) 48%, var(--border-subtle));
+  border-top-color: var(--red);
+}
+
+.dock-stage-marker {
+  background: var(--layer-01);
+}
+
+.console-layout {
+  gap: 1px;
+  background: var(--border-strong);
+}
+
+.chat-surface,
+.control-surface {
+  background: var(--layer-01);
+}
+
+.chat-surface {
+  border-right: 0;
+}
+
+.panel-header {
+  min-height: 56px;
+  padding-inline: 24px;
+  border-bottom-color: var(--border-subtle);
+  background: var(--layer-02);
+}
+
+.panel-title {
+  gap: 16px;
+}
+
+.panel-title h2 {
+  letter-spacing: 0;
+}
+
+.access-mode-banner {
+  min-height: 64px;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 8px 24px;
+  border-bottom-color: var(--border-subtle);
+  background: var(--layer-01);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.access-mode-banner::before {
+  width: 4px;
+}
+
+.access-mode-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 0;
+}
+
+.access-mode-copy {
+  gap: 2px;
+}
+
+.access-mode-banner > a {
+  min-height: 40px;
+  padding-inline: 16px;
+}
+
+.agent-intro {
+  grid-template-columns: minmax(160px, 208px) minmax(0, 1fr);
+  gap: 32px;
+  padding: 32px 40px;
+  border-bottom-color: var(--border-subtle);
+  background: var(--layer-01);
+}
+
+.agent-copy h1 {
+  margin-bottom: 16px;
+}
+
+.suggestions {
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.suggestions button {
+  min-height: 48px;
+  padding: 12px 16px;
+  border-color: var(--border-strong);
+  background: var(--layer-01);
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.suggestions button:hover {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.suggestions button.requires-approval {
+  border-color: color-mix(in srgb, var(--amber) 52%, var(--border-subtle));
+}
+
+.conversation {
+  gap: 24px;
+  padding: 24px 32px;
+  background: var(--layer-01);
+}
+
+.message {
+  gap: 16px;
+}
+
+.query-result {
+  border-color: var(--border-strong);
+}
+
+.query-result-header {
+  min-height: 40px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--layer-02);
+}
+
+.composer {
+  margin: auto 24px 24px;
+  overflow: visible;
+  border: 0;
+  border-bottom: 1px solid var(--border-interactive);
+  border-radius: 0;
+  background: var(--field);
+  box-shadow: none;
+}
+
+.composer:hover {
+  background: var(--field-hover);
+}
+
+.composer:focus-within {
+  border-color: transparent;
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+  background: var(--field);
+  box-shadow: none;
+}
+
+.composer textarea {
+  padding: 16px 16px 8px;
+}
+
+.composer-actions {
+  padding: 8px 8px 8px 16px;
+}
+
+#send {
+  min-width: 104px;
+  height: 40px;
+  padding-inline: 16px;
+}
+
+.control-scroll {
+  background: var(--background);
+}
+
+.identity-path,
+.event-ledger,
+.access-status-panel {
+  padding: 24px;
+  border-bottom-color: var(--border-strong);
+  background: var(--layer-01);
+}
+
+.section-heading {
+  min-height: 32px;
+  margin-bottom: 16px;
+}
+
+.path-progress {
+  height: 2px;
+  margin-bottom: 12px;
+  background: var(--border-subtle);
+}
+
+.path-progress-detail {
+  margin-bottom: 16px;
+}
+
+.identity-path ol {
+  gap: 8px;
+}
+
+.identity-path li {
+  min-height: 64px;
+  padding: 8px 16px 8px 0;
+  border-color: var(--border-subtle);
+  background: var(--layer-01);
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.identity-path li:hover {
+  border-color: var(--border-interactive);
+  background: var(--layer-hover);
+  box-shadow: inset 3px 0 0 var(--blue);
+  transform: none;
+}
+
+.identity-path li:focus-visible {
+  outline-color: var(--focus);
+  outline-offset: -2px;
+}
+
+.identity-path li.active {
+  min-height: 72px;
+  border-color: var(--blue);
+  background: var(--blue-soft);
+  box-shadow: inset 4px 0 0 var(--blue);
+  transform: none;
+}
+
+.identity-path li.complete {
+  border-color: color-mix(in srgb, var(--green) 34%, var(--border-subtle));
+  background: color-mix(in srgb, var(--green-soft) 26%, var(--layer-01));
+  opacity: 1;
+  transform: none;
+}
+
+.identity-path li.denied {
+  box-shadow: inset 4px 0 0 var(--red);
+}
+
+.path-icon {
+  border-color: var(--border-subtle);
+  background: var(--layer-02);
+}
+
+.stage-dialog {
+  border-color: var(--border-strong);
+  border-radius: 0;
+  background: var(--layer-01);
+  box-shadow: var(--shadow-floating);
+}
+
+.stage-dialog::backdrop {
+  background: var(--overlay);
+  backdrop-filter: none;
+}
+
+.stage-dialog-header {
+  min-height: 88px;
+  padding: 16px 24px;
+  border-bottom-color: var(--border-strong);
+  background: var(--layer-01);
+}
+
+.stage-dialog-body {
+  padding: 24px;
+  background: var(--layer-01);
+}
+
+.stage-dialog-status {
+  border-block-color: var(--border-subtle);
+}
+
+.stage-substep-index {
+  border-radius: 0;
+}
+
+.stage-checks,
+.stage-checks > div,
+.stage-code-tabs,
+.stage-code-heading,
+.stage-dialog-section pre {
+  border-color: var(--border-strong);
+}
+
+.stage-code-tabs,
+.stage-code-heading,
+.stage-dialog-footer {
+  background: var(--layer-02);
+}
+
+.stage-dialog-footer {
+  min-height: 64px;
+  padding: 12px 16px 12px 24px;
+  border-top-color: var(--border-strong);
+}
+
+.access-status-summary {
+  min-height: 72px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--layer-02);
+}
+
+.access-status-details > div,
+.access-status-recent,
+.event-list > li:not(.state) {
+  border-color: var(--border-subtle);
+}
+
+.event-list > li:not(.state) {
+  min-height: 36px;
+}
+
+.site-footer {
+  border-top-color: var(--border-strong);
+  background: var(--layer-01);
 }
 
 @keyframes console-enter {
