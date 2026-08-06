@@ -244,6 +244,13 @@ export class HttpMcpToolCaller implements McpToolCaller {
       const result = await client.callTool({
         name: publishedToolName,
         arguments: argumentsValue,
+        ...(requestId
+          ? {
+              _meta: {
+                "com.ibm.agentic-security-lab/request-id": requestId,
+              },
+            }
+          : {}),
       });
       if (result.isError || !result.structuredContent) {
         throw new ExternalServiceError("MCP", extractMcpError(result.content));

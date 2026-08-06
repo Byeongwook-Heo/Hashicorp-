@@ -41,6 +41,7 @@ interface AppDependencies {
 }
 
 const requestIdPattern = /^[A-Za-z0-9_.:-]{8,64}$/;
+const requestIdMetaKey = "com.ibm.agentic-security-lab/request-id";
 const orderIdSchema = z
   .string()
   .max(16)
@@ -488,10 +489,10 @@ function createMcpServer(
         }),
       },
     },
-    async ({ order_id }) =>
+    async ({ order_id }, extra) =>
       toolResult(() =>
         dependencies.tools.getOrderStatus(
-          requestId,
+          requestIdFromMeta(extra._meta, requestId),
           order_id,
           toIdentityContext(principal),
         ),
@@ -526,10 +527,10 @@ function createMcpServer(
         }),
       },
     },
-    async ({ date }) =>
+    async ({ date }, extra) =>
       toolResult(() =>
         dependencies.tools.getFailedPaymentSummary(
-          requestId,
+          requestIdFromMeta(extra._meta, requestId),
           date,
           toIdentityContext(principal),
         ),
@@ -568,10 +569,10 @@ function createMcpServer(
         }),
       },
     },
-    async ({ limit }) =>
+    async ({ limit }, extra) =>
       toolResult(() =>
         dependencies.tools.getRecentOrders(
-          requestId,
+          requestIdFromMeta(extra._meta, requestId),
           limit,
           toIdentityContext(principal),
         ),
@@ -610,10 +611,10 @@ function createMcpServer(
         }),
       },
     },
-    async ({ days }) =>
+    async ({ days }, extra) =>
       toolResult(() =>
         dependencies.tools.getFailedPaymentTrend(
-          requestId,
+          requestIdFromMeta(extra._meta, requestId),
           days,
           toIdentityContext(principal),
         ),
@@ -636,10 +637,10 @@ function createMcpServer(
         reason: z.string(),
       },
     },
-    async ({ customer_id }) =>
+    async ({ customer_id }, extra) =>
       toolResult(() =>
         dependencies.tools.getSensitivePaymentData(
-          requestId,
+          requestIdFromMeta(extra._meta, requestId),
           customer_id,
           toIdentityContext(principal),
         ),
@@ -647,6 +648,16 @@ function createMcpServer(
   );
 
   return server;
+}
+
+function requestIdFromMeta(
+  meta: Record<string, unknown> | undefined,
+  fallback: string,
+): string {
+  const supplied = meta?.[requestIdMetaKey];
+  return typeof supplied === "string" && requestIdPattern.test(supplied)
+    ? supplied
+    : fallback;
 }
 
 async function toolResult<T extends object>(operation: () => Promise<T>) {

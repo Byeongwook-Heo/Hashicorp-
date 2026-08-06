@@ -335,6 +335,38 @@ describe("HTTP security boundary", () => {
     ).toEqual([requestId]);
   });
 
+  it("preserves the Agent request ID in MCP metadata when the gateway replaces HTTP headers", async () => {
+    const { app, events } = buildApp();
+    const agentRequestId = "agent-request-through-meta-123";
+
+    await request(app)
+      .post("/mcp")
+      .set("authorization", `Bearer ${bearerToken}`)
+      .set("origin", "https://bob.example.test")
+      .set("x-request-id", "contextforge-generated-request-456")
+      .set("accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: "forwarded-request-meta-test",
+        method: "tools/call",
+        params: {
+          name: "get_order_status",
+          arguments: { order_id: "ORD-1001" },
+          _meta: {
+            "com.ibm.agentic-security-lab/request-id": agentRequestId,
+          },
+        },
+      })
+      .expect(200);
+
+    expect(
+      events
+        .list()
+        .filter((event) => event.action === "get_order_status")
+        .map((event) => event.requestId),
+    ).toEqual([agentRequestId]);
+  });
+
   it("does not allow GET sessions for the stateless transport", async () => {
     const { app } = buildApp();
 
