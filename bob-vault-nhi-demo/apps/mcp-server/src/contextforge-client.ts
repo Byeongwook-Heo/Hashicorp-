@@ -146,7 +146,10 @@ export class ContextForgeClient implements GatewayTokenProvider {
             "Private Bob MCP Server discovered with one-time bootstrap credentials",
           url: this.#config.upstreamUrl,
           transport: "STREAMABLEHTTP",
-          passthrough_headers: ["X-Upstream-Authorization", "X-Request-Id"],
+          passthrough_headers: [
+            "X-Upstream-Authorization",
+            "X-Upstream-Request-Id",
+          ],
           auth_type: "bearer",
           auth_token: this.#config.upstreamDiscoveryToken,
           one_time_auth: true,

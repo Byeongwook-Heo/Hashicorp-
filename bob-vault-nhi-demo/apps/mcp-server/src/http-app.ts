@@ -92,7 +92,11 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     }),
   );
   app.use((request, response, next) => {
-    const supplied = request.header("x-request-id");
+    // ContextForge owns X-Request-Id for its internal hops. Preserve the
+    // Agent's end-to-end correlation ID in a dedicated allowlisted header.
+    const supplied =
+      request.header("x-upstream-request-id") ??
+      request.header("x-request-id");
     response.locals["requestId"] =
       supplied && requestIdPattern.test(supplied) ? supplied : randomUUID();
     response.setHeader("x-request-id", response.locals["requestId"] as string);

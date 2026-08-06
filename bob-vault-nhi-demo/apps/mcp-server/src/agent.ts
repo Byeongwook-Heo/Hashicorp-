@@ -217,6 +217,9 @@ export class HttpMcpToolCaller implements McpToolCaller {
             ...(gatewayAccessToken
               ? { "x-upstream-authorization": `Bearer ${accessToken}` }
               : {}),
+            ...(gatewayAccessToken && requestId
+              ? { "x-upstream-request-id": requestId }
+              : {}),
             ...(requestId ? { "x-request-id": requestId } : {}),
           },
         },

@@ -306,6 +306,35 @@ describe("HTTP security boundary", () => {
     ]);
   });
 
+  it("preserves the Agent request ID forwarded through ContextForge", async () => {
+    const { app, events } = buildApp();
+    const requestId = "contextforge-request-123";
+
+    await request(app)
+      .post("/mcp")
+      .set("authorization", `Bearer ${bearerToken}`)
+      .set("origin", "https://bob.example.test")
+      .set("x-upstream-request-id", requestId)
+      .set("accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: "forwarded-request-id-test",
+        method: "tools/call",
+        params: {
+          name: "get_order_status",
+          arguments: { order_id: "ORD-1001" },
+        },
+      })
+      .expect(200);
+
+    expect(
+      events
+        .list()
+        .filter((event) => event.action === "get_order_status")
+        .map((event) => event.requestId),
+    ).toEqual([requestId]);
+  });
+
   it("does not allow GET sessions for the stateless transport", async () => {
     const { app } = buildApp();
 
