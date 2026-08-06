@@ -175,6 +175,8 @@ locals {
     { name = "DATABASE_URL", value = "sqlite:////tmp/contextforge.db" },
     { name = "AUTH_REQUIRED", value = "true" },
     { name = "MCP_REQUIRE_AUTH", value = "true" },
+    { name = "SSRF_ALLOW_LOCALHOST", value = "true" },
+    { name = "SSRF_ALLOW_PRIVATE_NETWORKS", value = "false" },
     { name = "EMAIL_AUTH_ENABLED", value = "true" },
     { name = "REQUIRE_USER_IN_DB", value = "false" },
     { name = "MCPGATEWAY_UI_ENABLED", value = "false" },
