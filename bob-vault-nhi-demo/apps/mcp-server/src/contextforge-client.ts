@@ -152,7 +152,6 @@ export class ContextForgeClient implements GatewayTokenProvider {
         id: this.#config.serverId,
         name: "bob-vault-security-lab",
         description: "Policy-bound tools for the Agentic Security Lab",
-        tags: ["security-lab", "vault", "read-only"],
         associated_tools: toolIds,
         visibility: "public",
       }),
