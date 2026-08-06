@@ -73,6 +73,11 @@ data "aws_secretsmanager_secret" "chat_session" {
   name  = "${var.project_name}/chat/session-secret"
 }
 
+data "aws_secretsmanager_secret" "contextforge_runtime" {
+  count = var.deploy_service && var.chatbot_enabled ? 1 : 0
+  name  = "${var.project_name}/contextforge/runtime"
+}
+
 data "aws_secretsmanager_secret" "agent_runtime" {
   count = var.deploy_service && var.chatbot_enabled && var.inference_enabled ? 1 : 0
   name  = "${var.project_name}/chat/agent-runtime-token"

@@ -123,15 +123,16 @@ const stageCodeViewButtons = document.querySelectorAll(
 const pathSteps = {
   verify: document.querySelector("#path-step-verify"),
   agent: document.querySelector("#path-step-agent"),
+  obo: document.querySelector("#path-step-obo"),
+  gateway: document.querySelector("#path-step-gateway"),
   mcp: document.querySelector("#path-step-mcp"),
   vault: document.querySelector("#path-step-vault"),
   database: document.querySelector("#path-step-database"),
 };
 const dockSteps = Object.fromEntries(
-  ["verify", "agent", "mcp", "vault", "database"].map((key) => [
-    key,
-    document.querySelector(`[data-dock-stage="${key}"]`),
-  ]),
+  ["verify", "agent", "obo", "gateway", "mcp", "vault", "database"].map(
+    (key) => [key, document.querySelector(`[data-dock-stage="${key}"]`)],
+  ),
 );
 
 const defaultTraceMarkup = trace.innerHTML;
@@ -154,6 +155,7 @@ const statusLabels = {
 const stageLabels = {
   transport: "MCP 전송",
   identity: "Verify 신원",
+  gateway: "ContextForge Gateway",
   vault: "Vault 정책",
   database: "PostgreSQL",
   policy: "에이전트 정책",
@@ -163,10 +165,18 @@ const actionLabels = {
   mcp_request_authenticated: "MCP 요청 인증",
   invalid_bearer_token: "잘못된 Bearer 토큰 차단",
   invalid_user_jwt: "잘못된 사용자 JWT 차단",
+  invalid_obo_jwt: "잘못된 OBO JWT 차단",
   user_session_authenticated: "Verify 사용자 세션 인증",
   protected_data_requires_verify: "미승인 사용자의 보호 데이터 조회 차단",
   agent_plan_failed: "에이전트 계획 오류",
-  verify_obo_jwt_validated: "사용자·에이전트 OBO JWT 검증",
+  verify_obo_token_exchanged: "Verify RFC 8693 OBO 토큰 교환",
+  verify_obo_exchange_failed: "Verify OBO 토큰 교환 실패",
+  contextforge_request_started: "ContextForge 도구 라우팅 시작",
+  contextforge_obo_forwarded: "ContextForge OBO JWT 전달",
+  contextforge_request_failed: "ContextForge 요청 실패",
+  contextforge_upstream_discovery: "ContextForge MCP 도구 검색",
+  mcp_obo_jwt_authenticated: "MCP OBO JWT 인증",
+  mcp_obo_jwt_verified: "MCP OBO JWT 재검증",
   verify_jwt_validated: "Verify JWT 검증",
   dynamic_credentials_issued: "동적 DB 자격증명 발급",
   get_order_status: "주문 상태 조회",
@@ -236,6 +246,18 @@ const stageDestinations = {
     note: "이 페이지의 대화 입력창으로 돌아가 Agent 계획과 응답을 계속 확인합니다.",
     label: "Agent 대화로 이동",
     action: "focus-agent",
+  },
+  obo: {
+    title: "IBM Verify Token Exchange",
+    note: "Agent가 사용자 Access Token을 subject_token으로 제출해 OBO JWT를 발급받는 Verify STS 단계입니다.",
+    label: "Verify UI 열기",
+    href: "https://ceiam.verify.ibm.com/ui/admin",
+  },
+  gateway: {
+    title: "IBM ContextForge MCP Gateway",
+    note: "Gateway는 ECS Task 내부에만 배치되어 외부 UI를 노출하지 않습니다. 아래 링크는 오픈소스 프로젝트 정보입니다.",
+    label: "ContextForge 프로젝트 보기",
+    href: "https://github.com/IBM/mcp-context-forge",
   },
   mcp: {
     title: "MCP Server Inspector",
@@ -344,6 +366,23 @@ function formatAction(action) {
   );
 }
 
+function pathKeyForEvent(event) {
+  const stage = String(event?.stage ?? "");
+  const action = String(event?.action ?? "");
+  if (stage === "identity") {
+    if (action.startsWith("verify_obo_")) return "obo";
+    if (action.startsWith("mcp_obo_")) return "mcp";
+    return "verify";
+  }
+  return {
+    policy: "agent",
+    gateway: "gateway",
+    transport: "mcp",
+    vault: "vault",
+    database: "database",
+  }[stage];
+}
+
 function stageDetail(stage) {
   const activeTool = Object.hasOwn(toolLabels, latestTool)
     ? latestTool
@@ -381,11 +420,39 @@ function stageDetail(stage) {
         "return plan;",
       ].join("\n"),
     },
+    obo: {
+      eyebrow: "03 · 위임 토큰 교환",
+      title: "IBM Verify Token Exchange",
+      summary:
+        "Agent가 사용자 Access Token을 subject_token으로 제출하고 자신의 KMS 서명 신원을 결합해 MCP용 OBO JWT를 발급받습니다.",
+      action:
+        "RFC 8693 토큰 교환 후 issuer, audience, 사용자 subject와 Agent actor claim을 검증합니다.",
+      code: [
+        "POST /oauth2/token",
+        "grant_type=urn:ietf:params:oauth:grant-type:token-exchange",
+        "subject_token=<USER_ACCESS_TOKEN>",
+        "client_assertion=<KMS_SIGNED_PRIVATE_KEY_JWT>",
+        "audience=bob-vault-orders",
+      ].join("\n"),
+    },
+    gateway: {
+      eyebrow: "04 · MCP 게이트웨이",
+      title: "IBM ContextForge",
+      summary:
+        "Agent 전용 사설 Gateway가 공개된 도구 카탈로그를 제한하고 MCP Server로 요청을 라우팅합니다.",
+      action:
+        "Gateway 세션으로 Agent 채널을 인증하고 OBO JWT는 X-Upstream-Authorization으로 MCP Server에 전달합니다.",
+      code: [
+        "POST /servers/<virtual-server-id>/mcp",
+        "Authorization: Bearer <CONTEXTFORGE_SESSION>",
+        "X-Upstream-Authorization: Bearer <OBO_JWT>",
+      ].join("\n"),
+    },
     mcp: {
-      eyebrow: "03 · 도구 실행",
+      eyebrow: "05 · 도구 실행",
       title: "MCP Server",
       summary:
-        "사용자 JWT를 인증한 뒤 스키마가 고정된 MCP 도구 호출만 수락합니다.",
+        "Gateway가 전달한 OBO JWT를 인증한 뒤 스키마가 고정된 MCP 도구 호출만 수락합니다.",
       action: `${toolLabels[activeTool]} 요청을 MCP tools/call 형식으로 만들고 입력 스키마를 다시 검증합니다.`,
       code: JSON.stringify(
         {
@@ -401,7 +468,7 @@ function stageDetail(stage) {
       ),
     },
     vault: {
-      eyebrow: "04 · 정책과 자격증명",
+      eyebrow: "06 · 정책과 자격증명",
       title: "HashiCorp Vault",
       summary:
         "OBO JWT의 사용자·에이전트 클레임을 정책에 매핑하고 짧은 TTL의 DB 자격증명을 발급합니다.",
@@ -420,7 +487,7 @@ function stageDetail(stage) {
       ].join("\n"),
     },
     database: {
-      eyebrow: "05 · 데이터 접근",
+      eyebrow: "07 · 데이터 접근",
       title: "PostgreSQL",
       summary:
         "Vault가 발급한 임시 계정으로 사전에 정의된 읽기 전용 SQL만 실행합니다.",
@@ -439,11 +506,11 @@ function richStageDetail(stage, activeTool) {
   const toolArguments = toolExampleArguments[activeTool] ?? {};
   const details = {
     verify: {
-      eyebrow: "01 · 사용자와 에이전트 신원",
+      eyebrow: "01 · 사용자 신원",
       summary:
-        "사용자 로그인과 Agent 워크로드 인증을 각각 수행한 뒤, 사용자 subject와 Agent 신원을 결합한 OBO JWT를 발급하고 검증합니다.",
+        "IBM Verify가 사용자를 인증하고 OIDC Authorization Code + PKCE로 사용자 Access Token을 발급합니다.",
       action:
-        "사람의 신원과 Agent의 비인간 신원을 함께 증명하되 사용자 토큰, Client Assertion, OBO 토큰 원문은 화면이나 로그에 남기지 않습니다.",
+        "Chatbot은 JWT 서명과 issuer, audience, subject, 만료 시간을 검증하고 토큰 원문은 화면이나 로그에 남기지 않습니다.",
       substeps: [
         [
           "OIDC Authorization Code + PKCE 요청",
@@ -460,27 +527,12 @@ function richStageDetail(stage, activeTool) {
           "Chatbot이 code_verifier로 code를 교환하고 사용자 sub·iss·aud·exp가 포함된 access token을 받습니다.",
           "USER · JWT",
         ],
-        [
-          "Agent private_key_jwt 인증",
-          "Agent가 AWS KMS로 서명한 Client Assertion을 제출해 Client Secret 없이 자신의 워크로드 신원을 증명합니다.",
-          "AGENT · NHI",
-        ],
-        [
-          "RFC 8693 OBO 토큰 교환",
-          "사용자 access token을 subject_token으로 제출하고 Agent Client Assertion과 함께 OBO access token을 요청합니다.",
-          "USER + AGENT",
-        ],
-        [
-          "OBO JWT 발급과 로컬 검증",
-          "Verify가 사용자 subject와 Agent binding을 보존한 JWT를 발급하고 JWKS·issuer·audience·exp·actor claim을 검증합니다.",
-          "OBO · JWT",
-        ],
       ],
       checks: [
         ["사용자 토큰", "RS256 · sub/iss/aud/exp 검증"],
-        ["Agent 인증", "AWS KMS private_key_jwt"],
-        ["토큰 교환", "RFC 8693 · subject_token=USER_ACCESS_TOKEN"],
-        ["OBO binding", "사용자 sub + Agent client_id 일치"],
+        ["로그인 흐름", "Authorization Code + PKCE"],
+        ["세션", "HttpOnly · SameSite · CSRF 보호"],
+        ["권한 범위", "openid profile vault.db.read"],
       ],
       codeViews: {
         request: [
@@ -488,24 +540,15 @@ function richStageDetail(stage, activeTool) {
           "  response_type=code&client_id=<CHATBOT_CLIENT_ID>&",
           "  scope=openid%20profile%20vault.db.read&",
           "  code_challenge=<PKCE_SHA256>&code_challenge_method=S256",
-          "",
-          "POST /oauth2/token",
-          "grant_type=urn:ietf:params:oauth:grant-type:token-exchange",
-          "client_id=<AGENT_CLIENT_ID>",
-          "client_assertion=<KMS_SIGNED_PRIVATE_KEY_JWT>",
-          "subject_token=<USER_ACCESS_TOKEN>",
-          "subject_token_type=urn:ietf:params:oauth:token-type:access_token",
-          "audience=bob-vault-orders&scope=vault.db.read",
         ].join("\n"),
         response: JSON.stringify(
           {
-            access_token: "<OBO_ACCESS_TOKEN_REDACTED>",
+            access_token: "<USER_ACCESS_TOKEN_REDACTED>",
             token_type: "Bearer",
-            expires_in: 300,
+            expires_in: 900,
             verified_claims: {
               sub: "<VERIFY_USER_SUBJECT>",
-              client_id: "<AGENT_CLIENT_ID>",
-              aud: "bob-vault-orders",
+              aud: "<CHATBOT_CLIENT_ID>",
               scope: "vault.db.read",
             },
           },
@@ -513,18 +556,13 @@ function richStageDetail(stage, activeTool) {
           2,
         ),
         execution: [
-          "const assertion = await kmsSigner.sign();",
-          "const obo = await exchangeToken({",
-          "  clientAssertion: assertion,",
-          "  subjectToken: verifiedUserAccessToken,",
-          '  audience: "bob-vault-orders", scope: "vault.db.read"',
-          "});",
-          "await jwtVerify(obo.access_token, verifyJwks, {",
-          '  issuer: VERIFY_OBO_ISSUER, audience: "bob-vault-orders",',
+          "const user = await completeAuthorizationCodePkce(callback);",
+          "await jwtVerify(user.accessToken, verifyUserJwks, {",
+          "  issuer: VERIFY_USER_ISSUER,",
+          "  audience: VERIFY_USER_CLIENT_ID,",
           '  algorithms: ["RS256"]',
           "});",
-          "assert(obo.sub === user.sub);",
-          "assert(obo.client_id === AGENT_CLIENT_ID);",
+          "createEncryptedSession({ sub: user.sub, accessToken: user.accessToken });",
         ].join("\n"),
       },
     },
@@ -592,6 +630,152 @@ function richStageDetail(stage, activeTool) {
         ].join("\n"),
       },
     },
+    obo: {
+      eyebrow: "03 · 사용자 위임과 Agent NHI",
+      substeps: [
+        [
+          "사용자 Access Token 준비",
+          "검증된 사용자 Access Token을 RFC 8693 subject_token으로 사용합니다.",
+          "SUBJECT TOKEN",
+        ],
+        [
+          "Agent Client Assertion 생성",
+          "Agent가 AWS KMS 비대칭 키로 private_key_jwt Client Assertion을 서명합니다.",
+          "AGENT · NHI",
+        ],
+        [
+          "Verify Token Endpoint 호출",
+          "subject_token과 Agent Assertion을 제출해 audience=bob-vault-orders인 토큰을 요청합니다.",
+          "RFC 8693",
+        ],
+        [
+          "OBO Access Token 발급",
+          "Verify가 사용자 subject와 Agent actor claim을 결합한 짧은 TTL의 JWT를 발급합니다.",
+          "OBO JWT",
+        ],
+        [
+          "OBO JWT 로컬 검증",
+          "Agent가 JWKS 서명, issuer, audience, exp, 사용자 sub와 Agent binding을 확인합니다.",
+          "VERIFY",
+        ],
+      ],
+      checks: [
+        ["Grant", "RFC 8693 Token Exchange"],
+        ["Agent 인증", "AWS KMS private_key_jwt"],
+        ["대상", "aud=bob-vault-orders"],
+        ["Binding", "사용자 sub + Agent client_id"],
+      ],
+      codeViews: {
+        request: [
+          "POST /oauth2/token",
+          "Content-Type: application/x-www-form-urlencoded",
+          "",
+          "grant_type=urn:ietf:params:oauth:grant-type:token-exchange",
+          "subject_token=<USER_ACCESS_TOKEN>",
+          "subject_token_type=urn:ietf:params:oauth:token-type:access_token",
+          "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+          "client_assertion=<KMS_SIGNED_PRIVATE_KEY_JWT>",
+          "audience=bob-vault-orders&scope=vault.db.read",
+        ].join("\n"),
+        response: JSON.stringify(
+          {
+            access_token: "<OBO_ACCESS_TOKEN_REDACTED>",
+            token_type: "Bearer",
+            expires_in: 300,
+            claims: {
+              sub: "<VERIFY_USER_SUBJECT>",
+              client_id: "<AGENT_CLIENT_ID>",
+              aud: "bob-vault-orders",
+            },
+          },
+          null,
+          2,
+        ),
+        execution: [
+          "const assertion = await kmsSigner.sign();",
+          "const obo = await exchangeToken({",
+          "  subjectToken: user.accessToken, clientAssertion: assertion,",
+          '  audience: "bob-vault-orders", scope: "vault.db.read"',
+          "});",
+          "await verifyOboJwt(obo.access_token);",
+          "assert(obo.sub === user.sub);",
+          "assert(obo.client_id === AGENT_CLIENT_ID);",
+        ].join("\n"),
+      },
+    },
+    gateway: {
+      eyebrow: "04 · 사설 MCP Gateway",
+      substeps: [
+        [
+          "Agent 채널 인증",
+          "Agent가 외부에 노출되지 않은 ContextForge에 전용 세션 JWT로 접속합니다.",
+          "PRIVATE AUTH",
+        ],
+        [
+          "Virtual Server 선택",
+          "고정된 bob-vault-security-lab 서버와 등록된 읽기 전용 도구만 노출합니다.",
+          "CATALOG",
+        ],
+        [
+          "MCP 요청 라우팅",
+          "JSON-RPC 요청을 사설 loopback MCP Server endpoint로 전달합니다.",
+          "ROUTE",
+        ],
+        [
+          "OBO JWT 전달",
+          "OBO JWT를 X-Upstream-Authorization으로 분리해 MCP Server Authorization 헤더에 전달합니다.",
+          "PASSTHROUGH",
+        ],
+        [
+          "요청 추적 연결",
+          "X-Request-Id를 유지해 Agent, Gateway, MCP, Vault 이벤트를 하나의 흐름으로 연결합니다.",
+          "TRACE",
+        ],
+      ],
+      checks: [
+        ["배치", "ECS Task loopback 전용"],
+        ["도구", "등록된 read-only catalog"],
+        ["사용자 신원", "OBO JWT upstream 전달"],
+        ["노출", "외부 ALB listener 없음"],
+      ],
+      codeViews: {
+        request: [
+          "POST /servers/c0ffee00cafe40008000000000000001/mcp",
+          "Authorization: Bearer <CONTEXTFORGE_SESSION_JWT>",
+          "X-Upstream-Authorization: Bearer <OBO_JWT>",
+          "X-Request-Id: <REQUEST_ID>",
+          "",
+          JSON.stringify(
+            {
+              jsonrpc: "2.0",
+              method: "tools/call",
+              params: { name: activeTool, arguments: toolArguments },
+            },
+            null,
+            2,
+          ),
+        ].join("\n"),
+        response: JSON.stringify(
+          {
+            route: "bob-vault-mcp-upstream",
+            virtualServer: "bob-vault-security-lab",
+            forwardedIdentity: "OBO_JWT_REDACTED",
+            status: "routed",
+          },
+          null,
+          2,
+        ),
+        execution: [
+          "const gatewayToken = await contextForge.loginAgent();",
+          "await mcpClient.connect({",
+          "  authorization: `Bearer ${gatewayToken}` ,",
+          "  'x-upstream-authorization': `Bearer ${oboToken}` ,",
+          "  'x-request-id': requestId",
+          "});",
+          "return mcpClient.callTool(plan.tool, plan.arguments);",
+        ].join("\n"),
+      },
+    },
     mcp: {
       substeps: [
         [
@@ -600,8 +784,8 @@ function richStageDetail(stage, activeTool) {
           "TRANSPORT",
         ],
         [
-          "JWT와 재사용 방지 검증",
-          "JWKS 서명·issuer·audience·exp·scope·JTI를 검증해 위조·만료·재사용을 차단합니다.",
+          "OBO JWT 유효성 검증",
+          "JWKS 서명·issuer·audience·exp와 Agent actor claim을 검증해 위조·만료 토큰을 차단합니다.",
           "JWT",
         ],
         [
@@ -622,7 +806,7 @@ function richStageDetail(stage, activeTool) {
       ],
       checks: [
         ["프로토콜", "MCP 2025-11-25 · JSON-RPC 2.0"],
-        ["토큰", "RS256 · issuer/audience/exp/JTI"],
+        ["토큰", "RS256 · issuer/audience/exp/actor"],
         ["권한", "scope=vault.db.read"],
         ["도구", `${toolName} · 스키마 통과`],
       ],
@@ -652,7 +836,7 @@ function richStageDetail(stage, activeTool) {
         execution: [
           "const claims = await verifyOboJwt(bearerToken, {",
           '  audience: "bob-vault-orders", scope: "vault.db.read",',
-          "  validateJti: true",
+          "  actorClaim: 'client_id'",
           "});",
           "const input = toolSchemas[request.params.name].parse(",
           "  request.params.arguments",
@@ -1362,7 +1546,7 @@ function resetRequestProgressDock() {
   requestElapsedMilliseconds = 0;
   requestProgressId.textContent = "새 요청 대기";
   requestProgressTitle.textContent = "요청 대기";
-  requestProgressCount.textContent = "0/5";
+  requestProgressCount.textContent = "0/7";
   requestProgressElapsed.textContent = "—";
   requestProgressDock.dataset.state = "waiting";
   requestProgressTrack.setAttribute("aria-valuenow", "0");
@@ -1382,12 +1566,22 @@ function addThinking() {
 const defaultPathStates = {
   verify: { label: "대기", status: "neutral" },
   agent: { label: "대기", status: "neutral" },
+  obo: { label: "대기", status: "neutral" },
+  gateway: { label: "대기", status: "neutral" },
   mcp: { label: "대기", status: "neutral" },
   vault: { label: "대기", status: "neutral" },
   database: { label: "대기", status: "neutral" },
 };
 
-const pathOrder = ["verify", "agent", "mcp", "vault", "database"];
+const pathOrder = [
+  "verify",
+  "agent",
+  "obo",
+  "gateway",
+  "mcp",
+  "vault",
+  "database",
+];
 const activePathCopy = {
   verify: {
     label: "Verify 검증 중",
@@ -1399,10 +1593,22 @@ const activePathCopy = {
     state: "계획 중",
     detail: "Bob AI 에이전트가 의도와 허용된 도구 범위를 결정하고 있습니다.",
   },
+  obo: {
+    label: "OBO 교환 중",
+    state: "교환 중",
+    detail:
+      "Agent가 Verify Token Endpoint에서 사용자 토큰을 MCP용 OBO JWT로 교환하고 있습니다.",
+  },
+  gateway: {
+    label: "Gateway 라우팅 중",
+    state: "라우팅 중",
+    detail:
+      "ContextForge가 등록된 도구를 확인하고 OBO JWT를 MCP Server로 전달하고 있습니다.",
+  },
   mcp: {
     label: "MCP 실행 중",
     state: "실행 중",
-    detail: "MCP Server가 사용자 JWT와 도구 요청 스키마를 검증하고 있습니다.",
+    detail: "MCP Server가 OBO JWT와 도구 요청 스키마를 검증하고 있습니다.",
   },
   vault: {
     label: "Vault 평가 중",
@@ -1526,7 +1732,9 @@ function updatePathOverview(stage, state, detail) {
               : activePathCopy[stage]?.label || "처리 중";
 
   traceStageCount.textContent =
-    state === "waiting" ? "0/5" : `${String(currentValue)}/5`;
+    state === "waiting"
+      ? `0/${String(pathOrder.length)}`
+      : `${String(currentValue)}/${String(pathOrder.length)}`;
   requestProgressCount.textContent = traceStageCount.textContent;
   traceLiveState.textContent = overviewLabel;
   traceLiveState.className = `live-state ${
@@ -1870,16 +2078,7 @@ function renderCurrentAccessStatus(
   const completedStages = new Set(
     requestEvents
       .filter((event) => ["allowed", "ok"].includes(String(event.status)))
-      .map(
-        (event) =>
-          ({
-            identity: "verify",
-            policy: "agent",
-            transport: "mcp",
-            vault: "vault",
-            database: "database",
-          })[String(event.stage ?? "")],
-      )
+      .map((event) => pathKeyForEvent(event))
       .filter(Boolean),
   );
   const nextStageKey = pathOrder.find((key) => !completedStages.has(key));
@@ -1888,6 +2087,8 @@ function renderCurrentAccessStatus(
       ? {
           verify: "Verify 신원",
           agent: "에이전트 계획",
+          obo: "Verify OBO 교환",
+          gateway: "ContextForge Gateway",
           mcp: "MCP 도구",
           vault: "Vault 정책",
           database: "PostgreSQL",
@@ -1895,6 +2096,7 @@ function renderCurrentAccessStatus(
       : stage;
 
   const deniedResultByStage = {
+    gateway: "ContextForge Gateway에서 요청 차단",
     transport: "MCP 인증 단계에서 접근 차단",
     identity: "Verify 신원 검증에서 접근 차단",
     policy: "에이전트 정책으로 요청 차단",
@@ -1902,6 +2104,8 @@ function renderCurrentAccessStatus(
     database: "PostgreSQL 접근 단계에서 요청 차단",
   };
   const deniedDescriptionByStage = {
+    gateway:
+      "ContextForge가 Agent 채널이나 등록된 도구 범위를 허용하지 않아 MCP Server 이전에 요청을 중단했습니다.",
     transport:
       "MCP가 사용자 토큰을 검증하지 못해 요청을 중단했습니다. Vault와 PostgreSQL에는 도달하지 않았습니다.",
     identity:
@@ -1915,7 +2119,12 @@ function renderCurrentAccessStatus(
       ? "PostgreSQL 접근 단계에서 요청을 차단했습니다. 발급된 자격증명은 데이터 조회에 사용되지 않았습니다."
       : "PostgreSQL 접근 단계에서 요청을 차단했습니다. 자격증명은 발급되지 않았습니다.",
   };
-  const preVaultStages = new Set(["transport", "identity", "policy"]);
+  const preVaultStages = new Set([
+    "transport",
+    "identity",
+    "gateway",
+    "policy",
+  ]);
   const deniedPolicy = preVaultStages.has(stageKey)
     ? "평가 전"
     : stageKey === "vault"
@@ -2012,13 +2221,6 @@ function updatePathFromEvents(events) {
     return;
   }
   resetVisiblePath(true);
-  const pathByStage = {
-    identity: "verify",
-    policy: "agent",
-    transport: "mcp",
-    vault: "vault",
-    database: "database",
-  };
   const requestEvents = latestRequestEvents(events);
   const unapprovedRequest = requestEvents.some(
     (event) =>
@@ -2034,7 +2236,7 @@ function updatePathFromEvents(events) {
   }
   const eventsByPath = new Map();
   for (const event of requestEvents) {
-    const key = pathByStage[String(event.stage ?? "")];
+    const key = pathKeyForEvent(event);
     if (key && !eventsByPath.has(key)) eventsByPath.set(key, event);
   }
 
@@ -2054,9 +2256,7 @@ function updatePathFromEvents(events) {
     const status = String(event.status ?? "");
     return status === "denied" || (status !== "allowed" && status !== "ok");
   });
-  const terminalKey = terminalEvent
-    ? pathByStage[String(terminalEvent.stage ?? "")]
-    : null;
+  const terminalKey = terminalEvent ? pathKeyForEvent(terminalEvent) : null;
   const databaseComplete = requestEvents.some((event) => {
     const status = String(event.status ?? "");
     return (
@@ -2118,7 +2318,7 @@ function updatePathFromEvents(events) {
     updatePathOverview(
       "database",
       "complete",
-      "Verify부터 PostgreSQL까지 현재 요청의 모든 보안 단계를 완료했습니다.",
+      "Verify 로그인, OBO 교환, ContextForge, MCP, Vault와 PostgreSQL 단계를 모두 완료했습니다.",
     );
     return;
   }
@@ -2127,7 +2327,7 @@ function updatePathFromEvents(events) {
     if (unapprovedRequest) {
       updatePathStep("verify", "미인증", "neutral", "—");
     }
-    for (const key of ["mcp", "vault", "database"]) {
+    for (const key of ["obo", "gateway", "mcp", "vault", "database"]) {
       updatePathStep(key, "미실행", "neutral");
     }
     updatePathOverview(

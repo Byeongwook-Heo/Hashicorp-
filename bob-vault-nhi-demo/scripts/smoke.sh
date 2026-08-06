@@ -8,7 +8,7 @@ load_demo_aws_credentials
 project_name="${PROJECT_NAME:-bob-vault-nhi-demo}"
 base_url="${DEMO_URL:-https://bob-vault-demo.byeongwook-heo.sbx.hashidemos.io}"
 status_json="$(curl --fail --silent --show-error "${base_url}/api/status")"
-curl --fail --silent --show-error "${base_url}/healthz" >/dev/null
+curl --fail --silent --show-error "${base_url}/readyz" >/dev/null
 
 if [[ "$(printf '%s' "${status_json}" | jq -r '.chatbot.enabled')" == "true" ]]; then
   login_status="$(curl --silent --show-error \

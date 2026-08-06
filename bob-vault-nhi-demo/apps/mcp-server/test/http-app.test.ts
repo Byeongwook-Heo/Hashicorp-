@@ -9,7 +9,10 @@ import { loadConfig } from "../src/config.js";
 import type { OrdersDatabase } from "../src/database.js";
 import { SecurityEventStore } from "../src/event-store.js";
 import { createHttpApp } from "../src/http-app.js";
-import type { IdentityProvider } from "../src/identity-client.js";
+import type {
+  IdentityProvider,
+  OboTokenVerifier,
+} from "../src/identity-client.js";
 import { ToolService } from "../src/tool-service.js";
 import type { UserAuthenticator, UserSession } from "../src/user-auth.js";
 import type { VaultCredentialBroker } from "../src/vault-client.js";
@@ -27,7 +30,7 @@ const authenticatedSession: UserSession = {
 
 function buildApp(options?: {
   session?: UserSession | null;
-  mcpAuthMode?: "static_bearer" | "user_jwt";
+  mcpAuthMode?: "static_bearer" | "user_jwt" | "obo_jwt";
 }) {
   const config = loadConfig({
     NODE_ENV: "test",
@@ -116,6 +119,13 @@ function buildApp(options?: {
     }),
     reset: vi.fn(),
   };
+  const oboVerifier: OboTokenVerifier = {
+    verifyAccessToken: vi.fn().mockResolvedValue({
+      subject: authenticatedSession.subject,
+      displayName: authenticatedSession.displayName,
+      accessToken: "header.payload.signature.obo",
+    }),
+  };
   return {
     app: createHttpApp({
       config,
@@ -123,11 +133,13 @@ function buildApp(options?: {
       tools,
       userAuth,
       agent,
+      oboVerifier,
       logger: pino({ level: "silent" }),
     }),
     events,
     vault,
     userAuth,
+    oboVerifier,
     agent,
   };
 }
@@ -452,5 +464,35 @@ describe("HTTP security boundary", () => {
     expect(userAuth.verifyAccessToken).toHaveBeenCalledWith(
       authenticatedSession.accessToken,
     );
+  });
+
+  it("accepts only a verified OBO JWT for tool execution", async () => {
+    const { app, oboVerifier } = buildApp({ mcpAuthMode: "obo_jwt" });
+    const oboToken = "header.payload.signature.obo";
+
+    await request(app)
+      .post("/mcp")
+      .set("authorization", `Bearer ${oboToken}`)
+      .set("accept", "application/json, text/event-stream")
+      .send(toolsListRequest)
+      .expect(200);
+
+    expect(oboVerifier.verifyAccessToken).toHaveBeenCalledWith(oboToken);
+  });
+
+  it("limits the ContextForge discovery credential to catalog discovery", async () => {
+    const { app } = buildApp({ mcpAuthMode: "obo_jwt" });
+
+    await request(app)
+      .post("/mcp")
+      .set("authorization", `Bearer ${bearerToken}`)
+      .set("accept", "application/json, text/event-stream")
+      .send({
+        jsonrpc: "2.0",
+        id: "test-call",
+        method: "tools/call",
+        params: { name: "get_recent_orders", arguments: { limit: 1 } },
+      })
+      .expect(401);
   });
 });

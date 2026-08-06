@@ -57,7 +57,13 @@ describe("loadConfig", () => {
       ...baseEnvironment,
       CHATBOT_ENABLED: "true",
       IDENTITY_FLOW: "obo",
-      MCP_AUTH_MODE: "user_jwt",
+      MCP_AUTH_MODE: "obo_jwt",
+      CONTEXTFORGE_ENABLED: "true",
+      CONTEXTFORGE_BASE_URL: "http://127.0.0.1:4444",
+      CONTEXTFORGE_SERVER_ID: "c0ffee00cafe40008000000000000001",
+      CONTEXTFORGE_ADMIN_EMAIL: "contextforge-admin@example.test",
+      CONTEXTFORGE_ADMIN_PASSWORD: "p".repeat(32),
+      CONTEXTFORGE_UPSTREAM_URL: "http://127.0.0.1:8080/mcp",
       SESSION_SECRET: "s".repeat(48),
       PUBLIC_BASE_URL: "https://chat.example.test",
       VERIFY_USER_AUTHORIZATION_URL: "https://verify.example.test/authorize",
@@ -74,7 +80,8 @@ describe("loadConfig", () => {
     });
 
     expect(config.chatbotEnabled).toBe(true);
-    expect(config.mcpAuthMode).toBe("user_jwt");
+    expect(config.mcpAuthMode).toBe("obo_jwt");
+    expect(config.contextForge.enabled).toBe(true);
     expect(config.verify.obo.clientId).toBe("agent-sts-client");
   });
 

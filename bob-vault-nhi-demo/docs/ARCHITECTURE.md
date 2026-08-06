@@ -11,10 +11,11 @@ Public ALB (TLS 1.2/1.3, approved event CIDRs)
   ▼
 Private ECS Fargate chatbot + MCP task
   ├─ encrypted HttpOnly user session
-  ├─ bounded Agent discovers and calls one of three MCP tools
-  ├─ MCP re-validates the IBM Verify user JWT
+  ├─ bounded Agent selects one of five fixed MCP tools
   ├─ AWS KMS signs the Agent private_key_jwt assertion
   ├─ IBM Verify STS exchanges user JWT → OBO JWT
+  ├─ ContextForge private sidecar routes the registered virtual MCP server
+  ├─ MCP re-validates the IBM Verify OBO JWT and fixed tool schema
   ├─ Vault validates subject + Agent claim and evaluates policy
   └─ Vault issues a dynamic PostgreSQL login (2-minute default)
        │ TLS + fixed parameterized query
@@ -22,20 +23,25 @@ Private ECS Fargate chatbot + MCP task
 Private RDS PostgreSQL view v_bob_order_status
 ```
 
-The browser, Agent, MCP endpoint, and security trace are served by one ECS task.
-The Agent still uses the MCP Streamable HTTP protocol over the task's loopback
-interface; it does not call the database service directly. Vault and RDS have no
-public IP.
+The browser, Agent, ContextForge, MCP endpoint, and security trace are served by
+one ECS task. ContextForge runs as a separate open-source sidecar and has no ALB
+listener. The Agent authenticates its private Gateway channel, sends the OBO JWT
+as upstream authorization, and uses MCP Streamable HTTP over the task's loopback
+interface. It does not call Vault or the database directly. Vault and RDS have
+no public IP.
 
 ## Identity separation
 
 - The browser login proves the human user with IBM Verify Authorization Code
   and PKCE.
-- The MCP task proves the Agent workload with an AWS KMS-backed
+- The Agent proves its workload to the Verify Token Endpoint with an AWS KMS-backed
   `private_key_jwt`. The private key cannot be exported.
 - IBM Verify token exchange preserves the user `sub` and binds the Agent client
   claim in a new OBO JWT.
-- Vault authenticates the OBO JWT and authorizes only the
+- ContextForge routes only the registered virtual server and passes the OBO JWT
+  to the upstream MCP Server as its `Authorization` identity.
+- MCP independently verifies the OBO JWT before calling Vault.
+- Vault authenticates the same OBO JWT and authorizes only the
   `bob-orders-readonly` database role.
 - The browser never receives the OBO JWT, Vault token, or database password.
 
@@ -46,6 +52,8 @@ discovers the published MCP catalog and can choose only:
 
 - `get_order_status`
 - `get_failed_payment_summary`
+- `get_recent_orders`
+- `get_failed_payment_trend`
 - `get_sensitive_payment_data` (expected denial)
 
 There is no shell, file, generic HTTP, generic SQL, or arbitrary Vault-path

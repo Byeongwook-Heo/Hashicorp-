@@ -50,7 +50,7 @@ resource "aws_lb_target_group" "app" {
 
   health_check {
     enabled             = true
-    path                = "/healthz"
+    path                = "/readyz"
     matcher             = "200"
     interval            = 20
     timeout             = 5

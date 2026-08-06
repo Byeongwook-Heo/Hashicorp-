@@ -152,6 +152,22 @@ interface OboIdentityClientConfig {
   actorValue: string;
 }
 
+export interface VerifiedOboPrincipal {
+  subject: string;
+  displayName: string;
+  email?: string;
+  accessToken: string;
+}
+
+export interface OboTokenVerifier {
+  verifyAccessToken(accessToken: string): Promise<VerifiedOboPrincipal>;
+}
+
+type OboTokenValidationConfig = Pick<
+  OboIdentityClientConfig,
+  "jwksUrl" | "issuer" | "audience" | "actorClaim" | "actorValue"
+>;
+
 function describeOboJwtValidationFailure(
   token: string,
   config: Pick<OboIdentityClientConfig, "issuer" | "audience">,
@@ -302,6 +318,70 @@ export class VerifyOboIdentityClient implements IdentityProvider {
   }
 }
 
+export class VerifyOboTokenVerifier implements OboTokenVerifier {
+  readonly #config: OboTokenValidationConfig;
+  readonly #jwks: ReturnType<typeof createRemoteJWKSet>;
+
+  public constructor(config: OboTokenValidationConfig) {
+    this.#config = config;
+    this.#jwks = createRemoteJWKSet(new URL(config.jwksUrl), {
+      cooldownDuration: 30_000,
+      cacheMaxAge: 10 * 60_000,
+      timeoutDuration: 5_000,
+    });
+  }
+
+  public async verifyAccessToken(
+    accessToken: string,
+  ): Promise<VerifiedOboPrincipal> {
+    try {
+      const verification = await jwtVerify(accessToken, this.#jwks, {
+        issuer: this.#config.issuer,
+        audience: this.#config.audience,
+        algorithms: ["RS256"],
+      });
+      const subject = requiredStringClaim(verification.payload, "sub");
+      if (
+        verification.payload[this.#config.actorClaim] !==
+        this.#config.actorValue
+      ) {
+        throw new AuthenticationError(
+          "IBM Verify OBO token did not contain the required agent binding",
+        );
+      }
+      const displayName =
+        optionalStringClaim(verification.payload, "name") ??
+        optionalStringClaim(verification.payload, "preferred_username") ??
+        optionalStringClaim(verification.payload, "email") ??
+        subject;
+      const email = optionalStringClaim(verification.payload, "email");
+      return {
+        subject,
+        displayName,
+        ...(email ? { email } : {}),
+        accessToken,
+      };
+    } catch (error) {
+      if (error instanceof AuthenticationError) throw error;
+      throw new AuthenticationError(
+        describeOboJwtValidationFailure(accessToken, this.#config, error),
+        { cause: error },
+      );
+    }
+  }
+}
+
+export class PreverifiedIdentityClient implements IdentityProvider {
+  public getVerifiedAccessToken(context?: IdentityContext): Promise<string> {
+    if (!context) {
+      return Promise.reject(
+        new AuthenticationError("A verified OBO token is required"),
+      );
+    }
+    return Promise.resolve(context.subjectToken);
+  }
+}
+
 export class UnconfiguredIdentityClient implements IdentityProvider {
   public getVerifiedAccessToken(): Promise<string> {
     return Promise.reject(
@@ -310,4 +390,25 @@ export class UnconfiguredIdentityClient implements IdentityProvider {
       ),
     );
   }
+}
+
+function requiredStringClaim(
+  payload: Record<string, unknown>,
+  claim: string,
+): string {
+  const value = payload[claim];
+  if (typeof value !== "string" || value.length === 0) {
+    throw new AuthenticationError(
+      `IBM Verify OBO token is missing the ${claim} claim`,
+    );
+  }
+  return value;
+}
+
+function optionalStringClaim(
+  payload: Record<string, unknown>,
+  claim: string,
+): string | undefined {
+  const value = payload[claim];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

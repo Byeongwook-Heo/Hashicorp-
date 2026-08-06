@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="IBM Verify 사용자 인증, MCP 요청 제어, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 Agentic Security Lab"
+      content="IBM Verify 사용자 인증과 OBO 교환, ContextForge MCP Gateway, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 Agentic Security Lab"
     />
     <title>Agentic Security Lab | 대화 · 접근제어</title>
     <script src="/theme.js?v=20260803-motion2"></script>
@@ -72,8 +72,9 @@
           <p class="eyebrow">검증된 사용자만, 필요한 권한만</p>
           <h1>AI 에이전트의 작업과 보안 결정을 한 화면에서 확인하세요</h1>
           <p class="landing-body">
-            IBM Verify가 사용자를 인증하고, Bob AI 에이전트는 OBO JWT로 Vault
-            정책을 통과한 뒤 짧은 TTL의 PostgreSQL 자격증명을 사용합니다.
+            IBM Verify가 사용자를 인증하고 Agent가 OBO JWT로 교환합니다.
+            ContextForge와 MCP Server를 거쳐 Vault 정책을 통과한 뒤 짧은 TTL의
+            PostgreSQL 자격증명만 사용합니다.
           </p>
 
           <div class="landing-points" aria-label="적용되는 핵심 보안 제어">
@@ -199,7 +200,7 @@
               <strong id="request-progress-title">요청 대기</strong>
             </span>
             <span class="request-progress-metrics">
-              <b id="request-progress-count">0/5</b>
+              <b id="request-progress-count">0/7</b>
               <span id="request-progress-elapsed">—</span>
             </span>
           </div>
@@ -216,16 +217,24 @@
               <span class="dock-stage-marker" aria-hidden="true">2</span>
               <span>Agent</span>
             </li>
-            <li data-dock-stage="mcp">
+            <li data-dock-stage="obo">
               <span class="dock-stage-marker" aria-hidden="true">3</span>
+              <span>OBO</span>
+            </li>
+            <li data-dock-stage="gateway">
+              <span class="dock-stage-marker" aria-hidden="true">4</span>
+              <span>Gateway</span>
+            </li>
+            <li data-dock-stage="mcp">
+              <span class="dock-stage-marker" aria-hidden="true">5</span>
               <span>MCP</span>
             </li>
             <li data-dock-stage="vault">
-              <span class="dock-stage-marker" aria-hidden="true">4</span>
+              <span class="dock-stage-marker" aria-hidden="true">6</span>
               <span>Vault</span>
             </li>
             <li data-dock-stage="database">
-              <span class="dock-stage-marker" aria-hidden="true">5</span>
+              <span class="dock-stage-marker" aria-hidden="true">7</span>
               <span>PostgreSQL</span>
             </li>
           </ol>
@@ -487,7 +496,7 @@
                 <div class="section-heading">
                   <h3 id="identity-path-title">신원·권한 경로</h3>
                   <div class="path-stage-overview" aria-live="polite">
-                    <span id="trace-stage-count">0/5</span>
+                    <span id="trace-stage-count">0/7</span>
                     <span class="live-state waiting" id="trace-live-state"
                       >요청 대기</span
                     >
@@ -499,7 +508,7 @@
                   role="progressbar"
                   aria-label="현재 요청 처리 진행률"
                   aria-valuemin="0"
-                  aria-valuemax="5"
+                  aria-valuemax="7"
                   aria-valuenow="0"
                 >
                   <span id="trace-progress-fill"></span>
@@ -552,6 +561,54 @@
                     <span class="path-copy">
                       <strong>Bob AI 에이전트</strong
                       ><small>의도 분석 및 계획 수립</small>
+                    </span>
+                    <span class="path-state neutral">대기</span>
+                    <span class="path-meta"
+                      ><time>—</time><small>상세 보기</small></span
+                    >
+                  </li>
+                  <li
+                    id="path-step-obo"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="dialog"
+                    data-stage="obo"
+                  >
+                    <span class="path-node" aria-hidden="true">›</span>
+                    <span class="path-icon verify-path-icon">
+                      <img
+                        src="/icons/ibm-security-verify.svg"
+                        alt=""
+                        width="30"
+                        height="30"
+                      />
+                    </span>
+                    <span class="path-copy">
+                      <strong>Verify Token Exchange</strong
+                      ><small>RFC 8693 OBO JWT 발급</small>
+                    </span>
+                    <span class="path-state neutral">대기</span>
+                    <span class="path-meta"
+                      ><time>—</time><small>상세 보기</small></span
+                    >
+                  </li>
+                  <li
+                    id="path-step-gateway"
+                    role="button"
+                    tabindex="0"
+                    aria-haspopup="dialog"
+                    data-stage="gateway"
+                  >
+                    <span class="path-node" aria-hidden="true">›</span>
+                    <span class="path-icon mcp-path-icon">
+                      <span
+                        class="carbon-icon icon-network"
+                        aria-hidden="true"
+                      ></span>
+                    </span>
+                    <span class="path-copy">
+                      <strong>ContextForge Gateway</strong
+                      ><small>도구 라우팅 및 OBO 전달</small>
                     </span>
                     <span class="path-state neutral">대기</span>
                     <span class="path-meta"

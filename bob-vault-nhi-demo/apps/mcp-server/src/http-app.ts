@@ -16,9 +16,10 @@ import { z } from "zod";
 
 import type { ChatAgent } from "./agent.js";
 import type { AppConfig } from "./config.js";
+import type { ContextForgeClient } from "./contextforge-client.js";
 import { AppError, AuthenticationError } from "./errors.js";
 import type { SecurityEventStore } from "./event-store.js";
-import type { IdentityContext } from "./identity-client.js";
+import type { IdentityContext, OboTokenVerifier } from "./identity-client.js";
 import type { KmsClientAssertionSigner } from "./kms-signer.js";
 import type { ToolService } from "./tool-service.js";
 import type {
@@ -35,6 +36,8 @@ interface AppDependencies {
   userAuth: UserAuthenticator;
   agent?: ChatAgent;
   signer?: KmsClientAssertionSigner;
+  oboVerifier?: OboTokenVerifier;
+  gateway?: ContextForgeClient;
 }
 
 const requestIdPattern = /^[A-Za-z0-9_.:-]{8,64}$/;
@@ -100,7 +103,17 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     response.json({ status: "ok", version: config.serviceVersion });
   });
   app.get("/readyz", (_request, response) => {
-    response.json({ status: "ready", mode: config.appMode });
+    const gatewayReady =
+      !config.contextForge.enabled || dependencies.gateway?.isReady();
+    response.status(gatewayReady ? 200 : 503).json({
+      status: gatewayReady ? "ready" : "starting",
+      mode: config.appMode,
+      gateway: config.contextForge.enabled
+        ? gatewayReady
+          ? "ready"
+          : "starting"
+        : "disabled",
+    });
   });
 
   app.get("/auth/login", async (_request, response, next) => {
@@ -153,11 +166,14 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
       protocol: "2025-11-25",
       controls: {
         transport:
-          config.mcpAuthMode === "user_jwt"
-            ? "IBM Verify user JWT + source CIDR"
-            : "bearer + source CIDR",
+          config.mcpAuthMode === "obo_jwt"
+            ? "ContextForge + IBM Verify OBO JWT + source CIDR"
+            : config.mcpAuthMode === "user_jwt"
+              ? "IBM Verify user JWT + source CIDR"
+              : "bearer + source CIDR",
         workloadIdentity: "AWS KMS private_key_jwt + OBO",
-        authorization: "IBM Verify OBO JWT → Vault JWT role",
+        authorization:
+          "IBM Verify OBO JWT → ContextForge → MCP → Vault JWT role",
         credentials: "dynamic PostgreSQL, short TTL",
       },
     });
@@ -334,11 +350,11 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     "/mcp",
     mcpRateLimiter,
     enforceAllowedOrigin(config),
-    authenticateTransport(config, events, userAuth),
+    authenticateTransport(config, events, userAuth, dependencies.oboVerifier),
   );
   app.post(
     "/api/demo/reset",
-    authenticateTransport(config, events, userAuth),
+    authenticateTransport(config, events, userAuth, dependencies.oboVerifier),
     (_request, response) => {
       events.clear();
       response.status(204).end();
@@ -657,6 +673,7 @@ function authenticateTransport(
   config: AppConfig,
   events: SecurityEventStore,
   userAuth: UserAuthenticator,
+  oboVerifier?: OboTokenVerifier,
 ): (request: Request, response: Response, next: NextFunction) => void {
   const expectedDigest = createHash("sha256")
     .update(config.transportBearerToken)
@@ -670,6 +687,39 @@ function authenticateTransport(
         const suppliedToken = header.startsWith("Bearer ")
           ? header.slice(7)
           : "";
+        const suppliedDigest = createHash("sha256")
+          .update(suppliedToken)
+          .digest();
+        const isDiscoveryToken = timingSafeEqual(
+          expectedDigest,
+          suppliedDigest,
+        );
+        if (config.mcpAuthMode === "obo_jwt") {
+          if (isDiscoveryToken) {
+            response.locals["discoveryOnly"] = true;
+            events.record({
+              stage: "gateway",
+              status: "allowed",
+              action: "contextforge_upstream_discovery",
+              requestId: response.locals["requestId"] as string,
+            });
+            next();
+            return;
+          }
+          if (!suppliedToken || !oboVerifier) {
+            throw new AuthenticationError();
+          }
+          response.locals["principal"] =
+            await oboVerifier.verifyAccessToken(suppliedToken);
+          events.record({
+            stage: "transport",
+            status: "allowed",
+            action: "mcp_obo_jwt_authenticated",
+            requestId: response.locals["requestId"] as string,
+          });
+          next();
+          return;
+        }
         if (config.mcpAuthMode === "user_jwt") {
           if (!suppliedToken) {
             throw new AuthenticationError();
@@ -686,10 +736,7 @@ function authenticateTransport(
           return;
         }
 
-        const suppliedDigest = createHash("sha256")
-          .update(suppliedToken)
-          .digest();
-        if (!timingSafeEqual(expectedDigest, suppliedDigest)) {
+        if (!isDiscoveryToken) {
           events.record({
             stage: "transport",
             status: "denied",
@@ -711,6 +758,13 @@ function authenticateTransport(
             stage: "transport",
             status: "denied",
             action: "invalid_user_jwt",
+            requestId: response.locals["requestId"] as string,
+          });
+        } else if (config.mcpAuthMode === "obo_jwt") {
+          events.record({
+            stage: "transport",
+            status: "denied",
+            action: "invalid_obo_jwt",
             requestId: response.locals["requestId"] as string,
           });
         }
@@ -787,7 +841,7 @@ function requireJsonContentType(
 
 function enforceFixedToolContract(
   request: Request,
-  _response: Response,
+  response: Response,
   next: NextFunction,
 ): void {
   const body = request.body as
@@ -798,6 +852,15 @@ function enforceFixedToolContract(
     | undefined;
   if (body?.method !== "tools/call") {
     next();
+    return;
+  }
+
+  if (response.locals["discoveryOnly"] === true) {
+    next(
+      new AuthenticationError(
+        "The ContextForge discovery credential cannot invoke MCP tools",
+      ),
+    );
     return;
   }
 

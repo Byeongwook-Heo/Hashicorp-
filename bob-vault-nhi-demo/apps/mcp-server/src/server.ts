@@ -9,14 +9,18 @@ import {
   RuleBasedPlanner,
 } from "./agent.js";
 import { loadConfig } from "./config.js";
+import { ContextForgeClient } from "./contextforge-client.js";
 import { PostgresOrdersDatabase } from "./database.js";
 import { SecurityEventStore } from "./event-store.js";
 import { createHttpApp } from "./http-app.js";
 import {
   type IdentityProvider,
+  type OboTokenVerifier,
+  PreverifiedIdentityClient,
   UnconfiguredIdentityClient,
   VerifyIdentityClient,
   VerifyOboIdentityClient,
+  VerifyOboTokenVerifier,
 } from "./identity-client.js";
 import { KmsClientAssertionSigner } from "./kms-signer.js";
 import { createLogger } from "./logger.js";
@@ -33,11 +37,23 @@ const config = loadConfig();
 const logger = createLogger(config);
 const events = new SecurityEventStore();
 const signer = createSigner();
-const identity = createIdentity(signer);
+const delegatedIdentity = createIdentity(signer);
+const toolIdentity =
+  config.identityFlow === "obo"
+    ? new PreverifiedIdentityClient()
+    : delegatedIdentity;
+const oboVerifier = createOboVerifier();
+const gateway = createGateway();
 const userAuth = createUserAuth();
 const vault = new VaultClient(config.vault);
 const database = new PostgresOrdersDatabase(config.database);
-const tools = new ToolService(identity, vault, database, events, "chat-agent");
+const tools = new ToolService(
+  toolIdentity,
+  vault,
+  database,
+  events,
+  "chat-agent",
+);
 const agent = config.chatbotEnabled ? createAgent() : undefined;
 const app = createHttpApp({
   config,
@@ -47,6 +63,8 @@ const app = createHttpApp({
   userAuth,
   ...(agent ? { agent } : {}),
   ...(signer ? { signer } : {}),
+  ...(oboVerifier ? { oboVerifier } : {}),
+  ...(gateway ? { gateway } : {}),
 });
 const httpServer = createServer(app);
 
@@ -59,6 +77,17 @@ httpServer.listen(config.port, "0.0.0.0", () => {
     },
     "secure agent service is ready",
   );
+  if (gateway) {
+    void gateway
+      .initialize()
+      .then(() => logger.info("ContextForge gateway registration completed"))
+      .catch((error: unknown) => {
+        logger.error(
+          { err: error },
+          "ContextForge gateway registration failed; readiness remains closed",
+        );
+      });
+  }
   if (agent) {
     void agent.preflight().then((status) => {
       logger.info(
@@ -95,9 +124,14 @@ function createAgent(): BoundedChatAgent {
         )
       : fallback;
   return new BoundedChatAgent(
-    new HttpMcpToolCaller(config.mcpInternalUrl, config.serviceVersion),
+    new HttpMcpToolCaller(
+      config.mcpInternalUrl,
+      config.serviceVersion,
+      gateway,
+    ),
     planner,
     (event) => events.record(event),
+    delegatedIdentity,
   );
 }
 
@@ -229,6 +263,43 @@ function createUserAuth(): UserAuthenticator {
     scopes: user.scopes,
     redirectUri: `${config.publicBaseUrl}/auth/callback`,
     sessionSecret: config.sessionSecret,
+  });
+}
+
+function createOboVerifier(): OboTokenVerifier | undefined {
+  if (config.mcpAuthMode !== "obo_jwt") return undefined;
+  const obo = config.verify.obo;
+  if (!obo.jwksUrl || !obo.issuer || !obo.audience || !obo.actorValue) {
+    return undefined;
+  }
+  return new VerifyOboTokenVerifier({
+    jwksUrl: obo.jwksUrl,
+    issuer: obo.issuer,
+    audience: obo.audience,
+    actorClaim: obo.actorClaim,
+    actorValue: obo.actorValue,
+  });
+}
+
+function createGateway(): ContextForgeClient | undefined {
+  const gatewayConfig = config.contextForge;
+  if (!gatewayConfig.enabled) return undefined;
+  if (
+    !gatewayConfig.baseUrl ||
+    !gatewayConfig.serverId ||
+    !gatewayConfig.adminEmail ||
+    !gatewayConfig.adminPassword ||
+    !gatewayConfig.upstreamUrl
+  ) {
+    return undefined;
+  }
+  return new ContextForgeClient({
+    baseUrl: gatewayConfig.baseUrl,
+    serverId: gatewayConfig.serverId,
+    adminEmail: gatewayConfig.adminEmail,
+    adminPassword: gatewayConfig.adminPassword,
+    upstreamUrl: gatewayConfig.upstreamUrl,
+    upstreamDiscoveryToken: config.transportBearerToken,
   });
 }
 

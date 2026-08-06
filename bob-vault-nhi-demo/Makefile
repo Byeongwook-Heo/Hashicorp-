@@ -15,7 +15,7 @@ TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
 .PHONY: build-image push-image deploy-mcp-bootstrap verify-preflight
 .PHONY: verify-client-jwt-plan verify-client-enable-jwt
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
-.PHONY: configure-verify configure-chatbot-verify bootstrap-chat-session-secret
+.PHONY: configure-verify configure-chatbot-verify bootstrap-chat-session-secret bootstrap-contextforge-secret
 .PHONY: bootstrap-agent-runtime-secret agent-runtime-start agent-runtime-stop
 .PHONY: chatbot-plan deploy-chatbot copy-bob-token smoke demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
@@ -43,6 +43,7 @@ bootstrap-aws: ## Create AWS-only build, artifact, and ECR bootstrap resources.
 	@./scripts/upload-license.sh
 	@./scripts/configure-source-cidr.sh
 	@./bootstrap/aws/bootstrap-mcp-token.sh
+	@./bootstrap/aws/bootstrap-contextforge-secret.sh
 
 upload-source: ## Upload a source-only archive to the versioned S3 artifact bucket.
 	@./scripts/upload-source.sh "$(ARTIFACT_BUCKET)" "$(SOURCE_KEY)" "$(SOURCE_ARCHIVE)"
@@ -85,6 +86,9 @@ configure-chatbot-verify: ## Store Verify OIDC user-login and OBO STS public met
 
 bootstrap-chat-session-secret: ## Create the encrypted chatbot session key without printing it.
 	@./bootstrap/aws/bootstrap-chat-session-secret.sh
+
+bootstrap-contextforge-secret: ## Create private ContextForge runtime secrets without printing them.
+	@./bootstrap/aws/bootstrap-contextforge-secret.sh
 
 bootstrap-agent-runtime-secret: ## Store the private planning runtime token without printing it.
 	@./bootstrap/aws/bootstrap-agent-runtime-secret.sh

@@ -3,6 +3,9 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { z } from "zod";
 
 import { AppError, ExternalServiceError } from "./errors.js";
+import type { GatewayTokenProvider } from "./contextforge-client.js";
+import type { IdentityProvider } from "./identity-client.js";
+import type { EventStage, EventStatus } from "./types.js";
 import type { UserPrincipal } from "./user-auth.js";
 
 export interface UnapprovedChatPrincipal {
@@ -176,8 +179,8 @@ export interface ChatAgent {
 }
 
 export type AgentProgressReporter = (event: {
-  stage: "policy";
-  status: "allowed" | "denied" | "error";
+  stage: EventStage;
+  status: EventStatus;
   action: string;
   requestId: string;
 }) => void;
@@ -186,6 +189,7 @@ export class HttpMcpToolCaller implements McpToolCaller {
   public constructor(
     private readonly endpoint: string,
     private readonly serviceVersion: string,
+    private readonly gatewayTokenProvider?: GatewayTokenProvider,
   ) {}
 
   public async callTool(
@@ -194,6 +198,9 @@ export class HttpMcpToolCaller implements McpToolCaller {
     accessToken: string,
     requestId?: string,
   ): Promise<Record<string, unknown>> {
+    const gatewayAccessToken = this.gatewayTokenProvider
+      ? await this.gatewayTokenProvider.getAccessToken()
+      : undefined;
     const client = new Client(
       {
         name: "agentic-security-chatbot",
@@ -206,7 +213,10 @@ export class HttpMcpToolCaller implements McpToolCaller {
       {
         requestInit: {
           headers: {
-            authorization: `Bearer ${accessToken}`,
+            authorization: `Bearer ${gatewayAccessToken ?? accessToken}`,
+            ...(gatewayAccessToken
+              ? { "x-upstream-authorization": `Bearer ${accessToken}` }
+              : {}),
             ...(requestId ? { "x-request-id": requestId } : {}),
           },
         },
@@ -389,6 +399,7 @@ export class BoundedChatAgent implements ChatAgent {
     private readonly mcp: McpToolCaller,
     private readonly planner: MessagePlanner = new RuleBasedPlanner(),
     private readonly reportProgress?: AgentProgressReporter,
+    private readonly delegatedIdentity?: IdentityProvider,
   ) {}
 
   public async respond(
@@ -488,13 +499,16 @@ export class BoundedChatAgent implements ChatAgent {
     principal: UserPrincipal,
     requestId?: string,
   ): Promise<AgentReply> {
+    const delegatedAccessToken = planUsesMcp(plan)
+      ? await this.#exchangeDelegatedToken(principal, requestId)
+      : principal.accessToken;
     switch (plan.intent) {
       case "sensitive_payment_data": {
         const result = denialSchema.parse(
           await this.#callTool(
             "get_sensitive_payment_data",
             { customer_id: plan.customer_id },
-            principal.accessToken,
+            delegatedAccessToken,
             requestId,
           ),
         );
@@ -513,7 +527,7 @@ export class BoundedChatAgent implements ChatAgent {
           await this.#callTool(
             "get_order_status",
             { order_id: plan.order_id },
-            principal.accessToken,
+            delegatedAccessToken,
             requestId,
           ),
         );
@@ -538,7 +552,7 @@ export class BoundedChatAgent implements ChatAgent {
           await this.#callTool(
             "get_failed_payment_summary",
             { date },
-            principal.accessToken,
+            delegatedAccessToken,
             requestId,
           ),
         );
@@ -563,7 +577,7 @@ export class BoundedChatAgent implements ChatAgent {
           await this.#callTool(
             "get_recent_orders",
             { limit },
-            principal.accessToken,
+            delegatedAccessToken,
             requestId,
           ),
         );
@@ -595,7 +609,7 @@ export class BoundedChatAgent implements ChatAgent {
           await this.#callTool(
             "get_failed_payment_trend",
             { days },
-            principal.accessToken,
+            delegatedAccessToken,
             requestId,
           ),
         );
@@ -627,15 +641,68 @@ export class BoundedChatAgent implements ChatAgent {
     }
   }
 
-  #callTool(
+  async #callTool(
     tool: AgentToolName,
     argumentsValue: Record<string, string | number>,
     accessToken: string,
     requestId?: string,
   ): Promise<Record<string, unknown>> {
-    return requestId
-      ? this.mcp.callTool(tool, argumentsValue, accessToken, requestId)
-      : this.mcp.callTool(tool, argumentsValue, accessToken);
+    try {
+      if (requestId) {
+        this.reportProgress?.({
+          stage: "gateway",
+          status: "allowed",
+          action: "contextforge_obo_forwarded",
+          requestId,
+        });
+      }
+      const result = requestId
+        ? await this.mcp.callTool(tool, argumentsValue, accessToken, requestId)
+        : await this.mcp.callTool(tool, argumentsValue, accessToken);
+      return result;
+    } catch (error) {
+      if (requestId) {
+        this.reportProgress?.({
+          stage: "gateway",
+          status: "error",
+          action: "contextforge_request_failed",
+          requestId,
+        });
+      }
+      throw error;
+    }
+  }
+
+  async #exchangeDelegatedToken(
+    principal: UserPrincipal,
+    requestId?: string,
+  ): Promise<string> {
+    if (!this.delegatedIdentity) return principal.accessToken;
+    try {
+      const token = await this.delegatedIdentity.getVerifiedAccessToken({
+        subject: principal.subject,
+        subjectToken: principal.accessToken,
+      });
+      if (requestId) {
+        this.reportProgress?.({
+          stage: "identity",
+          status: "allowed",
+          action: "verify_obo_token_exchanged",
+          requestId,
+        });
+      }
+      return token;
+    } catch (error) {
+      if (requestId) {
+        this.reportProgress?.({
+          stage: "identity",
+          status: "error",
+          action: "verify_obo_exchange_failed",
+          requestId,
+        });
+      }
+      throw error;
+    }
   }
 
   #explainLastDecision(principal: ChatPrincipal): AgentReply {
@@ -713,7 +780,17 @@ function allowedTrace(
     },
     {
       label: "OBO JWT",
-      detail: "Agent 신원과 사용자 subject 결합",
+      detail: "Verify Token Endpoint · RFC 8693 교환 완료",
+      status: "verified",
+    },
+    {
+      label: "ContextForge Gateway",
+      detail: "허용된 MCP 도구 라우팅 · OBO JWT 전달",
+      status: "allowed",
+    },
+    {
+      label: "MCP Server",
+      detail: "OBO JWT 및 고정 도구 스키마 검증",
       status: "verified",
     },
     {
@@ -738,7 +815,17 @@ function deniedTrace(principal: UserPrincipal): AgentTraceStep[] {
     },
     {
       label: "OBO JWT",
-      detail: "Agent 신원과 사용자 subject 결합",
+      detail: "Verify Token Endpoint · RFC 8693 교환 완료",
+      status: "verified",
+    },
+    {
+      label: "ContextForge Gateway",
+      detail: "허용된 MCP 도구 라우팅 · OBO JWT 전달",
+      status: "allowed",
+    },
+    {
+      label: "MCP Server",
+      detail: "OBO JWT 및 민감 정보 도구 요청 검증",
       status: "verified",
     },
     {
@@ -775,12 +862,12 @@ function explainLab(
   const replies = {
     nhi: "NHI는 사람이 아닌 애플리케이션과 Agent가 사용하는 신원입니다. 이 Lab에서는 Agent 신원과 로그인한 사용자의 subject를 결합해 요청 주체를 증명합니다.",
     verify:
-      "IBM Verify는 사용자를 로그인시키고 JWT를 발급합니다. 이후 Agent는 사용자 subject가 포함된 OBO 토큰을 받아 다음 보안 경계로 전달합니다.",
+      "IBM Verify는 사용자를 로그인시키고 사용자 Access Token을 발급합니다. 이후 Agent는 Verify Token Endpoint에 사용자 토큰을 subject_token으로 제출하고 KMS 서명 신원을 결합해 MCP용 OBO JWT로 교환합니다.",
     vault:
       "Vault는 OBO JWT의 issuer, audience, Agent claim을 검증하고 허용된 역할에만 짧은 TTL의 읽기 전용 DB 자격증명을 발급합니다.",
-    mcp: "MCP Server는 Agent가 사용할 수 있는 도구와 입력 스키마를 고정합니다. 임의 SQL이나 등록되지 않은 도구는 실행할 수 없습니다.",
+    mcp: "ContextForge는 Agent 요청을 등록된 MCP 도구로만 라우팅하고 OBO JWT를 전달합니다. MCP Server는 토큰과 입력 스키마를 다시 검증하므로 임의 SQL이나 등록되지 않은 도구는 실행할 수 없습니다.",
     security_flow:
-      "이 Lab의 흐름은 IBM Verify 사용자 인증 → Agent OBO 신원 위임 → MCP 도구 검증 → Vault 정책 평가 → 짧은 TTL의 PostgreSQL 접근 순서입니다.",
+      "이 Lab의 흐름은 IBM Verify 사용자 인증 → Agent 계획 → Verify Token Endpoint의 RFC 8693 OBO 교환 → ContextForge Gateway → MCP 도구 검증 → Vault 정책 평가 → 짧은 TTL의 PostgreSQL 접근 순서입니다.",
   } as const;
   return {
     reply: replies[topic],

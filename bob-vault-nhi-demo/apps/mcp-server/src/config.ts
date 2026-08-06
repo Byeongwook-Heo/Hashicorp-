@@ -20,8 +20,17 @@ const environmentSchema = z
       .enum(["client_credentials", "obo"])
       .default("client_credentials"),
     MCP_AUTH_MODE: z
-      .enum(["static_bearer", "user_jwt"])
+      .enum(["static_bearer", "user_jwt", "obo_jwt"])
       .default("static_bearer"),
+    CONTEXTFORGE_ENABLED: z.enum(["true", "false"]).default("false"),
+    CONTEXTFORGE_BASE_URL: optionalUrl,
+    CONTEXTFORGE_SERVER_ID: z
+      .string()
+      .regex(/^[0-9a-fA-F]{32}$/)
+      .optional(),
+    CONTEXTFORGE_ADMIN_EMAIL: z.email().optional(),
+    CONTEXTFORGE_ADMIN_PASSWORD: z.string().min(16).optional(),
+    CONTEXTFORGE_UPSTREAM_URL: optionalUrl,
     AGENT_PLANNING_MODE: z.enum(["bounded", "private"]).default("bounded"),
     INFERENCE_BASE_URL: optionalUrl,
     INFERENCE_MODEL: optionalNonEmpty,
@@ -149,13 +158,28 @@ const environmentSchema = z
           message: "IDENTITY_FLOW must be obo when CHATBOT_ENABLED=true",
         });
       }
-      if (value.MCP_AUTH_MODE !== "user_jwt") {
+      if (value.MCP_AUTH_MODE !== "obo_jwt") {
         context.addIssue({
           code: "custom",
           path: ["MCP_AUTH_MODE"],
-          message: "MCP_AUTH_MODE must be user_jwt when CHATBOT_ENABLED=true",
+          message: "MCP_AUTH_MODE must be obo_jwt when CHATBOT_ENABLED=true",
         });
       }
+      if (value.CONTEXTFORGE_ENABLED !== "true") {
+        context.addIssue({
+          code: "custom",
+          path: ["CONTEXTFORGE_ENABLED"],
+          message:
+            "CONTEXTFORGE_ENABLED must be true when CHATBOT_ENABLED=true",
+        });
+      }
+      required.push(
+        "CONTEXTFORGE_BASE_URL",
+        "CONTEXTFORGE_SERVER_ID",
+        "CONTEXTFORGE_ADMIN_EMAIL",
+        "CONTEXTFORGE_ADMIN_PASSWORD",
+        "CONTEXTFORGE_UPSTREAM_URL",
+      );
     }
     if (value.AGENT_PLANNING_MODE === "private") {
       required.push(
@@ -190,7 +214,15 @@ export interface AppConfig {
   appMode: "bootstrap" | "aws";
   chatbotEnabled: boolean;
   identityFlow: "client_credentials" | "obo";
-  mcpAuthMode: "static_bearer" | "user_jwt";
+  mcpAuthMode: "static_bearer" | "user_jwt" | "obo_jwt";
+  contextForge: {
+    enabled: boolean;
+    baseUrl?: string;
+    serverId?: string;
+    adminEmail?: string;
+    adminPassword?: string;
+    upstreamUrl?: string;
+  };
   agentPlanning: {
     mode: "bounded" | "private";
     baseUrl?: string;
@@ -282,6 +314,24 @@ export function loadConfig(
     chatbotEnabled: value.CHATBOT_ENABLED === "true",
     identityFlow: value.IDENTITY_FLOW,
     mcpAuthMode: value.MCP_AUTH_MODE,
+    contextForge: {
+      enabled: value.CONTEXTFORGE_ENABLED === "true",
+      ...(value.CONTEXTFORGE_BASE_URL
+        ? { baseUrl: value.CONTEXTFORGE_BASE_URL.replace(/\/$/, "") }
+        : {}),
+      ...(value.CONTEXTFORGE_SERVER_ID
+        ? { serverId: value.CONTEXTFORGE_SERVER_ID.toLowerCase() }
+        : {}),
+      ...(value.CONTEXTFORGE_ADMIN_EMAIL
+        ? { adminEmail: value.CONTEXTFORGE_ADMIN_EMAIL }
+        : {}),
+      ...(value.CONTEXTFORGE_ADMIN_PASSWORD
+        ? { adminPassword: value.CONTEXTFORGE_ADMIN_PASSWORD }
+        : {}),
+      ...(value.CONTEXTFORGE_UPSTREAM_URL
+        ? { upstreamUrl: value.CONTEXTFORGE_UPSTREAM_URL }
+        : {}),
+    },
     agentPlanning: {
       mode: value.AGENT_PLANNING_MODE,
       ...(value.INFERENCE_BASE_URL

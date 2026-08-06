@@ -992,7 +992,7 @@ body.authenticated > .site-footer {
   top: 0;
   display: grid;
   min-width: 0;
-  grid-template-columns: minmax(250px, 0.72fr) minmax(500px, 1.28fr);
+  grid-template-columns: minmax(220px, 0.55fr) minmax(720px, 1.45fr);
   grid-template-rows: auto;
   gap: 28px;
   align-items: center;
@@ -1059,8 +1059,8 @@ body.authenticated > .site-footer {
 .request-progress-stages {
   display: grid;
   min-width: 0;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
   align-items: stretch;
   margin: 0;
   padding: 0;
@@ -1072,13 +1072,13 @@ body.authenticated > .site-footer {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 7px;
-  padding: 7px 8px 7px 9px;
+  gap: 6px;
+  padding: 7px 6px;
   border: 1px solid transparent;
   border-top: 2px solid var(--line-strong);
   background: color-mix(in srgb, var(--surface-soft) 70%, transparent);
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9px;
   transition:
     color 160ms ease,
     border-color 160ms ease,
@@ -2960,12 +2960,12 @@ body,
 }
 
 .request-progress-stages {
-  gap: 8px;
+  gap: 6px;
 }
 
 .request-progress-stages li {
   min-height: 40px;
-  padding: 8px 10px;
+  padding: 8px 7px;
   border: 1px solid var(--border-subtle);
   border-top: 2px solid var(--border-strong);
   background: var(--layer-02);

@@ -93,6 +93,17 @@ variable "chatbot_enabled" {
   default     = false
 }
 
+variable "contextforge_image" {
+  description = "Pinned IBM ContextForge MCP Gateway image used as a private ECS sidecar."
+  type        = string
+  default     = "ghcr.io/ibm/mcp-context-forge:1.0.7"
+
+  validation {
+    condition     = can(regex("^ghcr\\.io/ibm/mcp-context-forge:[0-9]+\\.[0-9]+\\.[0-9]+$", var.contextforge_image))
+    error_message = "contextforge_image must use an explicit semantic-version tag from the IBM GHCR repository."
+  }
+}
+
 variable "inference_enabled" {
   description = "Enable the private intent-planning service with deterministic fallback."
   type        = bool

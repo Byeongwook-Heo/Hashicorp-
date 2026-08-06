@@ -44,9 +44,9 @@ Configure:
 - Scope: `vault.db.read`
 - Audience: the exact Vault audience selected for this lab
 
-The STS client ID becomes `VERIFY_OBO_CLIENT_ID`. The service verifies both the
-preserved user `sub` and the configured Agent claim (default `client_id`) before
-passing the OBO token to Vault.
+The STS client ID becomes `VERIFY_OBO_CLIENT_ID`. The Agent verifies both the
+preserved user `sub` and the configured Agent claim (default `client_id`), sends
+the OBO token through ContextForge, and MCP verifies it again before Vault.
 
 IBM references:
 
@@ -77,11 +77,12 @@ export VERIFY_OBO_ACTOR_VALUE="${VERIFY_OBO_CLIENT_ID}"
 
 make configure-chatbot-verify
 make bootstrap-chat-session-secret
+make bootstrap-contextforge-secret
 ```
 
 Only public client metadata is stored in Parameter Store. The randomly generated
-session encryption key is created directly in Secrets Manager and is never
-printed or placed in Terraform state.
+session encryption key and ContextForge runtime secrets are created directly in
+Secrets Manager and are never printed or placed in Terraform state.
 
 ## 4. Re-bind Vault and deploy
 
@@ -101,7 +102,7 @@ configuration.
 
 1. Open the root URL and complete Verify login.
 2. Ask for `ORD-1001`.
-3. Confirm the response has an MCP tool name and a four-step security trace.
-4. Open `/ops` and confirm sanitized `transport`, `identity`, `vault`, and
-   `database` events.
+3. Confirm the response has an MCP tool name and a six-step security trace.
+4. Open `/ops` and confirm sanitized `identity`, `gateway`, `transport`, `vault`,
+   and `database` events.
 5. Run the sensitive-data prompt and confirm Vault denial with no DB event.

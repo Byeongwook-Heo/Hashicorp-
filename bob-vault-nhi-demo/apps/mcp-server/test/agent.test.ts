@@ -7,6 +7,7 @@ import {
   RuleBasedPlanner,
   type MessagePlanner,
 } from "../src/agent.js";
+import type { IdentityProvider } from "../src/identity-client.js";
 import type { UserPrincipal } from "../src/user-auth.js";
 
 const principal: UserPrincipal = {
@@ -105,6 +106,51 @@ describe("BoundedChatAgent", () => {
     );
   });
 
+  it("exchanges the user token before routing an OBO JWT through the gateway", async () => {
+    const mcp: McpToolCaller = {
+      callTool: vi.fn().mockResolvedValue({
+        orders: [],
+        access: accessResult(),
+      }),
+    };
+    const delegatedIdentity: IdentityProvider = {
+      getVerifiedAccessToken: vi.fn().mockResolvedValue("obo.jwt.signature"),
+    };
+    const reportProgress = vi.fn();
+    const agent = new BoundedChatAgent(
+      mcp,
+      new RuleBasedPlanner(),
+      reportProgress,
+      delegatedIdentity,
+    );
+    const requestId = "obo-request-123";
+
+    await agent.respond("최근 주문 5건을 요약해줘", principal, requestId);
+
+    expect(delegatedIdentity.getVerifiedAccessToken).toHaveBeenCalledWith({
+      subject: principal.subject,
+      subjectToken: principal.accessToken,
+    });
+    expect(mcp.callTool).toHaveBeenCalledWith(
+      "get_recent_orders",
+      { limit: 5 },
+      "obo.jwt.signature",
+      requestId,
+    );
+    expect(reportProgress).toHaveBeenCalledWith({
+      stage: "identity",
+      status: "allowed",
+      action: "verify_obo_token_exchanged",
+      requestId,
+    });
+    expect(reportProgress).toHaveBeenCalledWith({
+      stage: "gateway",
+      status: "allowed",
+      action: "contextforge_obo_forwarded",
+      requestId,
+    });
+  });
+
   it("routes a validated order identifier to the MCP order tool", async () => {
     const { agent, mcp } = buildAgent({
       order_id: "ORD-1001",
@@ -124,7 +170,7 @@ describe("BoundedChatAgent", () => {
     const reply = await agent.respond("주문 ORD-1001 상태를 알려줘", principal);
 
     expect(reply.reply).toContain("배송 준비 중");
-    expect(reply.trace).toHaveLength(4);
+    expect(reply.trace).toHaveLength(6);
     expect(mcp.callTool).toHaveBeenCalledWith(
       "get_order_status",
       { order_id: "ORD-1001" },

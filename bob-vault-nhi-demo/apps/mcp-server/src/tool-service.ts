@@ -90,9 +90,7 @@ export class ToolService {
     this.events.record({
       stage: "identity",
       status: "allowed",
-      action: identityContext
-        ? "verify_obo_jwt_validated"
-        : "verify_jwt_validated",
+      action: identityContext ? "mcp_obo_jwt_verified" : "verify_jwt_validated",
       requestId,
     });
     try {
@@ -141,7 +139,7 @@ export class ToolService {
         stage: "identity",
         status: "allowed",
         action: identityContext
-          ? "verify_obo_jwt_validated"
+          ? "mcp_obo_jwt_verified"
           : "verify_jwt_validated",
         requestId,
       });

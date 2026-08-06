@@ -17,13 +17,18 @@ Ask:
 Expected sequence:
 
 1. The Agent maps the natural-language request to the fixed `get_order_status` tool.
-2. The Agent calls the MCP Streamable HTTP endpoint with the Verify user token.
-3. MCP validates the user JWT.
-4. KMS signs the Agent client assertion.
-5. Verify STS exchanges the user token for an OBO JWT.
-6. Vault validates the user `sub`, Agent binding, issuer, and audience.
-7. Vault issues `bob-orders-readonly` for 120 seconds.
-8. RDS returns one synthetic order row; the lease and Vault token are revoked.
+2. KMS signs the Agent `private_key_jwt` client assertion.
+3. The Agent sends the user Access Token as `subject_token` to the IBM Verify
+   Token Endpoint.
+4. Verify performs RFC 8693 Token Exchange and returns an OBO JWT bound to the
+   user `sub` and Agent client.
+5. The Agent calls the private ContextForge virtual MCP server with its Gateway
+   session and the OBO JWT as upstream authorization.
+6. ContextForge allows the registered route and forwards the OBO JWT to MCP.
+7. MCP independently validates the OBO JWT and fixed tool schema.
+8. Vault validates the user `sub`, Agent binding, issuer, and audience.
+9. Vault issues `bob-orders-readonly` for 120 seconds.
+10. RDS returns one synthetic order row; the lease and Vault token are revoked.
 
 Expected business answer: payment is `PAID`, delivery is `PREPARING`. The right
 rail shows the security trace without showing any credential.
@@ -63,7 +68,7 @@ performing a second database request.
 
 ## 4:30–5:00 — Operations evidence
 
-Use the integrated **NHI 접근 제어** panel to show the sanitized identity,
+Use the integrated **접근제어** panel to show the sanitized identity,
 Vault, policy, database events, and the released credential state. The
 **초기화** button clears only the current in-memory demo session. Close with:
 

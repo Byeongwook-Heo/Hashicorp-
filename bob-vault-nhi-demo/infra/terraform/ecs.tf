@@ -46,6 +46,7 @@ resource "aws_iam_role_policy" "ecs_transport_secret" {
       Resource = concat(
         [data.aws_secretsmanager_secret.transport_token[0].arn],
         var.chatbot_enabled ? [data.aws_secretsmanager_secret.chat_session[0].arn] : [],
+        var.chatbot_enabled ? [data.aws_secretsmanager_secret.contextforge_runtime[0].arn] : [],
         var.chatbot_enabled && var.inference_enabled ? [data.aws_secretsmanager_secret.agent_runtime[0].arn] : []
       )
     }]
@@ -82,13 +83,20 @@ resource "aws_iam_role_policy" "ecs_kms_signing" {
 }
 
 locals {
+  contextforge_server_id = "c0ffee00cafe40008000000000000001"
+
   base_environment = [
     { name = "NODE_ENV", value = "production" },
     { name = "PORT", value = "8080" },
     { name = "APP_MODE", value = var.app_mode },
     { name = "CHATBOT_ENABLED", value = tostring(var.chatbot_enabled) },
     { name = "IDENTITY_FLOW", value = var.chatbot_enabled ? "obo" : "client_credentials" },
-    { name = "MCP_AUTH_MODE", value = var.chatbot_enabled ? "user_jwt" : "static_bearer" },
+    { name = "MCP_AUTH_MODE", value = var.chatbot_enabled ? "obo_jwt" : "static_bearer" },
+    { name = "CONTEXTFORGE_ENABLED", value = tostring(var.chatbot_enabled) },
+    { name = "CONTEXTFORGE_BASE_URL", value = var.chatbot_enabled ? "http://127.0.0.1:4444" : "" },
+    { name = "CONTEXTFORGE_SERVER_ID", value = var.chatbot_enabled ? local.contextforge_server_id : "" },
+    { name = "CONTEXTFORGE_ADMIN_EMAIL", value = var.chatbot_enabled ? "contextforge-admin@demo.invalid" : "" },
+    { name = "CONTEXTFORGE_UPSTREAM_URL", value = var.chatbot_enabled ? "http://127.0.0.1:8080/mcp" : "" },
     { name = "AGENT_PLANNING_MODE", value = var.chatbot_enabled && var.inference_enabled ? "private" : "bounded" },
     { name = "INFERENCE_BASE_URL", value = var.inference_enabled ? var.inference_base_url : "" },
     { name = "INFERENCE_MODEL", value = var.inference_enabled ? nonsensitive(var.inference_model) : "" },
@@ -99,7 +107,7 @@ locals {
     { name = "ALLOWED_ORIGINS", value = "https://${local.fqdn}" },
     { name = "TRUST_PROXY", value = "true" },
     { name = "PUBLIC_BASE_URL", value = "https://${local.fqdn}" },
-    { name = "MCP_INTERNAL_URL", value = "http://127.0.0.1:8080/mcp" },
+    { name = "MCP_INTERNAL_URL", value = var.chatbot_enabled ? "http://127.0.0.1:4444/servers/${local.contextforge_server_id}/mcp" : "http://127.0.0.1:8080/mcp" },
     { name = "VERIFY_KMS_KEY_ID", value = aws_kms_key.verify_signing.arn },
     { name = "VAULT_ADDR", value = "https://${aws_route53_record.vault_private.fqdn}:8200" },
     { name = "VAULT_NAMESPACE", value = "demo" },
@@ -150,12 +158,46 @@ locals {
     var.chatbot_enabled ? [{
       name      = "SESSION_SECRET"
       valueFrom = data.aws_secretsmanager_secret.chat_session[0].arn
+      }, {
+      name      = "CONTEXTFORGE_ADMIN_PASSWORD"
+      valueFrom = "${data.aws_secretsmanager_secret.contextforge_runtime[0].arn}:admin_password::"
     }] : [],
     var.chatbot_enabled && var.inference_enabled ? [{
       name      = "INFERENCE_API_TOKEN"
       valueFrom = data.aws_secretsmanager_secret.agent_runtime[0].arn
     }] : []
   ) : []
+
+  contextforge_environment = [
+    { name = "ENVIRONMENT", value = "production" },
+    { name = "HOST", value = "0.0.0.0" },
+    { name = "PORT", value = "4444" },
+    { name = "DATABASE_URL", value = "sqlite:////tmp/contextforge.db" },
+    { name = "AUTH_REQUIRED", value = "true" },
+    { name = "MCP_REQUIRE_AUTH", value = "true" },
+    { name = "EMAIL_AUTH_ENABLED", value = "true" },
+    { name = "REQUIRE_USER_IN_DB", value = "false" },
+    { name = "MCPGATEWAY_UI_ENABLED", value = "false" },
+    { name = "MCPGATEWAY_ADMIN_API_ENABLED", value = "true" },
+    { name = "PLATFORM_ADMIN_EMAIL", value = "contextforge-admin@demo.invalid" },
+    { name = "PLATFORM_ADMIN_FULL_NAME", value = "Agentic Security Lab Gateway" },
+    { name = "SECURE_COOKIES", value = "false" }
+  ]
+
+  contextforge_secrets = var.deploy_service && var.chatbot_enabled ? [
+    {
+      name      = "JWT_SECRET_KEY"
+      valueFrom = "${data.aws_secretsmanager_secret.contextforge_runtime[0].arn}:jwt_secret_key::"
+    },
+    {
+      name      = "AUTH_ENCRYPTION_SECRET"
+      valueFrom = "${data.aws_secretsmanager_secret.contextforge_runtime[0].arn}:auth_encryption_secret::"
+    },
+    {
+      name      = "PLATFORM_ADMIN_PASSWORD"
+      valueFrom = "${data.aws_secretsmanager_secret.contextforge_runtime[0].arn}:admin_password::"
+    }
+  ] : []
 }
 
 resource "aws_ecs_task_definition" "app" {
@@ -164,8 +206,8 @@ resource "aws_ecs_task_definition" "app" {
   family                   = var.project_name
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 512
-  memory                   = 1024
+  cpu                      = var.chatbot_enabled ? 1024 : 512
+  memory                   = var.chatbot_enabled ? 2048 : 1024
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
@@ -174,13 +216,18 @@ resource "aws_ecs_task_definition" "app" {
     cpu_architecture        = "X86_64"
   }
 
-  container_definitions = jsonencode([
+  container_definitions = jsonencode(concat([
     {
       name                   = "mcp"
       image                  = nonsensitive(data.aws_ssm_parameter.image_uri[0].value)
       essential              = true
+      cpu                    = var.chatbot_enabled ? 512 : 0
       readonlyRootFilesystem = true
       user                   = "10001:10001"
+      dependsOn = var.chatbot_enabled ? [{
+        containerName = "contextforge"
+        condition     = "HEALTHY"
+      }] : []
       portMappings = [{
         containerPort = 8080
         hostPort      = 8080
@@ -195,11 +242,11 @@ resource "aws_ecs_task_definition" "app" {
         }
       }
       healthCheck = {
-        command     = ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+        command     = ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 15
+        startPeriod = 90
       }
       logConfiguration = {
         logDriver = "awslogs"
@@ -210,7 +257,41 @@ resource "aws_ecs_task_definition" "app" {
         }
       }
     }
-  ])
+    ], var.chatbot_enabled ? [{
+      name                   = "contextforge"
+      image                  = var.contextforge_image
+      essential              = true
+      cpu                    = 512
+      readonlyRootFilesystem = false
+      portMappings = [{
+        containerPort = 4444
+        hostPort      = 4444
+        protocol      = "tcp"
+      }]
+      environment = local.contextforge_environment
+      secrets     = local.contextforge_secrets
+      linuxParameters = {
+        initProcessEnabled = true
+        capabilities = {
+          drop = ["ALL"]
+        }
+      }
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4444/health', timeout=3)\""]
+        interval    = 15
+        timeout     = 5
+        retries     = 5
+        startPeriod = 60
+      }
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.app.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "contextforge"
+        }
+      }
+  }] : []))
 
   depends_on = [aws_iam_role_policy.ecs_transport_secret]
 }
@@ -224,7 +305,7 @@ resource "aws_ecs_service" "app" {
   desired_count                      = 1
   launch_type                        = "FARGATE"
   platform_version                   = "LATEST"
-  health_check_grace_period_seconds  = 60
+  health_check_grace_period_seconds  = 180
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 200
   enable_execute_command             = false
