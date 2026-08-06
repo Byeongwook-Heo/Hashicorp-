@@ -96,11 +96,11 @@ variable "chatbot_enabled" {
 variable "contextforge_image" {
   description = "Pinned IBM ContextForge MCP Gateway image used as a private ECS sidecar."
   type        = string
-  default     = "ghcr.io/ibm/mcp-context-forge:1.0.7"
+  default     = "ghcr.io/ibm/mcp-context-forge:v1.0.6"
 
   validation {
-    condition     = can(regex("^ghcr\\.io/ibm/mcp-context-forge:[0-9]+\\.[0-9]+\\.[0-9]+$", var.contextforge_image))
-    error_message = "contextforge_image must use an explicit semantic-version tag from the IBM GHCR repository."
+    condition     = can(regex("^ghcr\\.io/ibm/mcp-context-forge:v[0-9]+\\.[0-9]+\\.[0-9]+$", var.contextforge_image))
+    error_message = "contextforge_image must use an explicit v-prefixed semantic-version tag from the IBM GHCR repository."
   }
 }
 
