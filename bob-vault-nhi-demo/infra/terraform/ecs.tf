@@ -95,7 +95,7 @@ locals {
     { name = "CONTEXTFORGE_ENABLED", value = tostring(var.chatbot_enabled) },
     { name = "CONTEXTFORGE_BASE_URL", value = var.chatbot_enabled ? "http://127.0.0.1:4444" : "" },
     { name = "CONTEXTFORGE_SERVER_ID", value = var.chatbot_enabled ? local.contextforge_server_id : "" },
-    { name = "CONTEXTFORGE_ADMIN_EMAIL", value = var.chatbot_enabled ? "contextforge-admin@demo.invalid" : "" },
+    { name = "CONTEXTFORGE_ADMIN_EMAIL", value = var.chatbot_enabled ? "contextforge-admin@example.com" : "" },
     { name = "CONTEXTFORGE_UPSTREAM_URL", value = var.chatbot_enabled ? "http://127.0.0.1:8080/mcp" : "" },
     { name = "AGENT_PLANNING_MODE", value = var.chatbot_enabled && var.inference_enabled ? "private" : "bounded" },
     { name = "INFERENCE_BASE_URL", value = var.inference_enabled ? var.inference_base_url : "" },
@@ -179,7 +179,7 @@ locals {
     { name = "REQUIRE_USER_IN_DB", value = "false" },
     { name = "MCPGATEWAY_UI_ENABLED", value = "false" },
     { name = "MCPGATEWAY_ADMIN_API_ENABLED", value = "true" },
-    { name = "PLATFORM_ADMIN_EMAIL", value = "contextforge-admin@demo.invalid" },
+    { name = "PLATFORM_ADMIN_EMAIL", value = "contextforge-admin@example.com" },
     { name = "PLATFORM_ADMIN_FULL_NAME", value = "Agentic Security Lab Gateway" },
     { name = "SECURE_COOKIES", value = "false" }
   ]
