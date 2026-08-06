@@ -21,6 +21,8 @@ const toolSchema = z
   .object({
     id: z.string().min(1),
     gateway_id: z.string().nullable().optional(),
+    name: z.string().min(1),
+    original_name: z.string().min(1).optional(),
   })
   .loose();
 const serverSchema = z
@@ -39,6 +41,14 @@ interface ContextForgeConfig {
   upstreamUrl: string;
   upstreamDiscoveryToken: string;
 }
+
+const expectedToolNames = new Set([
+  "get_order_status",
+  "get_failed_payment_summary",
+  "get_recent_orders",
+  "get_failed_payment_trend",
+  "get_sensitive_payment_data",
+]);
 
 export class ContextForgeClient implements GatewayTokenProvider {
   readonly #config: ContextForgeConfig;
@@ -159,7 +169,10 @@ export class ContextForgeClient implements GatewayTokenProvider {
     token: string,
     gatewayId: string,
   ): Promise<string[]> {
-    for (let attempt = 0; attempt < 30; attempt += 1) {
+    let discoveredCount = 0;
+    let gatewayMatchedCount = 0;
+    let expectedNameMatchedCount = 0;
+    for (let attempt = 0; attempt < 60; attempt += 1) {
       const tools = z
         .array(toolSchema)
         .parse(
@@ -169,14 +182,30 @@ export class ContextForgeClient implements GatewayTokenProvider {
             token,
           ),
         );
-      const toolIds = tools
-        .filter((tool) => tool.gateway_id === gatewayId)
-        .map((tool) => tool.id);
-      if (toolIds.length > 0) return toolIds;
+      discoveredCount = tools.length;
+      const gatewayTools = tools.filter(
+        (tool) =>
+          tool.gateway_id !== null &&
+          tool.gateway_id !== undefined &&
+          normalizeUuid(tool.gateway_id) === normalizeUuid(gatewayId),
+      );
+      gatewayMatchedCount = gatewayTools.length;
+      const expectedTools = tools.filter((tool) =>
+        expectedToolNames.has(tool.original_name ?? tool.name),
+      );
+      expectedNameMatchedCount = expectedTools.length;
+      const selectedTools =
+        gatewayTools.length === expectedToolNames.size
+          ? gatewayTools
+          : expectedTools.length === expectedToolNames.size
+            ? expectedTools
+            : [];
+      const toolIds = selectedTools.map((tool) => tool.id);
+      if (toolIds.length === expectedToolNames.size) return toolIds;
       await new Promise((resolve) => setTimeout(resolve, 1_000));
     }
     throw new ConfigurationError(
-      "ContextForge did not discover any tools from the private MCP Server",
+      `ContextForge did not expose the five expected private MCP tools (discovered=${String(discoveredCount)}, gatewayMatched=${String(gatewayMatchedCount)}, nameMatched=${String(expectedNameMatchedCount)})`,
     );
   }
 
