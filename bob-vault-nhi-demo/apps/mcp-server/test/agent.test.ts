@@ -5,6 +5,7 @@ import {
   type McpToolCaller,
   ResilientPlanner,
   RuleBasedPlanner,
+  resolvePublishedToolName,
   type MessagePlanner,
 } from "../src/agent.js";
 import type { IdentityProvider } from "../src/identity-client.js";
@@ -22,6 +23,32 @@ function buildAgent(result: Record<string, unknown>) {
   };
   return { agent: new BoundedChatAgent(mcp), mcp };
 }
+
+describe("resolvePublishedToolName", () => {
+  it("uses an exact MCP tool name when it is published directly", () => {
+    expect(
+      resolvePublishedToolName("get_order_status", ["get_order_status"]),
+    ).toBe("get_order_status");
+  });
+
+  it("maps a ContextForge gateway namespace to the original MCP tool", () => {
+    expect(
+      resolvePublishedToolName("get_order_status", [
+        "bob-vault-mcp-upstream-get-order-status",
+        "bob-vault-mcp-upstream-get-recent-orders",
+      ]),
+    ).toBe("bob-vault-mcp-upstream-get-order-status");
+  });
+
+  it("fails closed when a namespaced tool match is ambiguous", () => {
+    expect(
+      resolvePublishedToolName("get_order_status", [
+        "first-get-order-status",
+        "second-get-order-status",
+      ]),
+    ).toBeUndefined();
+  });
+});
 
 describe("BoundedChatAgent", () => {
   it("lets an unapproved user use general chat without calling MCP", async () => {

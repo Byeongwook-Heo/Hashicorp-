@@ -227,7 +227,11 @@ export class HttpMcpToolCaller implements McpToolCaller {
         transport as unknown as Parameters<Client["connect"]>[0],
       );
       const catalog = await client.listTools();
-      if (!catalog.tools.some((candidate) => candidate.name === tool)) {
+      const publishedToolName = resolvePublishedToolName(
+        tool,
+        catalog.tools.map((candidate) => candidate.name),
+      );
+      if (!publishedToolName) {
         throw new AppError(
           "The selected MCP tool is not published",
           502,
@@ -235,7 +239,7 @@ export class HttpMcpToolCaller implements McpToolCaller {
         );
       }
       const result = await client.callTool({
-        name: tool,
+        name: publishedToolName,
         arguments: argumentsValue,
       });
       if (result.isError || !result.structuredContent) {
@@ -253,6 +257,21 @@ export class HttpMcpToolCaller implements McpToolCaller {
       await client.close().catch(() => undefined);
     }
   }
+}
+
+export function resolvePublishedToolName(
+  tool: AgentToolName,
+  publishedNames: readonly string[],
+): string | undefined {
+  if (publishedNames.includes(tool)) return tool;
+
+  // ContextForge namespaces gateway-discovered tools as
+  // "{gateway-slug}-{slugified-original-name}". The virtual server is already
+  // restricted to this lab's five associated tools, so require exactly one
+  // suffix match before invoking a namespaced entry.
+  const slug = tool.replaceAll("_", "-");
+  const matches = publishedNames.filter((name) => name.endsWith(`-${slug}`));
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 export class RuleBasedPlanner implements MessagePlanner {
