@@ -14,6 +14,16 @@ const loginResponseSchema = z
     expires_in: z.number().int().positive(),
   })
   .loose();
+const runtimeTokenResponseSchema = z
+  .object({
+    access_token: z.string().min(20),
+    token: z
+      .object({
+        expires_at: z.string().min(1).nullable(),
+      })
+      .loose(),
+  })
+  .loose();
 const gatewaySchema = z
   .object({ id: z.string().min(1), name: z.string() })
   .loose();
@@ -52,8 +62,10 @@ const expectedToolNames = new Set([
 
 export class ContextForgeClient implements GatewayTokenProvider {
   readonly #config: ContextForgeConfig;
-  #accessToken?: string;
-  #accessTokenExpiresAt = 0;
+  #adminAccessToken?: string;
+  #adminAccessTokenExpiresAt = 0;
+  #runtimeAccessToken?: string;
+  #runtimeAccessTokenExpiresAt = 0;
   #bootstrap: Promise<void> | undefined;
   #ready = false;
 
@@ -79,21 +91,23 @@ export class ContextForgeClient implements GatewayTokenProvider {
   public async getAccessToken(): Promise<string> {
     await this.initialize();
     if (
-      !this.#accessToken ||
-      this.#accessTokenExpiresAt <= Math.floor(Date.now() / 1000) + 30
+      !this.#runtimeAccessToken ||
+      this.#runtimeAccessTokenExpiresAt <= Math.floor(Date.now() / 1000) + 30
     ) {
-      await this.#login();
+      await this.#provisionRuntimeToken();
     }
-    if (!this.#accessToken) {
-      throw new AuthenticationError("ContextForge session is unavailable");
+    if (!this.#runtimeAccessToken) {
+      throw new AuthenticationError(
+        "ContextForge runtime access token is unavailable",
+      );
     }
-    return this.#accessToken;
+    return this.#runtimeAccessToken;
   }
 
   async #initialize(): Promise<void> {
     await this.#waitForHealth();
     await this.#login();
-    const token = this.#accessToken;
+    const token = this.#adminAccessToken;
     if (!token) {
       throw new AuthenticationError(
         "ContextForge login did not return a token",
@@ -109,60 +123,57 @@ export class ContextForgeClient implements GatewayTokenProvider {
           token,
         ),
       );
-    if (
-      servers.some(
-        (server) => normalizeUuid(server.id) === this.#config.serverId,
-      )
-    ) {
-      this.#ready = true;
-      return;
-    }
-
-    const gateways = z
-      .array(gatewaySchema)
-      .parse(
-        await this.#requestJson(
-          "GET",
-          "/gateways?include_pagination=false",
-          token,
-        ),
+    const serverExists = servers.some(
+      (server) => normalizeUuid(server.id) === this.#config.serverId,
+    );
+    if (!serverExists) {
+      const gateways = z
+        .array(gatewaySchema)
+        .parse(
+          await this.#requestJson(
+            "GET",
+            "/gateways?include_pagination=false",
+            token,
+          ),
+        );
+      let gateway = gateways.find(
+        (candidate) => candidate.name === "bob-vault-mcp-upstream",
       );
-    let gateway = gateways.find(
-      (candidate) => candidate.name === "bob-vault-mcp-upstream",
-    );
-    gateway ??= gatewaySchema.parse(
-      await this.#requestJson("POST", "/gateways", token, {
-        name: "bob-vault-mcp-upstream",
-        description:
-          "Private Bob MCP Server discovered with one-time bootstrap credentials",
-        url: this.#config.upstreamUrl,
-        transport: "STREAMABLEHTTP",
-        passthrough_headers: ["X-Upstream-Authorization", "X-Request-Id"],
-        auth_type: "bearer",
-        auth_token: this.#config.upstreamDiscoveryToken,
-        one_time_auth: true,
-        visibility: "public",
-      }),
-    );
-
-    const toolIds = await this.#waitForDiscoveredTools(token, gateway.id);
-
-    const created = serverSchema.parse(
-      await this.#requestJson("POST", "/servers", token, {
-        server: {
-          id: this.#config.serverId,
-          name: "bob-vault-security-lab",
-          description: "Policy-bound tools for the Agentic Security Lab",
-          associated_tools: toolIds,
-        },
-        visibility: "public",
-      }),
-    );
-    if (normalizeUuid(created.id) !== this.#config.serverId) {
-      throw new ConfigurationError(
-        "ContextForge created an unexpected virtual server identifier",
+      gateway ??= gatewaySchema.parse(
+        await this.#requestJson("POST", "/gateways", token, {
+          name: "bob-vault-mcp-upstream",
+          description:
+            "Private Bob MCP Server discovered with one-time bootstrap credentials",
+          url: this.#config.upstreamUrl,
+          transport: "STREAMABLEHTTP",
+          passthrough_headers: ["X-Upstream-Authorization", "X-Request-Id"],
+          auth_type: "bearer",
+          auth_token: this.#config.upstreamDiscoveryToken,
+          one_time_auth: true,
+          visibility: "public",
+        }),
       );
+
+      const toolIds = await this.#waitForDiscoveredTools(token, gateway.id);
+
+      const created = serverSchema.parse(
+        await this.#requestJson("POST", "/servers", token, {
+          server: {
+            id: this.#config.serverId,
+            name: "bob-vault-security-lab",
+            description: "Policy-bound tools for the Agentic Security Lab",
+            associated_tools: toolIds,
+          },
+          visibility: "public",
+        }),
+      );
+      if (normalizeUuid(created.id) !== this.#config.serverId) {
+        throw new ConfigurationError(
+          "ContextForge created an unexpected virtual server identifier",
+        );
+      }
     }
+    await this.#provisionRuntimeToken();
     this.#ready = true;
   }
 
@@ -252,10 +263,91 @@ export class ContextForgeClient implements GatewayTokenProvider {
         password: this.#config.adminPassword,
       }),
     );
-    this.#accessToken = payload.access_token;
+    this.#adminAccessToken = payload.access_token;
     const decoded = decodeJwt(payload.access_token);
-    this.#accessTokenExpiresAt =
+    this.#adminAccessTokenExpiresAt =
       decoded.exp ?? Math.floor(Date.now() / 1000) + payload.expires_in;
+  }
+
+  async #provisionRuntimeToken(): Promise<void> {
+    if (
+      !this.#adminAccessToken ||
+      this.#adminAccessTokenExpiresAt <= Math.floor(Date.now() / 1000) + 30
+    ) {
+      await this.#login();
+    }
+    if (!this.#adminAccessToken) {
+      throw new AuthenticationError("ContextForge admin session is unavailable");
+    }
+    const payload = runtimeTokenResponseSchema.parse(
+      await this.#requestJson("POST", "/tokens", this.#adminAccessToken, {
+        name: `bob-vault-mcp-runtime-${String(Date.now())}`,
+        description:
+          "Short-lived runtime token for the isolated Agentic Security Lab virtual server",
+        expires_in_days: 1,
+        scope: {
+          server_id: this.#config.serverId,
+          permissions: ["servers.use", "tools.read", "tools.execute"],
+          ip_restrictions: ["127.0.0.1/32"],
+        },
+      }),
+    );
+    const expiresAt = payload.token.expires_at
+      ? Math.floor(Date.parse(payload.token.expires_at) / 1_000)
+      : 0;
+    if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
+      throw new ConfigurationError(
+        "ContextForge runtime token did not include a valid future expiration",
+      );
+    }
+    await this.#verifyRuntimeMcpAccess(payload.access_token);
+    this.#runtimeAccessToken = payload.access_token;
+    this.#runtimeAccessTokenExpiresAt = expiresAt;
+  }
+
+  async #verifyRuntimeMcpAccess(accessToken: string): Promise<void> {
+    let response;
+    try {
+      response = await request(
+        `${this.#config.baseUrl}/servers/${this.#config.serverId}/mcp`,
+        {
+          method: "POST",
+          headers: {
+            accept: "application/json, text/event-stream",
+            authorization: `Bearer ${accessToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "runtime-access-probe",
+            method: "initialize",
+            params: {
+              protocolVersion: "2025-06-18",
+              capabilities: {},
+              clientInfo: {
+                name: "bob-vault-runtime-probe",
+                version: "0.1.0",
+              },
+            },
+          }),
+          headersTimeout: 8_000,
+          bodyTimeout: 15_000,
+        },
+      );
+    } catch (error) {
+      throw new ExternalServiceError(
+        "ContextForge",
+        "runtime MCP access probe failed",
+        { cause: error },
+      );
+    }
+    await response.body.text();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new ExternalServiceError(
+        "ContextForge",
+        `runtime MCP access was rejected (${String(response.statusCode)})`,
+      );
+    }
   }
 
   async #requestJson(
