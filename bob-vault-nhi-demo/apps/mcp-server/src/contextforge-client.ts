@@ -194,12 +194,18 @@ export class ContextForgeClient implements GatewayTokenProvider {
         expectedToolNames.has(tool.original_name ?? tool.name),
       );
       expectedNameMatchedCount = expectedTools.length;
+      // This sidecar uses an isolated, ephemeral registry and the private MCP
+      // server is its only tool source. ContextForge may omit gateway_id and
+      // namespace original_name in list responses, so an exact five-tool
+      // registry is still unambiguous and fail-closed.
       const selectedTools =
         gatewayTools.length === expectedToolNames.size
           ? gatewayTools
           : expectedTools.length === expectedToolNames.size
             ? expectedTools
-            : [];
+            : tools.length === expectedToolNames.size
+              ? tools
+              : [];
       const toolIds = selectedTools.map((tool) => tool.id);
       if (toolIds.length === expectedToolNames.size) return toolIds;
       await new Promise((resolve) => setTimeout(resolve, 1_000));
