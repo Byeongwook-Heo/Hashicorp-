@@ -18,6 +18,9 @@ phases:
       - |
         set -euo pipefail
         case "${TF_ACTION:-plan}" in
+          validate)
+            echo "Terraform initialization and validation succeeded."
+            ;;
           plan)
             terraform plan -input=false -lock-timeout=5m -var="deploy_service=false"
             ;;

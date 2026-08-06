@@ -28,8 +28,11 @@ help:
 install: ## No-op: dependencies are installed in CodeBuild.
 	@echo "Local installation is intentionally disabled; run 'make ci'."
 
-format lint typecheck test test-unit test-integration tf-init tf-validate security-check: ## Run validation in AWS CodeBuild.
+format lint typecheck test test-unit test-integration security-check: ## Run validation in AWS CodeBuild.
 	@./scripts/start-codebuild.sh "$(PROJECT)-ci" "CI_TARGET=$@"
+
+tf-init tf-validate: ## Initialize and validate Terraform in AWS CodeBuild.
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=validate"
 
 local-up local-down local-smoke: ## Run the local-mode suite inside AWS CodeBuild.
 	@./scripts/start-codebuild.sh "$(PROJECT)-ci" "CI_TARGET=$@"
