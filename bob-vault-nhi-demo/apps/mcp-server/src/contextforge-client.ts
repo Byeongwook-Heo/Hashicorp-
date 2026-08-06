@@ -149,10 +149,12 @@ export class ContextForgeClient implements GatewayTokenProvider {
 
     const created = serverSchema.parse(
       await this.#requestJson("POST", "/servers", token, {
-        id: this.#config.serverId,
-        name: "bob-vault-security-lab",
-        description: "Policy-bound tools for the Agentic Security Lab",
-        associated_tools: toolIds,
+        server: {
+          id: this.#config.serverId,
+          name: "bob-vault-security-lab",
+          description: "Policy-bound tools for the Agentic Security Lab",
+          associated_tools: toolIds,
+        },
         visibility: "public",
       }),
     );
