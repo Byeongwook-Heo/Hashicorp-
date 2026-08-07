@@ -169,6 +169,8 @@ describe("HTTP security boundary", () => {
     expect(html).toContain('id="current-access-status"');
     expect(html).toContain('id="stage-dialog"');
     expect(html).toContain('id="stage-dialog-open-link"');
+    expect(html).toContain("centered-glyph centered-glyph-close");
+    expect(html).toContain('id="verify-demo-password-toggle"');
     expect(html).toContain('rel="noopener noreferrer"');
     expect(html).toContain('id="trace-stage-count"');
     expect(html).toContain('id="trace-progress-fill"');
@@ -185,6 +187,20 @@ describe("HTTP security boundary", () => {
     expect(html).not.toContain("side-rail");
     expect(html).not.toContain("보안 결정 추이");
     expect(html.toLowerCase()).not.toContain("ollama");
+  });
+
+  it("centers compact control glyphs and state markers", async () => {
+    const styles = await readFile(
+      new URL("../public/styles.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(styles).toContain(".centered-glyph");
+    expect(styles).toContain(".dock-stage-marker::after");
+    expect(styles).toContain(".path-node::after");
+    expect(styles).toContain(".event-status::before");
+    expect(styles).toContain(".access-status-indicator::before");
+    expect(styles).toContain("place-items: center");
   });
 
   it("serves a read-only MCP Inspector without credential inputs", async () => {
