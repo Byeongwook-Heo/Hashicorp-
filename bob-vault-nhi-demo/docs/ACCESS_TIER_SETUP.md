@@ -74,6 +74,7 @@ make ci
 make build-image
 ACCESS_TIER_ENFORCEMENT=audit make deploy-chatbot
 make smoke
+make access-tier-smoke
 make demo-status
 ```
 
@@ -84,6 +85,7 @@ strict enforcement in a scheduled change window:
 ACCESS_TIER_ENFORCEMENT=enforce make vault-bootstrap
 ACCESS_TIER_ENFORCEMENT=enforce make deploy-chatbot
 make smoke
+make access-tier-smoke
 ```
 
 In `enforce`, the legacy `bob-orders` Vault role and

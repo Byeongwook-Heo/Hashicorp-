@@ -21,6 +21,7 @@ phases:
           vault-init) ./bootstrap/aws/vault-init.sh ;;
           db-bootstrap) ./bootstrap/aws/db-bootstrap.sh ;;
           vault-bootstrap) ./bootstrap/aws/vault-bootstrap.sh ;;
+          access-tier-smoke) ./bootstrap/aws/access-tier-smoke.sh ;;
           verify-preflight) ./bootstrap/aws/verify-preflight.sh ;;
           verify-client-jwt-plan) ./bootstrap/aws/verify-client-enable-jwt.sh plan ;;
           verify-client-enable-jwt) ./bootstrap/aws/verify-client-enable-jwt.sh apply ;;
