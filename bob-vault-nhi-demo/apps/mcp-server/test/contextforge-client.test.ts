@@ -21,8 +21,7 @@ afterEach(
 describe("ContextForgeClient", () => {
   it("uses a server-scoped API token for MCP runtime calls", async () => {
     const serverId = "c0ffee00cafe40008000000000000001";
-    const adminToken =
-      "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.";
+    const adminToken = "eyJhbGciOiJub25lIn0.eyJleHAiOjQxMDI0NDQ4MDB9.";
     const runtimeToken = "contextforge-runtime-token-for-test-only";
     let runtimeTokenRequest: Record<string, unknown> | undefined;
     let runtimeTokenAuthorization: string | undefined;

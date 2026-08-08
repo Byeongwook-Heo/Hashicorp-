@@ -280,7 +280,9 @@ export class ContextForgeClient implements GatewayTokenProvider {
       await this.#login();
     }
     if (!this.#adminAccessToken) {
-      throw new AuthenticationError("ContextForge admin session is unavailable");
+      throw new AuthenticationError(
+        "ContextForge admin session is unavailable",
+      );
     }
     const payload = runtimeTokenResponseSchema.parse(
       await this.#requestJson("POST", "/tokens", this.#adminAccessToken, {
@@ -298,7 +300,10 @@ export class ContextForgeClient implements GatewayTokenProvider {
     const expiresAt = payload.token.expires_at
       ? Math.floor(Date.parse(payload.token.expires_at) / 1_000)
       : 0;
-    if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) {
+    if (
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= Math.floor(Date.now() / 1000)
+    ) {
       throw new ConfigurationError(
         "ContextForge runtime token did not include a valid future expiration",
       );
