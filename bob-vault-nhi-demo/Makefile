@@ -125,10 +125,10 @@ deploy-app: ## Deploy the full MCP task using the ECR image digest.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-app"
 
 chatbot-plan: ## Plan the full chatbot and private planning runtime integration.
-	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=chatbot-plan,TF_VAR_access_tier_enforcement=$(ACCESS_TIER_ENFORCEMENT),TF_VAR_verify_access_tier_claim=$(VERIFY_ACCESS_TIER_CLAIM),TF_VAR_verify_access_tier_full_value=$(VERIFY_ACCESS_TIER_FULL_VALUE),TF_VAR_verify_access_tier_limited_value=$(VERIFY_ACCESS_TIER_LIMITED_VALUE)"
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=chatbot-plan,ACCESS_TIER_ENFORCEMENT=$(ACCESS_TIER_ENFORCEMENT),VERIFY_ACCESS_TIER_CLAIM=$(VERIFY_ACCESS_TIER_CLAIM),VERIFY_ACCESS_TIER_FULL_VALUE=$(VERIFY_ACCESS_TIER_FULL_VALUE),VERIFY_ACCESS_TIER_LIMITED_VALUE=$(VERIFY_ACCESS_TIER_LIMITED_VALUE)"
 
 deploy-chatbot: ## Deploy the Verify-authenticated chatbot, OBO agent, and MCP service.
-	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-chatbot,TF_VAR_access_tier_enforcement=$(ACCESS_TIER_ENFORCEMENT),TF_VAR_verify_access_tier_claim=$(VERIFY_ACCESS_TIER_CLAIM),TF_VAR_verify_access_tier_full_value=$(VERIFY_ACCESS_TIER_FULL_VALUE),TF_VAR_verify_access_tier_limited_value=$(VERIFY_ACCESS_TIER_LIMITED_VALUE)"
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-chatbot,ACCESS_TIER_ENFORCEMENT=$(ACCESS_TIER_ENFORCEMENT),VERIFY_ACCESS_TIER_CLAIM=$(VERIFY_ACCESS_TIER_CLAIM),VERIFY_ACCESS_TIER_FULL_VALUE=$(VERIFY_ACCESS_TIER_FULL_VALUE),VERIFY_ACCESS_TIER_LIMITED_VALUE=$(VERIFY_ACCESS_TIER_LIMITED_VALUE)"
 
 event-access-plan: ## Plan time-bounded, audited SSM access for event operators.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-access-plan"

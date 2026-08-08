@@ -17,6 +17,10 @@ phases:
     commands:
       - |
         set -euo pipefail
+        export TF_VAR_access_tier_enforcement="${ACCESS_TIER_ENFORCEMENT:-audit}"
+        export TF_VAR_verify_access_tier_claim="${VERIFY_ACCESS_TIER_CLAIM:-access_tier}"
+        export TF_VAR_verify_access_tier_full_value="${VERIFY_ACCESS_TIER_FULL_VALUE:-orders-full}"
+        export TF_VAR_verify_access_tier_limited_value="${VERIFY_ACCESS_TIER_LIMITED_VALUE:-orders-limited}"
         case "${TF_ACTION:-plan}" in
           validate)
             echo "Terraform initialization and validation succeeded."
