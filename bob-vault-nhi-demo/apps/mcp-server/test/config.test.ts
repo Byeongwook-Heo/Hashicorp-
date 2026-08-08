@@ -16,8 +16,18 @@ describe("loadConfig", () => {
     expect(config.appMode).toBe("bootstrap");
     expect(config.port).toBe(8080);
     expect(config.vault.jwtAuthPath).toBe("jwt");
+    expect(config.vault.jwtRole).toBe("bob-orders-full");
+    expect(config.vault.databaseCredentialsPath).toBe(
+      "database/creds/bob-orders-full",
+    );
     expect(config.database.caFile).toBe("/app/certs/rds-ca.pem");
     expect(config.agentPlanning.mode).toBe("bounded");
+    expect(config.accessControl).toEqual({
+      mode: "audit",
+      claim: "access_tier",
+      fullValue: "orders-full",
+      limitedValue: "orders-limited",
+    });
   });
 
   it("rejects short transport bearer secrets", () => {
@@ -83,6 +93,7 @@ describe("loadConfig", () => {
     expect(config.mcpAuthMode).toBe("obo_jwt");
     expect(config.contextForge.enabled).toBe(true);
     expect(config.verify.obo.clientId).toBe("agent-sts-client");
+    expect(config.accessControl.mode).toBe("audit");
   });
 
   it("requires all private planning boundaries when enabled", () => {

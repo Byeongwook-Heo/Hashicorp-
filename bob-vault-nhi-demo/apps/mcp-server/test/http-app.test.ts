@@ -46,12 +46,13 @@ function buildApp(options?: {
       .mockResolvedValue("header.payload.signature"),
   };
   const vault: VaultCredentialBroker = {
-    withDatabaseCredentials: vi.fn(async (_token, operation) =>
+    withDatabaseCredentials: vi.fn(async (_token, accessTier, operation) =>
       operation({
         username: "dynamic",
         password: "discarded",
         leaseId: "lease-id",
         leaseDurationSeconds: 120,
+        accessTier,
       }),
     ),
     attemptDeniedDatabaseCredentials: vi.fn(),
@@ -468,6 +469,36 @@ describe("HTTP security boundary", () => {
       .expect(401);
   });
 
+  it("keeps an authenticated but unapproved user in the chatbot", async () => {
+    const unapprovedSession: UserSession = {
+      ...authenticatedSession,
+      accessTier: "unapproved",
+      accessTierClaimPresent: false,
+      authorizationMode: "enforce",
+    };
+    const { app, agent } = buildApp({ session: unapprovedSession });
+
+    const sessionResponse = await request(app).get("/api/me").expect(200);
+    expect(sessionResponse.body).toMatchObject({
+      authenticated: true,
+      authorization: "unapproved",
+      accessTier: "unapproved",
+      authorizationMode: "enforce",
+      csrfToken: unapprovedSession.csrfToken,
+    });
+
+    await request(app)
+      .post("/api/chat")
+      .set("x-csrf-token", unapprovedSession.csrfToken)
+      .send({ message: "주문 ORD-1001 상태" })
+      .expect(200);
+    expect(agent.respond).toHaveBeenCalledWith(
+      "주문 ORD-1001 상태",
+      unapprovedSession,
+      expect.any(String),
+    );
+  });
+
   it("passes an authenticated request to the bounded agent", async () => {
     const { app, agent, events } = buildApp({ session: authenticatedSession });
     const requestId = "demo-request-123";
@@ -523,6 +554,11 @@ describe("HTTP security boundary", () => {
     expect(response.body.chatbot.planning).toMatchObject({
       mode: "enhanced",
       ready: true,
+    });
+    expect(response.body.controls.accessTiers).toEqual({
+      mode: "audit",
+      claim: "access_tier",
+      profiles: ["orders-full", "orders-limited", "unapproved"],
     });
     expect(serialized).not.toContain("ollama");
     expect(serialized).not.toContain("private-model");

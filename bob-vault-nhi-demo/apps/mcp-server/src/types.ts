@@ -30,6 +30,7 @@ export interface AccessMetadata {
   vault: "authorized";
   credential_type: "dynamic";
   credential_ttl_seconds: number;
+  access_tier?: "orders-full" | "orders-limited";
 }
 
 export interface FailedPaymentSummary {
@@ -78,6 +79,7 @@ export interface DynamicDatabaseCredentials {
   password: string;
   leaseId: string;
   leaseDurationSeconds: number;
+  accessTier?: "orders-full" | "orders-limited";
 }
 
 export interface VaultSession {

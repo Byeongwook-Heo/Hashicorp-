@@ -1350,6 +1350,10 @@ body.authenticated > .site-footer {
   background: var(--green);
 }
 
+.access-mode-banner.limited::before {
+  background: var(--blue);
+}
+
 .access-mode-icon {
   display: grid;
   width: 32px;
@@ -1363,6 +1367,11 @@ body.authenticated > .site-footer {
 .access-mode-banner.approved .access-mode-icon {
   background: var(--green-soft);
   color: var(--green);
+}
+
+.access-mode-banner.limited .access-mode-icon {
+  background: var(--blue-soft);
+  color: var(--blue);
 }
 
 .access-mode-copy {

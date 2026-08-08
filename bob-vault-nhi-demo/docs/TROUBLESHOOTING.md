@@ -18,11 +18,15 @@ Check RS256, registered `kid`, client ID in `iss`/`sub`, exact token endpoint in
 
 ## Vault JWT login is denied
 
-Compare Verify issuer, access-token audience, NHI claim name/value, and Vault namespace `demo`. The role must be `bob-orders`.
+Compare the Verify issuer, access-token audience, Agent claim, `access_tier`,
+and Vault namespace `demo`. The selected role must match the tier:
+`bob-orders-full` or `bob-orders-limited`.
 
 ## Database dynamic user fails
 
-Confirm `shop-postgres`, role `bob-orders-readonly`, group `bob_orders_reader`, view `v_bob_order_status`, RDS CA, and TLS hostname verification.
+Confirm `shop-postgres`, the tiered Vault database role, the matching
+`bob_orders_*_reader` group and `v_bob_order_status_*` view, the RDS CA, and
+TLS hostname verification.
 
 ## Bob cannot connect
 

@@ -58,6 +58,7 @@ make smoke
 ```
 
 See [chatbot Verify/OBO setup](docs/CHATBOT_VERIFY_SETUP.md),
+[access-tier rollout](docs/ACCESS_TIER_SETUP.md),
 [architecture](docs/ARCHITECTURE.md), [the editable draw.io
 architecture](docs/bob-vault-nhi-demo-architecture.drawio), [event team EC2
 access](docs/EC2_TEAM_ACCESS.md), [the operations

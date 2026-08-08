@@ -8,6 +8,10 @@ SOURCE_ARCHIVE ?= /tmp/$(PROJECT)-source.zip
 VPC_ID ?= vpc-0faaeb5858901d385
 APP_SUBNET_IDS ?= subnet-026ffcc7ad4b697c6,subnet-06c50448784244f83
 TF_STATE_BUCKET ?= ibm-hc-lab-tfstate-063455554839-ap-northeast-2
+ACCESS_TIER_ENFORCEMENT ?= audit
+VERIFY_ACCESS_TIER_CLAIM ?= access_tier
+VERIFY_ACCESS_TIER_FULL_VALUE ?= orders-full
+VERIFY_ACCESS_TIER_LIMITED_VALUE ?= orders-limited
 
 .PHONY: help install format lint typecheck test test-unit test-integration
 .PHONY: local-up local-down local-smoke aws-preflight bootstrap-aws upload-source ci
@@ -114,17 +118,17 @@ vault-init: ## Initialize Vault in the private VPC and securely store recovery m
 db-bootstrap: ## Build the synthetic RDS schema and least-privilege database roles.
 	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=db-bootstrap"
 
-vault-bootstrap: ## Configure namespace, audit, JWT auth, policy, and database secrets engine.
-	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=vault-bootstrap"
+vault-bootstrap: ## Configure namespace, audit, tiered JWT policies, and database secrets engine.
+	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=vault-bootstrap,ACCESS_TIER_ENFORCEMENT=$(ACCESS_TIER_ENFORCEMENT),VERIFY_ACCESS_TIER_CLAIM=$(VERIFY_ACCESS_TIER_CLAIM),VERIFY_ACCESS_TIER_FULL_VALUE=$(VERIFY_ACCESS_TIER_FULL_VALUE),VERIFY_ACCESS_TIER_LIMITED_VALUE=$(VERIFY_ACCESS_TIER_LIMITED_VALUE)"
 
 deploy-app: ## Deploy the full MCP task using the ECR image digest.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-app"
 
 chatbot-plan: ## Plan the full chatbot and private planning runtime integration.
-	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=chatbot-plan"
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=chatbot-plan,TF_VAR_access_tier_enforcement=$(ACCESS_TIER_ENFORCEMENT),TF_VAR_verify_access_tier_claim=$(VERIFY_ACCESS_TIER_CLAIM),TF_VAR_verify_access_tier_full_value=$(VERIFY_ACCESS_TIER_FULL_VALUE),TF_VAR_verify_access_tier_limited_value=$(VERIFY_ACCESS_TIER_LIMITED_VALUE)"
 
 deploy-chatbot: ## Deploy the Verify-authenticated chatbot, OBO agent, and MCP service.
-	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-chatbot"
+	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=deploy-chatbot,TF_VAR_access_tier_enforcement=$(ACCESS_TIER_ENFORCEMENT),TF_VAR_verify_access_tier_claim=$(VERIFY_ACCESS_TIER_CLAIM),TF_VAR_verify_access_tier_full_value=$(VERIFY_ACCESS_TIER_FULL_VALUE),TF_VAR_verify_access_tier_limited_value=$(VERIFY_ACCESS_TIER_LIMITED_VALUE)"
 
 event-access-plan: ## Plan time-bounded, audited SSM access for event operators.
 	@./scripts/start-codebuild.sh "$(PROJECT)-terraform" "TF_ACTION=event-access-plan"

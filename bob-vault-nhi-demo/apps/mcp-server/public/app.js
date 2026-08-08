@@ -167,6 +167,9 @@ const actionLabels = {
   invalid_user_jwt: "잘못된 사용자 JWT 차단",
   invalid_obo_jwt: "잘못된 OBO JWT 차단",
   user_session_authenticated: "Verify 사용자 세션 인증",
+  access_tier_audit_missing: "권한 등급 클레임 미설정 감지",
+  access_tier_audit_orders_full: "전체 주문 권한 등급 감지",
+  access_tier_audit_orders_limited: "제한 주문 권한 등급 감지",
   protected_data_requires_verify: "미승인 사용자의 보호 데이터 조회 차단",
   agent_plan_failed: "에이전트 계획 오류",
   verify_obo_token_exchanged: "Verify RFC 8693 OBO 토큰 교환",
@@ -191,13 +194,13 @@ const actionLabels = {
 const readOnlyQueries = {
   get_order_status: [
     "SELECT order_id, payment_status, delivery_status, updated_at",
-    "FROM v_bob_order_status",
+    "FROM v_bob_order_status_<ACCESS_TIER>",
     "WHERE order_id = $1",
     "LIMIT 1;",
   ],
   get_failed_payment_summary: [
     "SELECT delivery_status, COUNT(*)::int AS count",
-    "FROM v_bob_order_status",
+    "FROM v_bob_order_status_<ACCESS_TIER>",
     "WHERE payment_status = 'FAILED'",
     "  AND updated_at >= $1::date",
     "  AND updated_at < ($1::date + INTERVAL '1 day')",
@@ -207,7 +210,7 @@ const readOnlyQueries = {
   ],
   get_recent_orders: [
     "SELECT order_id, payment_status, delivery_status, updated_at",
-    "FROM v_bob_order_status",
+    "FROM v_bob_order_status_<ACCESS_TIER>",
     "ORDER BY updated_at DESC",
     "LIMIT $1;",
   ],
@@ -215,7 +218,7 @@ const readOnlyQueries = {
     "SELECT (updated_at AT TIME ZONE 'Asia/Seoul')::date AS date,",
     "       COUNT(*)::int AS total_count,",
     "       COUNT(*) FILTER (WHERE payment_status = 'FAILED')::int AS failed_count",
-    "FROM v_bob_order_status",
+    "FROM v_bob_order_status_<ACCESS_TIER>",
     "WHERE updated_at >= CURRENT_DATE - ($1::int - 1)",
     "GROUP BY 1 ORDER BY 1;",
   ],
@@ -290,7 +293,10 @@ const seoulTimeFormatter = new Intl.DateTimeFormat("ko-KR", {
 });
 
 let csrfToken = "";
+let isAuthenticatedUser = false;
 let isApprovedUser = false;
+let currentAccessTier = "unapproved";
+let authorizationMode = "off";
 let eventsRequestInFlight = false;
 let eventsInterval = null;
 let latestCredential = null;
@@ -473,17 +479,17 @@ function stageDetail(stage) {
       summary:
         "OBO JWT의 사용자·에이전트 클레임을 정책에 매핑하고 짧은 TTL의 DB 자격증명을 발급합니다.",
       action:
-        "bob-orders 역할의 읽기 전용 정책만 평가합니다. 민감 정보 역할은 정책 단계에서 차단됩니다.",
+        "사용자 권한 등급에 맞는 읽기 전용 역할만 평가합니다. 민감 정보 역할은 정책 단계에서 차단됩니다.",
       code: [
         "POST /v1/auth/jwt/login",
         "X-Vault-Namespace: demo",
         "",
         "{",
-        '  "role": "bob-orders",',
+        '  "role": "<bob-orders-full|bob-orders-limited>",',
         '  "jwt": "<OBO JWT>"',
         "}",
         "",
-        "GET /v1/database/creds/bob-orders-readonly",
+        "GET /v1/database/creds/<bob-orders-full|bob-orders-limited>",
       ].join("\n"),
     },
     database: {
@@ -849,7 +855,7 @@ function richStageDetail(stage, activeTool) {
       substeps: [
         [
           "Vault JWT Auth 로그인",
-          "OBO JWT와 bob-orders 역할을 namespace의 JWT auth mount에 제출합니다.",
+          "OBO JWT와 access_tier에 맞는 역할을 namespace의 JWT auth mount에 제출합니다.",
           "AUTH/JWT",
         ],
         [
@@ -859,7 +865,7 @@ function richStageDetail(stage, activeTool) {
         ],
         [
           "최소 권한 정책 부여",
-          "database/creds/bob-orders-readonly의 read capability만 부여합니다.",
+          "등급별 database/creds 경로의 read capability만 부여합니다.",
           "POLICY",
         ],
         [
@@ -879,7 +885,7 @@ function richStageDetail(stage, activeTool) {
         ],
       ],
       checks: [
-        ["JWT 역할", "bob-orders · bound audience/claims"],
+        ["JWT 역할", "bob-orders-full / limited · bound audience/claims"],
         ["정책", "DB read-only 경로만 허용"],
         ["자격증명", "요청별 동적 계정 · 짧은 TTL"],
         ["감사", "파일 audit device · 민감값 HMAC"],
@@ -889,14 +895,14 @@ function richStageDetail(stage, activeTool) {
           "POST /v1/auth/jwt/login",
           "X-Vault-Namespace: demo",
           "",
-          '{ "role": "bob-orders", "jwt": "<OBO_JWT_REDACTED>" }',
+          '{ "role": "<TIERED_VAULT_ROLE>", "jwt": "<OBO_JWT_REDACTED>" }',
           "",
-          "GET /v1/database/creds/bob-orders-readonly",
+          "GET /v1/database/creds/<TIERED_DATABASE_ROLE>",
           "X-Vault-Token: <WRAPPED_VAULT_TOKEN>",
         ].join("\n"),
         response: JSON.stringify(
           {
-            lease_id: "database/creds/bob-orders-readonly/<LEASE_ID>",
+            lease_id: "database/creds/<TIERED_DATABASE_ROLE>/<LEASE_ID>",
             lease_duration: 60,
             renewable: false,
             data: {
@@ -908,12 +914,12 @@ function richStageDetail(stage, activeTool) {
           2,
         ),
         execution: [
-          'path "database/creds/bob-orders-readonly" {',
+          'path "database/creds/<TIERED_DATABASE_ROLE>" {',
           '  capabilities = ["read"]',
           "}",
           'bound_audiences = ["bob-vault-orders"]',
-          'bound_claims = { scope = "vault.db.read" }',
-          'token_policies = ["bob-orders-readonly"]',
+          'bound_claims = { access_tier = "<orders-full|orders-limited>" }',
+          'token_policies = ["<TIERED_VAULT_POLICY>"]',
           "token_ttl = 60",
         ].join("\n"),
       },
@@ -955,7 +961,7 @@ function richStageDetail(stage, activeTool) {
       codeViews: {
         request: JSON.stringify(
           {
-            role: "bob-orders-readonly",
+            role: "<bob_orders_full_reader|bob_orders_limited_reader>",
             username: "<DYNAMIC_USERNAME>",
             ssl: { rejectUnauthorized: true },
             query: activeTool,
@@ -1289,8 +1295,11 @@ async function loadSession() {
     throw new Error("session unavailable");
   }
   const session = await response.json();
-  isApprovedUser = Boolean(session.authenticated);
-  csrfToken = isApprovedUser ? String(session.csrfToken ?? "") : "";
+  isAuthenticatedUser = Boolean(session.authenticated);
+  isApprovedUser = session.authorization === "approved";
+  currentAccessTier = String(session.accessTier ?? "unapproved");
+  authorizationMode = String(session.authorizationMode ?? "off");
+  csrfToken = isAuthenticatedUser ? String(session.csrfToken ?? "") : "";
   const displayName = String(session.user.displayName).slice(0, 80);
   userName.textContent = displayName;
   if (userInitial) {
@@ -1299,8 +1308,8 @@ async function loadSession() {
   if (agentGreeting) {
     agentGreeting.textContent = `안녕하세요, ${displayName}님!`;
   }
-  showWorkspace(isApprovedUser);
-  if (isApprovedUser) {
+  showWorkspace(isApprovedUser, isAuthenticatedUser);
+  if (isAuthenticatedUser) {
     void runPreflight();
   } else {
     setPlanningState("fallback", "안전 안내 모드");
@@ -1360,7 +1369,10 @@ function initialsFor(displayName) {
 }
 
 function showLogin() {
+  isAuthenticatedUser = false;
   isApprovedUser = false;
+  currentAccessTier = "unapproved";
+  authorizationMode = "off";
   csrfToken = "";
   resetUnauthenticatedDemo();
   userName.textContent = "미승인 사용자";
@@ -1369,32 +1381,45 @@ function showLogin() {
   showWorkspace(false);
 }
 
-function showWorkspace(approved = false) {
+function showWorkspace(approved = false, authenticated = false) {
   document.body.classList.add("authenticated");
   document.body.classList.toggle("approved-user", approved);
   identity.hidden = false;
   topnav.hidden = true;
-  headerLogin.hidden = approved;
-  logout.hidden = !approved;
+  headerLogin.hidden = authenticated;
+  logout.hidden = !authenticated;
   loginPanel.hidden = true;
   workspace.hidden = false;
+  const limited = approved && currentAccessTier === "orders-limited";
   identityState.textContent = approved
-    ? "Verify 인증 완료 · 조회 허용"
-    : "미승인 · 보호 데이터 조회 불가";
+    ? `Verify 인증 완료 · ${limited ? "제한 조회" : "조회 허용"}${authorizationMode === "audit" ? " · 감사 모드" : ""}`
+    : authenticated
+      ? "Verify 인증 완료 · 보호 데이터 권한 없음"
+      : "미승인 · 보호 데이터 조회 불가";
   identityState.classList.toggle("unapproved", !approved);
   accessContext.textContent = approved
-    ? "Verify 승인 · 읽기 전용"
-    : "챗봇 사용 가능 · 조회 불가";
-  accessModeBanner.className = `access-mode-banner ${approved ? "approved" : "unapproved"}`;
+    ? `Verify 승인 · ${limited ? "제한 범위" : "읽기 전용"}`
+    : authenticated
+      ? "Verify 인증 · 권한 없음"
+      : "챗봇 사용 가능 · 조회 불가";
+  accessModeBanner.className = `access-mode-banner ${limited ? "limited" : approved ? "approved" : "unapproved"}`;
   accessModeIcon.className = `carbon-icon ${approved ? "icon-check-filled" : "icon-locked"}`;
   accessModeTitle.textContent = approved
-    ? "승인된 사용자 모드"
-    : "미승인 사용자 모드";
+    ? limited
+      ? "제한 승인 사용자 모드"
+      : "승인된 사용자 모드"
+    : authenticated
+      ? "인증 완료 · 보호 데이터 미승인"
+      : "미승인 사용자 모드";
   accessModeDescription.textContent = approved
-    ? "IBM Verify 인증이 완료되었습니다. 등록된 읽기 전용 도구로 보호 데이터를 조회할 수 있습니다."
-    : "일반 대화와 Lab 안내는 사용할 수 있지만 주문·결제 데이터 조회는 Agent 단계에서 차단됩니다.";
-  accessModeLogin.hidden = approved;
-  demoReset.hidden = !approved;
+    ? limited
+      ? "IBM Verify 인증과 제한 권한이 확인되었습니다. 담당 고객 범위의 주문 데이터만 조회할 수 있습니다."
+      : `IBM Verify 인증이 완료되었습니다. 등록된 읽기 전용 도구로 보호 데이터를 조회할 수 있습니다.${authorizationMode === "audit" ? " 현재는 Verify 권한 클레임 적용 전 감사 모드입니다." : ""}`
+    : authenticated
+      ? "IBM Verify 로그인은 성공했지만 보호 데이터 권한이 없어 MCP·Vault·DB 호출 전에 차단됩니다."
+      : "일반 대화와 Lab 안내는 사용할 수 있지만 주문·결제 데이터 조회는 Agent 단계에서 차단됩니다.";
+  accessModeLogin.hidden = authenticated;
+  demoReset.hidden = !authenticated;
   document.querySelectorAll("[data-protected='true']").forEach((button) => {
     button.classList.toggle("requires-approval", !approved);
     button.title = approved
@@ -1762,12 +1787,19 @@ function beginRequestPath() {
     updatePathStep("verify", activePathCopy.verify.state, "active", "—", true);
     updatePathOverview("verify", "active", activePathCopy.verify.detail);
   } else {
-    updatePathStep("verify", "미인증", "neutral", "—");
+    updatePathStep(
+      "verify",
+      isAuthenticatedUser ? "인증 완료" : "미인증",
+      isAuthenticatedUser ? "complete" : "neutral",
+      "—",
+    );
     updatePathStep("agent", activePathCopy.agent.state, "active", "—", true);
     updatePathOverview(
       "agent",
       "active",
-      "미승인 사용자 요청을 분류하고 보호 데이터 접근 여부를 확인합니다.",
+      isAuthenticatedUser
+        ? "Verify 인증은 성공했지만 보호 데이터 권한을 확인하고 있습니다."
+        : "미승인 사용자 요청을 분류하고 보호 데이터 접근 여부를 확인합니다.",
     );
   }
   accessStatusSummary.className = "access-status-summary active";
@@ -1778,7 +1810,9 @@ function beginRequestPath() {
     : "요청 유형과 조회 권한 확인 중";
   accessStatusDescription.textContent = isApprovedUser
     ? "현재 요청의 Verify 신원부터 순서대로 평가합니다."
-    : "일반 안내는 응답하고 보호 데이터 요청은 Agent에서 차단합니다.";
+    : isAuthenticatedUser
+      ? "Verify 인증 후 애플리케이션 권한을 별도로 평가합니다."
+      : "일반 안내는 응답하고 보호 데이터 요청은 Agent에서 차단합니다.";
   accessStatusBadge.textContent = "처리 중";
   accessStatusStage.textContent = isApprovedUser ? "Verify 신원" : "Agent 정책";
   accessStatusPolicy.textContent = "평가 전";
@@ -1877,7 +1911,7 @@ async function sendMessage(message) {
       "content-type": "application/json",
       "x-request-id": activeRequestId,
     };
-    if (isApprovedUser) headers["x-csrf-token"] = csrfToken;
+    if (isAuthenticatedUser) headers["x-csrf-token"] = csrfToken;
     const response = await fetch("/api/chat", {
       method: "POST",
       headers,
@@ -2638,7 +2672,7 @@ function applyUnapprovedUserResult() {
   unauthResult.textContent = "403 권한 차단";
   unauthResult.className = "unauth-demo-result denied";
   unauthOutcome.textContent =
-    "Verify 사용자 인증과 JWT 발급은 성공했습니다. vault.lab.user entitlement가 없어 애플리케이션에서 차단했으며 Agent·MCP·Vault·DB는 실행하지 않았습니다.";
+    "Verify 사용자 인증과 JWT 발급은 성공했습니다. access_tier 권한 클레임이 없어 애플리케이션에서 차단했으며 Agent·MCP·Vault·DB는 실행하지 않았습니다.";
   unauthOutcome.className = "unauth-outcome denied";
   unauthTest.textContent = "미승인 사용자 다시 로그인";
 }

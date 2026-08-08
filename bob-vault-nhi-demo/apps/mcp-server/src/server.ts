@@ -208,6 +208,7 @@ function createIdentity(
         ...(obo.scope ? { scope: obo.scope } : {}),
         actorClaim: obo.actorClaim,
         actorValue: obo.actorValue,
+        accessControl: config.accessControl,
       },
       availableSigner,
     );
@@ -263,6 +264,7 @@ function createUserAuth(): UserAuthenticator {
     scopes: user.scopes,
     redirectUri: `${config.publicBaseUrl}/auth/callback`,
     sessionSecret: config.sessionSecret,
+    accessControl: config.accessControl,
   });
 }
 
@@ -278,6 +280,7 @@ function createOboVerifier(): OboTokenVerifier | undefined {
     audience: obo.audience,
     actorClaim: obo.actorClaim,
     actorValue: obo.actorValue,
+    accessControl: config.accessControl,
   });
 }
 

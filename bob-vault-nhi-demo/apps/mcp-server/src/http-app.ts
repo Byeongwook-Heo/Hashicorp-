@@ -96,8 +96,7 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
     // ContextForge owns X-Request-Id for its internal hops. Preserve the
     // Agent's end-to-end correlation ID in a dedicated allowlisted header.
     const supplied =
-      request.header("x-upstream-request-id") ??
-      request.header("x-request-id");
+      request.header("x-upstream-request-id") ?? request.header("x-request-id");
     response.locals["requestId"] =
       supplied && requestIdPattern.test(supplied) ? supplied : randomUUID();
     response.setHeader("x-request-id", response.locals["requestId"] as string);
@@ -180,6 +179,11 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
         authorization:
           "IBM Verify OBO JWT → ContextForge → MCP → Vault JWT role",
         credentials: "dynamic PostgreSQL, short TTL",
+        accessTiers: {
+          mode: config.accessControl.mode,
+          claim: config.accessControl.claim,
+          profiles: ["orders-full", "orders-limited", "unapproved"],
+        },
       },
     });
   });
@@ -197,7 +201,10 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
       }
       response.json({
         authenticated: true,
-        authorization: "approved",
+        authorization:
+          session.accessTier === "unapproved" ? "unapproved" : "approved",
+        accessTier: session.accessTier ?? "orders-full",
+        authorizationMode: session.authorizationMode ?? "off",
         user: {
           displayName: session.displayName,
           ...(session.email ? { email: session.email } : {}),
@@ -251,6 +258,16 @@ export function createHttpApp(dependencies: AppDependencies): express.Express {
             action: "user_session_authenticated",
             requestId,
           });
+          if (session.authorizationMode === "audit") {
+            events.record({
+              stage: "policy",
+              status: "allowed",
+              action: session.assertedAccessTier
+                ? `access_tier_audit_${session.assertedAccessTier}`
+                : "access_tier_audit_missing",
+              requestId,
+            });
+          }
         }
         const reply = await dependencies.agent.respond(
           input.message,
@@ -486,6 +503,7 @@ function createMcpServer(
           vault: z.literal("authorized"),
           credential_type: z.literal("dynamic"),
           credential_ttl_seconds: z.number(),
+          access_tier: z.enum(["orders-full", "orders-limited"]).optional(),
         }),
       },
     },
@@ -524,6 +542,7 @@ function createMcpServer(
           vault: z.literal("authorized"),
           credential_type: z.literal("dynamic"),
           credential_ttl_seconds: z.number(),
+          access_tier: z.enum(["orders-full", "orders-limited"]).optional(),
         }),
       },
     },
@@ -566,6 +585,7 @@ function createMcpServer(
           vault: z.literal("authorized"),
           credential_type: z.literal("dynamic"),
           credential_ttl_seconds: z.number(),
+          access_tier: z.enum(["orders-full", "orders-limited"]).optional(),
         }),
       },
     },
@@ -608,6 +628,7 @@ function createMcpServer(
           vault: z.literal("authorized"),
           credential_type: z.literal("dynamic"),
           credential_ttl_seconds: z.number(),
+          access_tier: z.enum(["orders-full", "orders-limited"]).optional(),
         }),
       },
     },
@@ -819,6 +840,10 @@ function toIdentityContext(
     ? {
         subject: principal.subject,
         subjectToken: principal.accessToken,
+        ...(principal.accessTier ? { accessTier: principal.accessTier } : {}),
+        ...(principal.assertedAccessTier
+          ? { assertedAccessTier: principal.assertedAccessTier }
+          : {}),
       }
     : undefined;
 }

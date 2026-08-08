@@ -41,8 +41,10 @@ no public IP.
 - ContextForge routes only the registered virtual server and passes the OBO JWT
   to the upstream MCP Server as its `Authorization` identity.
 - MCP independently verifies the OBO JWT before calling Vault.
-- Vault authenticates the same OBO JWT and authorizes only the
-  `bob-orders-readonly` database role.
+- Vault authenticates the same OBO JWT and maps its signed `access_tier` to
+  either the `bob-orders-full` or `bob-orders-limited` database role.
+- PostgreSQL enforces the selected tier again through separate group roles and
+  fixed views; a limited identity can see only synthetic customer `CUS-1001`.
 - The browser never receives the OBO JWT, Vault token, or database password.
 
 ## Bounded Agent

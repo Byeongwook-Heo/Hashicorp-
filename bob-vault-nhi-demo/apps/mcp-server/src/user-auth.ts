@@ -16,6 +16,14 @@ import { request } from "undici";
 import { z } from "zod";
 
 import {
+  type AccessTier,
+  type AccessTierConfig,
+  type AccessTierEnforcementMode,
+  type EffectiveAccessTier,
+  defaultAccessTierConfig,
+  resolveAccessTier,
+} from "./access-control.js";
+import {
   AuthenticationError,
   ConfigurationError,
   ExternalServiceError,
@@ -43,6 +51,7 @@ interface VerifyUserAuthConfig {
   scopes: string;
   redirectUri: string;
   sessionSecret: string;
+  accessControl?: AccessTierConfig;
 }
 
 interface LoginTransaction extends JWTPayload {
@@ -56,6 +65,10 @@ export interface UserPrincipal {
   displayName: string;
   email?: string;
   accessToken: string;
+  accessTier?: EffectiveAccessTier;
+  assertedAccessTier?: AccessTier;
+  accessTierClaimPresent?: boolean;
+  authorizationMode?: AccessTierEnforcementMode;
 }
 
 export interface UserSession extends UserPrincipal {
@@ -78,9 +91,11 @@ export class VerifyUserAuth implements UserAuthenticator {
   readonly #config: VerifyUserAuthConfig;
   readonly #key: Uint8Array;
   readonly #jwks: ReturnType<typeof createRemoteJWKSet>;
+  readonly #accessControl: AccessTierConfig;
 
   public constructor(config: VerifyUserAuthConfig) {
     this.#config = config;
+    this.#accessControl = config.accessControl ?? defaultAccessTierConfig;
     this.#key = createHash("sha256").update(config.sessionSecret).digest();
     this.#jwks = createRemoteJWKSet(new URL(config.jwksUrl), {
       cooldownDuration: 30_000,
@@ -161,6 +176,7 @@ export class VerifyUserAuth implements UserAuthenticator {
     );
     const audience = this.#config.audience ?? this.#config.clientId;
     let idPayload: JWTPayload;
+    let verifiedAccessToken: UserPrincipal;
     try {
       const verification = await jwtVerify(tokens.id_token, this.#jwks, {
         issuer: this.#config.issuer,
@@ -174,7 +190,7 @@ export class VerifyUserAuth implements UserAuthenticator {
       ) {
         throw new AuthenticationError("The ID token nonce did not match");
       }
-      await this.verifyAccessToken(tokens.access_token);
+      verifiedAccessToken = await this.verifyAccessToken(tokens.access_token);
     } catch (error) {
       if (error instanceof AuthenticationError) {
         throw error;
@@ -201,6 +217,14 @@ export class VerifyUserAuth implements UserAuthenticator {
       name: displayName,
       ...(email ? { email } : {}),
       access_token: tokens.access_token,
+      access_tier: verifiedAccessToken.accessTier ?? "orders-full",
+      ...(verifiedAccessToken.assertedAccessTier
+        ? { asserted_access_tier: verifiedAccessToken.assertedAccessTier }
+        : {}),
+      access_tier_claim_present:
+        verifiedAccessToken.accessTierClaimPresent ?? false,
+      authorization_mode:
+        verifiedAccessToken.authorizationMode ?? this.#accessControl.mode,
       csrf: randomBytes(24).toString("base64url"),
     })
       .setProtectedHeader({ alg: "dir", enc: "A256GCM", typ: "JWT" })
@@ -242,6 +266,12 @@ export class VerifyUserAuth implements UserAuthenticator {
         displayName: session.name,
         ...(session.email ? { email: session.email } : {}),
         accessToken: session.access_token,
+        accessTier: session.access_tier ?? "orders-full",
+        ...(session.asserted_access_tier
+          ? { assertedAccessTier: session.asserted_access_tier }
+          : {}),
+        accessTierClaimPresent: session.access_tier_claim_present ?? false,
+        authorizationMode: session.authorization_mode ?? "off",
         csrfToken: session.csrf,
         expiresAt: session.exp,
       };
@@ -264,11 +294,21 @@ export class VerifyUserAuth implements UserAuthenticator {
         optionalStringClaim(verification.payload, "email") ??
         subject;
       const email = optionalStringClaim(verification.payload, "email");
+      const authorization = resolveAccessTier(
+        verification.payload,
+        this.#accessControl,
+      );
       return {
         subject,
         displayName,
         ...(email ? { email } : {}),
         accessToken,
+        accessTier: authorization.accessTier,
+        ...(authorization.assertedAccessTier
+          ? { assertedAccessTier: authorization.assertedAccessTier }
+          : {}),
+        accessTierClaimPresent: authorization.claimPresent,
+        authorizationMode: authorization.mode,
       };
     } catch (error) {
       if (error instanceof AuthenticationError) {
@@ -390,6 +430,12 @@ const storedSessionSchema = z
     name: z.string().min(1),
     email: z.email().optional(),
     access_token: z.string().min(20),
+    access_tier: z
+      .enum(["orders-full", "orders-limited", "unapproved"])
+      .optional(),
+    asserted_access_tier: z.enum(["orders-full", "orders-limited"]).optional(),
+    access_tier_claim_present: z.boolean().optional(),
+    authorization_mode: z.enum(["off", "audit", "enforce"]).optional(),
     csrf: z.string().min(20),
     exp: z.number().int().positive(),
   })

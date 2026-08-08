@@ -109,4 +109,8 @@ management client in the Verify Admin UI after preflight succeeds.
 
 ## Vault claim mapping
 
-The bootstrap creates Vault namespace `demo`, JWT role `bob-orders`, and policy `bob-orders`. The role binds the Verify issuer, audience, and NHI claim and grants only `read` on `database/creds/bob-orders-readonly`.
+The bootstrap creates Vault namespace `demo` and separate `bob-orders-full`
+and `bob-orders-limited` JWT roles and policies. In strict enforcement mode,
+each role binds the Verify issuer, audience, Agent claim, and signed
+`access_tier`, then grants `read` only on its matching dynamic database path.
+See [ACCESS_TIER_SETUP.md](ACCESS_TIER_SETUP.md) for the staged rollout.

@@ -145,6 +145,35 @@ variable "service_version" {
   default     = "0.1.0"
 }
 
+variable "access_tier_enforcement" {
+  description = "User access-tier enforcement mode. Keep audit until Verify emits the configured claim in user and OBO JWTs."
+  type        = string
+  default     = "audit"
+
+  validation {
+    condition     = contains(["off", "audit", "enforce"], var.access_tier_enforcement)
+    error_message = "access_tier_enforcement must be off, audit, or enforce."
+  }
+}
+
+variable "verify_access_tier_claim" {
+  description = "Signed Verify claim carrying the protected-order access tier."
+  type        = string
+  default     = "access_tier"
+}
+
+variable "verify_access_tier_full_value" {
+  description = "Verify claim value mapped to full non-sensitive order access."
+  type        = string
+  default     = "orders-full"
+}
+
+variable "verify_access_tier_limited_value" {
+  description = "Verify claim value mapped to the limited customer-scope order view."
+  type        = string
+  default     = "orders-limited"
+}
+
 variable "verify_jwks_source_cidrs" {
   description = "Official IBM Verify Europe egress CIDRs allowed to retrieve only the public client JWKS."
   type        = list(string)

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import type { AccessTierConfig } from "./access-control.js";
 import { ConfigurationError } from "./errors.js";
 
 const optionalUrl = z.url().optional();
@@ -75,17 +76,31 @@ const environmentSchema = z
     VERIFY_OBO_SCOPE: optionalNonEmpty,
     VERIFY_OBO_ACTOR_CLAIM: z.string().min(1).default("client_id"),
     VERIFY_OBO_ACTOR_VALUE: optionalNonEmpty,
+    ACCESS_TIER_ENFORCEMENT: z
+      .enum(["off", "audit", "enforce"])
+      .default("audit"),
+    VERIFY_ACCESS_TIER_CLAIM: z.string().min(1).default("access_tier"),
+    VERIFY_ACCESS_TIER_FULL_VALUE: z.string().min(1).default("orders-full"),
+    VERIFY_ACCESS_TIER_LIMITED_VALUE: z
+      .string()
+      .min(1)
+      .default("orders-limited"),
     VAULT_ADDR: optionalUrl,
     VAULT_NAMESPACE: optionalNonEmpty,
     VAULT_JWT_AUTH_PATH: z
       .string()
       .regex(/^[A-Za-z0-9_-]+$/)
       .default("jwt"),
-    VAULT_JWT_ROLE: optionalNonEmpty,
+    VAULT_JWT_ROLE: z.string().min(1).default("bob-orders-full"),
     VAULT_DB_CREDS_PATH: z
       .string()
       .regex(/^database\/creds\/[A-Za-z0-9_-]+$/)
-      .default("database/creds/bob-orders-readonly"),
+      .default("database/creds/bob-orders-full"),
+    VAULT_LIMITED_JWT_ROLE: z.string().min(1).default("bob-orders-limited"),
+    VAULT_LIMITED_DB_CREDS_PATH: z
+      .string()
+      .regex(/^database\/creds\/[A-Za-z0-9_-]+$/)
+      .default("database/creds/bob-orders-limited"),
     VAULT_CA_PEM: optionalNonEmpty,
     VAULT_REQUEST_TIMEOUT_MS: z.coerce
       .number()
@@ -270,12 +285,15 @@ export interface AppConfig {
       actorValue?: string;
     };
   };
+  accessControl: AccessTierConfig;
   vault: {
     address?: string;
     namespace?: string;
     jwtAuthPath: string;
     jwtRole?: string;
     databaseCredentialsPath: string;
+    limitedJwtRole: string;
+    limitedDatabaseCredentialsPath: string;
     caPem?: string;
     requestTimeoutMs: number;
   };
@@ -414,14 +432,22 @@ export function loadConfig(
           : {}),
       },
     },
+    accessControl: {
+      mode: value.ACCESS_TIER_ENFORCEMENT,
+      claim: value.VERIFY_ACCESS_TIER_CLAIM,
+      fullValue: value.VERIFY_ACCESS_TIER_FULL_VALUE,
+      limitedValue: value.VERIFY_ACCESS_TIER_LIMITED_VALUE,
+    },
     vault: {
       ...(value.VAULT_ADDR
         ? { address: value.VAULT_ADDR.replace(/\/$/, "") }
         : {}),
       ...(value.VAULT_NAMESPACE ? { namespace: value.VAULT_NAMESPACE } : {}),
       jwtAuthPath: value.VAULT_JWT_AUTH_PATH,
-      ...(value.VAULT_JWT_ROLE ? { jwtRole: value.VAULT_JWT_ROLE } : {}),
+      jwtRole: value.VAULT_JWT_ROLE,
       databaseCredentialsPath: value.VAULT_DB_CREDS_PATH,
+      limitedJwtRole: value.VAULT_LIMITED_JWT_ROLE,
+      limitedDatabaseCredentialsPath: value.VAULT_LIMITED_DB_CREDS_PATH,
       ...(value.VAULT_CA_PEM
         ? { caPem: value.VAULT_CA_PEM.replaceAll("\\n", "\n") }
         : {}),

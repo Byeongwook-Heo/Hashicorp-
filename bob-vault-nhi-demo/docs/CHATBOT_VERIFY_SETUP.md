@@ -48,6 +48,11 @@ The STS client ID becomes `VERIFY_OBO_CLIENT_ID`. The Agent verifies both the
 preserved user `sub` and the configured Agent claim (default `client_id`), sends
 the OBO token through ContextForge, and MCP verifies it again before Vault.
 
+User-level protected-data authorization is rolled out separately. See
+[Verify access-tier rollout](ACCESS_TIER_SETUP.md). Keep the service in `audit`
+mode until the user Access Token and exchanged OBO JWT both contain the signed
+`access_tier` claim.
+
 IBM references:
 
 - [OAuth 2.0 Token Exchange](https://docs.verify.ibm.com/verify/docs/oauth-20-token-exchange)

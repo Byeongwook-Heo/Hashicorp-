@@ -14,12 +14,13 @@ function buildService() {
       .mockResolvedValue("header.payload.signature"),
   };
   const vault: VaultCredentialBroker = {
-    withDatabaseCredentials: vi.fn(async (_jwt, operation) =>
+    withDatabaseCredentials: vi.fn(async (_jwt, accessTier, operation) =>
       operation({
         username: "dynamic-user",
         password: "dynamic-password",
         leaseId: "database/creds/example",
         leaseDurationSeconds: 120,
+        accessTier,
       }),
     ),
     attemptDeniedDatabaseCredentials: vi
@@ -75,6 +76,7 @@ describe("ToolService", () => {
 
     expect(result.payment_status).toBe("PAID");
     expect(result.access.credential_ttl_seconds).toBe(120);
+    expect(result.access.access_tier).toBe("orders-full");
     expect(fixture.identity.getVerifiedAccessToken).toHaveBeenCalledOnce();
     expect(fixture.vault.withDatabaseCredentials).toHaveBeenCalledOnce();
     expect(fixture.database.getOrderStatus).toHaveBeenCalledWith(
@@ -103,6 +105,7 @@ describe("ToolService", () => {
     expect(fixture.identity.getVerifiedAccessToken).toHaveBeenCalledOnce();
     expect(fixture.vault.attemptDeniedDatabaseCredentials).toHaveBeenCalledWith(
       "header.payload.signature",
+      "orders-full",
       "database/creds/bob-payment-pii",
     );
     expect(fixture.database.getOrderStatus).not.toHaveBeenCalled();
@@ -110,6 +113,41 @@ describe("ToolService", () => {
       stage: "vault",
       status: "denied",
     });
+  });
+
+  it("selects the limited Vault and database profile from the verified OBO identity", async () => {
+    const fixture = buildService();
+
+    await fixture.service.getOrderStatus("request-limited", "ORD-1001", {
+      subject: "limited-user",
+      subjectToken: "header.payload.signature.obo",
+      accessTier: "orders-limited",
+      assertedAccessTier: "orders-limited",
+    });
+
+    expect(fixture.vault.withDatabaseCredentials).toHaveBeenCalledWith(
+      "header.payload.signature",
+      "orders-limited",
+      expect.any(Function),
+    );
+    expect(fixture.database.getOrderStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ accessTier: "orders-limited" }),
+      "ORD-1001",
+    );
+  });
+
+  it("rejects an authenticated but unapproved OBO identity before Vault", async () => {
+    const fixture = buildService();
+
+    await expect(
+      fixture.service.getOrderStatus("request-denied", "ORD-1001", {
+        subject: "unapproved-user",
+        subjectToken: "header.payload.signature.obo",
+        accessTier: "unapproved",
+      }),
+    ).rejects.toThrow(/not authorized/);
+    expect(fixture.vault.withDatabaseCredentials).not.toHaveBeenCalled();
+    expect(fixture.database.getOrderStatus).not.toHaveBeenCalled();
   });
 
   it("executes the bounded recent-order and failure-trend queries", async () => {

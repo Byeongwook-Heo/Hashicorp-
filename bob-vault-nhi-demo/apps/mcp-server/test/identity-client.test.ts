@@ -58,7 +58,10 @@ describe("VerifyOboIdentityClient", () => {
       });
       request.on("end", () => {
         receivedBody = new URLSearchParams(body);
-        void new SignJWT({ client_id: clientId })
+        void new SignJWT({
+          client_id: clientId,
+          access_tier: "orders-limited",
+        })
           .setProtectedHeader({ alg: "RS256", kid: "verify-test-key" })
           .setIssuer(issuer)
           .setAudience(audience)
@@ -99,6 +102,12 @@ describe("VerifyOboIdentityClient", () => {
         scope: "vault.db.read",
         actorClaim: "client_id",
         actorValue: clientId,
+        accessControl: {
+          mode: "enforce",
+          claim: "access_tier",
+          fullValue: "orders-full",
+          limitedValue: "orders-limited",
+        },
       },
       signer,
     );
@@ -106,6 +115,8 @@ describe("VerifyOboIdentityClient", () => {
     const token = await client.getVerifiedAccessToken({
       subject: "user-123",
       subjectToken: "header.payload.signature.user",
+      accessTier: "orders-limited",
+      assertedAccessTier: "orders-limited",
     });
 
     expect(token.split(".")).toHaveLength(3);

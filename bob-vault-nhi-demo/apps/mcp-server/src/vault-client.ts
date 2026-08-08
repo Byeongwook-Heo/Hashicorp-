@@ -1,6 +1,7 @@
 import { Agent, request } from "undici";
 import { z } from "zod";
 
+import type { AccessTier } from "./access-control.js";
 import type { AppConfig } from "./config.js";
 import { AuthorizationError, ExternalServiceError } from "./errors.js";
 import type { DynamicDatabaseCredentials, VaultSession } from "./types.js";
@@ -29,10 +30,12 @@ const credentialsResponseSchema = z
 export interface VaultCredentialBroker {
   withDatabaseCredentials<T>(
     verifiedJwt: string,
+    accessTier: AccessTier,
     operation: (credentials: DynamicDatabaseCredentials) => Promise<T>,
   ): Promise<T>;
   attemptDeniedDatabaseCredentials(
     verifiedJwt: string,
+    accessTier: AccessTier,
     path: string,
   ): Promise<never>;
   close(): Promise<void>;
@@ -54,12 +57,18 @@ export class VaultClient implements VaultCredentialBroker {
 
   public async withDatabaseCredentials<T>(
     verifiedJwt: string,
+    accessTier: AccessTier,
     operation: (credentials: DynamicDatabaseCredentials) => Promise<T>,
   ): Promise<T> {
-    const session = await this.#login(verifiedJwt);
+    const profile = this.#profile(accessTier);
+    const session = await this.#login(verifiedJwt, profile.jwtRole);
     let credentials: DynamicDatabaseCredentials | undefined;
     try {
-      credentials = await this.#readDatabaseCredentials(session.clientToken);
+      credentials = await this.#readDatabaseCredentials(
+        session.clientToken,
+        profile.databaseCredentialsPath,
+        accessTier,
+      );
       return await operation(credentials);
     } finally {
       if (credentials) {
@@ -78,9 +87,13 @@ export class VaultClient implements VaultCredentialBroker {
 
   public async attemptDeniedDatabaseCredentials(
     verifiedJwt: string,
+    accessTier: AccessTier,
     path: string,
   ): Promise<never> {
-    const session = await this.#login(verifiedJwt);
+    const session = await this.#login(
+      verifiedJwt,
+      this.#profile(accessTier).jwtRole,
+    );
     try {
       const unexpected = credentialsResponseSchema.parse(
         await this.#requestJson("GET", `/v1/${path}`, session.clientToken),
@@ -98,13 +111,13 @@ export class VaultClient implements VaultCredentialBroker {
     }
   }
 
-  async #login(verifiedJwt: string): Promise<VaultSession> {
+  async #login(verifiedJwt: string, jwtRole: string): Promise<VaultSession> {
     const response = loginResponseSchema.parse(
       await this.#requestJson(
         "POST",
         `/v1/auth/${this.#config.jwtAuthPath}/login`,
         undefined,
-        JSON.stringify({ jwt: verifiedJwt, role: this.#required("jwtRole") }),
+        JSON.stringify({ jwt: verifiedJwt, role: jwtRole }),
       ),
     );
     return {
@@ -116,19 +129,18 @@ export class VaultClient implements VaultCredentialBroker {
 
   async #readDatabaseCredentials(
     clientToken: string,
+    path: string,
+    accessTier: AccessTier,
   ): Promise<DynamicDatabaseCredentials> {
     const response = credentialsResponseSchema.parse(
-      await this.#requestJson(
-        "GET",
-        `/v1/${this.#config.databaseCredentialsPath}`,
-        clientToken,
-      ),
+      await this.#requestJson("GET", `/v1/${path}`, clientToken),
     );
     return {
       username: response.data.username,
       password: response.data.password,
       leaseId: response.lease_id,
       leaseDurationSeconds: response.lease_duration,
+      accessTier,
     };
   }
 
@@ -224,5 +236,21 @@ export class VaultClient implements VaultCredentialBroker {
       throw new ExternalServiceError("Vault", `${field} is not configured`);
     }
     return value;
+  }
+
+  #profile(accessTier: AccessTier): {
+    jwtRole: string;
+    databaseCredentialsPath: string;
+  } {
+    if (accessTier === "orders-limited") {
+      return {
+        jwtRole: this.#config.limitedJwtRole,
+        databaseCredentialsPath: this.#config.limitedDatabaseCredentialsPath,
+      };
+    }
+    return {
+      jwtRole: this.#required("jwtRole"),
+      databaseCredentialsPath: this.#config.databaseCredentialsPath,
+    };
   }
 }

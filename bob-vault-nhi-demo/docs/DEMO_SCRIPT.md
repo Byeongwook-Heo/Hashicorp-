@@ -27,7 +27,8 @@ Expected sequence:
 6. ContextForge allows the registered route and forwards the OBO JWT to MCP.
 7. MCP independently validates the OBO JWT and fixed tool schema.
 8. Vault validates the user `sub`, Agent binding, issuer, and audience.
-9. Vault issues `bob-orders-readonly` for 120 seconds.
+9. Vault selects the matching access-tier policy and issues a short-lived
+   `bob-orders-full` or `bob-orders-limited` database credential.
 10. RDS returns one synthetic order row; the lease and Vault token are revoked.
 
 Expected business answer: payment is `PAID`, delivery is `PREPARING`. The right

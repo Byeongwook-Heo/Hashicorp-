@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { z } from "zod";
 
+import { accessTierLabel } from "./access-control.js";
 import { AppError, ExternalServiceError } from "./errors.js";
 import type { GatewayTokenProvider } from "./contextforge-client.js";
 import type { IdentityProvider } from "./identity-client.js";
@@ -23,6 +24,7 @@ const accessSchema = z.object({
   vault: z.literal("authorized"),
   credential_type: z.literal("dynamic"),
   credential_ttl_seconds: z.number().int().positive(),
+  access_tier: z.enum(["orders-full", "orders-limited"]).optional(),
 });
 const orderDataSchema = z.object({
   order_id: z.string(),
@@ -507,10 +509,7 @@ export class BoundedChatAgent implements ChatAgent {
     this.#lastDecisions.delete(subject);
   }
 
-  #executeUnapproved(
-    plan: AgentPlan,
-    principal: UnapprovedChatPrincipal,
-  ): AgentReply {
+  #executeUnapproved(plan: AgentPlan, principal: ChatPrincipal): AgentReply {
     switch (plan.intent) {
       case "explain_last_decision":
         return this.#explainLastDecision(principal);
@@ -711,6 +710,10 @@ export class BoundedChatAgent implements ChatAgent {
       const token = await this.delegatedIdentity.getVerifiedAccessToken({
         subject: principal.subject,
         subjectToken: principal.accessToken,
+        ...(principal.accessTier ? { accessTier: principal.accessTier } : {}),
+        ...(principal.assertedAccessTier
+          ? { assertedAccessTier: principal.assertedAccessTier }
+          : {}),
       });
       if (requestId) {
         this.reportProgress?.({
@@ -804,7 +807,7 @@ function allowedTrace(
   return [
     {
       label: "사용자 JWT",
-      detail: `${safeIdentityLabel(principal)} · Verify 검증 완료`,
+      detail: `${safeIdentityLabel(principal)} · Verify 검증 완료 · ${accessTierLabel(principal.accessTier ?? "orders-full")}`,
       status: "verified",
     },
     {
@@ -824,7 +827,7 @@ function allowedTrace(
     },
     {
       label: "Vault 정책",
-      detail: "bob-orders 읽기 전용 역할 허용",
+      detail: `${principal.accessTier === "orders-limited" ? "bob-orders-limited" : "bob-orders-full"} 역할 허용`,
       status: "allowed",
     },
     {
@@ -977,18 +980,23 @@ function safeIdentityLabel(principal: ChatPrincipal): string {
 function isApprovedPrincipal(
   principal: ChatPrincipal,
 ): principal is UserPrincipal {
-  return "accessToken" in principal && principal.accessToken.length > 0;
+  return (
+    "accessToken" in principal &&
+    principal.accessToken.length > 0 &&
+    principal.accessTier !== "unapproved"
+  );
 }
 
 function unapprovedDataReply(
   plan: AgentPlan,
-  principal: UnapprovedChatPrincipal,
+  principal: ChatPrincipal,
 ): AgentReply {
   const tool = toolForPlan(plan);
   return {
     reply:
       "챗봇 안내는 누구나 이용할 수 있지만 주문·결제 데이터 조회는 승인된 사용자만 가능합니다. " +
-      "IBM Verify로 로그인한 뒤 다시 요청해 주세요. 이번 요청은 Agent 권한 검사에서 중단되어 MCP, Vault, PostgreSQL을 호출하지 않았습니다.",
+      `${"accessToken" in principal ? "현재 Verify 사용자에게 필요한 주문 조회 권한이 없습니다." : "IBM Verify로 로그인한 뒤 다시 요청해 주세요."} ` +
+      "이번 요청은 Agent 권한 검사에서 중단되어 MCP, Vault, PostgreSQL을 호출하지 않았습니다.",
     tool,
     trace: [
       {
@@ -998,7 +1006,10 @@ function unapprovedDataReply(
       },
       {
         label: "보호 데이터 권한",
-        detail: "IBM Verify 사용자 세션 없음 · 조회 권한 미부여",
+        detail:
+          "accessToken" in principal
+            ? "Verify 인증 성공 · 보호 데이터 권한 미부여"
+            : "IBM Verify 사용자 세션 없음 · 조회 권한 미부여",
         status: "denied",
       },
     ],

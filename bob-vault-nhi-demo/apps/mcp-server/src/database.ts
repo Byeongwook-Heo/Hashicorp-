@@ -5,12 +5,7 @@ import { z } from "zod";
 
 import type { AppConfig } from "./config.js";
 import { ExternalServiceError, NotFoundError } from "./errors.js";
-import {
-  failedPaymentSummaryQuery,
-  failedPaymentTrendQuery,
-  orderStatusQuery,
-  recentOrdersQuery,
-} from "./queries.js";
+import { orderQueries } from "./queries.js";
 import type {
   DynamicDatabaseCredentials,
   FailedPaymentSummary,
@@ -68,8 +63,9 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
     orderId: string,
   ): Promise<OrderStatus> {
     return this.#withClient(credentials, async (client) => {
+      const queries = orderQueries(credentials.accessTier ?? "orders-full");
       const result = await client.query<Record<string, unknown>>(
-        orderStatusQuery,
+        queries.orderStatus,
         [orderId],
       );
       const first = result.rows[0];
@@ -85,8 +81,9 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
     date: string,
   ): Promise<FailedPaymentSummary> {
     return this.#withClient(credentials, async (client) => {
+      const queries = orderQueries(credentials.accessTier ?? "orders-full");
       const result = await client.query<Record<string, unknown>>(
-        failedPaymentSummaryQuery,
+        queries.failedPaymentSummary,
         [date],
       );
       const byDeliveryStatus = result.rows.map((row) =>
@@ -108,8 +105,9 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
     limit: number,
   ): Promise<RecentOrders> {
     return this.#withClient(credentials, async (client) => {
+      const queries = orderQueries(credentials.accessTier ?? "orders-full");
       const result = await client.query<Record<string, unknown>>(
-        recentOrdersQuery,
+        queries.recentOrders,
         [limit],
       );
       return { orders: result.rows.map((row) => mapOrder(row)) };
@@ -121,8 +119,9 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
     days: number,
   ): Promise<FailedPaymentTrend> {
     return this.#withClient(credentials, async (client) => {
+      const queries = orderQueries(credentials.accessTier ?? "orders-full");
       const result = await client.query<Record<string, unknown>>(
-        failedPaymentTrendQuery,
+        queries.failedPaymentTrend,
         [days],
       );
       return {

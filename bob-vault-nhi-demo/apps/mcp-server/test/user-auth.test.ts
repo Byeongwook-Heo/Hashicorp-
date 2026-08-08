@@ -62,6 +62,7 @@ describe("VerifyUserAuth", () => {
           new SignJWT({
             name: "Demo User",
             email: "demo@example.test",
+            access_tier: "orders-limited",
           })
             .setProtectedHeader({ alg: "RS256", kid: "user-test-key" })
             .setIssuer(issuer)
@@ -113,6 +114,12 @@ describe("VerifyUserAuth", () => {
       scopes: "openid profile vault.db.read",
       redirectUri: "https://chat.example.test/auth/callback",
       sessionSecret: "session-secret-for-tests-".padEnd(48, "x"),
+      accessControl: {
+        mode: "enforce",
+        claim: "access_tier",
+        fullValue: "orders-full",
+        limitedValue: "orders-limited",
+      },
     });
 
     const login = await auth.beginLogin();
@@ -136,6 +143,10 @@ describe("VerifyUserAuth", () => {
       subject: "user-123",
       displayName: "Demo User",
       email: "demo@example.test",
+      accessTier: "orders-limited",
+      assertedAccessTier: "orders-limited",
+      accessTierClaimPresent: true,
+      authorizationMode: "enforce",
     });
     expect(session?.csrfToken.length).toBeGreaterThanOrEqual(20);
     expect(callback.setCookies.join(";")).not.toContain(

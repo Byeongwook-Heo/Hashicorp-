@@ -8,6 +8,14 @@ import { request } from "undici";
 import { z } from "zod";
 
 import {
+  type AccessTier,
+  type AccessTierConfig,
+  type AccessTierEnforcementMode,
+  type EffectiveAccessTier,
+  defaultAccessTierConfig,
+  resolveAccessTier,
+} from "./access-control.js";
+import {
   AuthenticationError,
   ConfigurationError,
   ExternalServiceError,
@@ -29,6 +37,8 @@ export interface IdentityProvider {
 export interface IdentityContext {
   subjectToken: string;
   subject: string;
+  accessTier?: EffectiveAccessTier;
+  assertedAccessTier?: AccessTier;
 }
 
 interface IdentityClientConfig {
@@ -150,6 +160,7 @@ interface OboIdentityClientConfig {
   scope?: string;
   actorClaim: string;
   actorValue: string;
+  accessControl?: AccessTierConfig;
 }
 
 export interface VerifiedOboPrincipal {
@@ -157,6 +168,10 @@ export interface VerifiedOboPrincipal {
   displayName: string;
   email?: string;
   accessToken: string;
+  accessTier?: EffectiveAccessTier;
+  assertedAccessTier?: AccessTier;
+  accessTierClaimPresent?: boolean;
+  authorizationMode?: AccessTierEnforcementMode;
 }
 
 export interface OboTokenVerifier {
@@ -165,7 +180,12 @@ export interface OboTokenVerifier {
 
 type OboTokenValidationConfig = Pick<
   OboIdentityClientConfig,
-  "jwksUrl" | "issuer" | "audience" | "actorClaim" | "actorValue"
+  | "jwksUrl"
+  | "issuer"
+  | "audience"
+  | "actorClaim"
+  | "actorValue"
+  | "accessControl"
 >;
 
 function describeOboJwtValidationFailure(
@@ -204,12 +224,14 @@ export class VerifyOboIdentityClient implements IdentityProvider {
   readonly #config: OboIdentityClientConfig;
   readonly #signer: KmsClientAssertionSigner;
   readonly #jwks: ReturnType<typeof createRemoteJWKSet>;
+  readonly #accessControl: AccessTierConfig;
 
   public constructor(
     config: OboIdentityClientConfig,
     signer: KmsClientAssertionSigner,
   ) {
     this.#config = config;
+    this.#accessControl = config.accessControl ?? defaultAccessTierConfig;
     this.#signer = signer;
     this.#jwks = createRemoteJWKSet(new URL(config.jwksUrl), {
       cooldownDuration: 30_000,
@@ -300,6 +322,19 @@ export class VerifyOboIdentityClient implements IdentityProvider {
           "IBM Verify OBO token did not contain the required agent binding",
         );
       }
+      const authorization = resolveAccessTier(
+        verification.payload,
+        this.#accessControl,
+      );
+      if (
+        this.#accessControl.mode === "enforce" &&
+        (authorization.accessTier === "unapproved" ||
+          authorization.accessTier !== context.accessTier)
+      ) {
+        throw new AuthenticationError(
+          "IBM Verify OBO token did not preserve the required access tier",
+        );
+      }
     } catch (error) {
       if (error instanceof AuthenticationError) {
         throw error;
@@ -321,9 +356,11 @@ export class VerifyOboIdentityClient implements IdentityProvider {
 export class VerifyOboTokenVerifier implements OboTokenVerifier {
   readonly #config: OboTokenValidationConfig;
   readonly #jwks: ReturnType<typeof createRemoteJWKSet>;
+  readonly #accessControl: AccessTierConfig;
 
   public constructor(config: OboTokenValidationConfig) {
     this.#config = config;
+    this.#accessControl = config.accessControl ?? defaultAccessTierConfig;
     this.#jwks = createRemoteJWKSet(new URL(config.jwksUrl), {
       cooldownDuration: 30_000,
       cacheMaxAge: 10 * 60_000,
@@ -355,11 +392,21 @@ export class VerifyOboTokenVerifier implements OboTokenVerifier {
         optionalStringClaim(verification.payload, "email") ??
         subject;
       const email = optionalStringClaim(verification.payload, "email");
+      const authorization = resolveAccessTier(
+        verification.payload,
+        this.#accessControl,
+      );
       return {
         subject,
         displayName,
         ...(email ? { email } : {}),
         accessToken,
+        accessTier: authorization.accessTier,
+        ...(authorization.assertedAccessTier
+          ? { assertedAccessTier: authorization.assertedAccessTier }
+          : {}),
+        accessTierClaimPresent: authorization.claimPresent,
+        authorizationMode: authorization.mode,
       };
     } catch (error) {
       if (error instanceof AuthenticationError) throw error;

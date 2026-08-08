@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 
+import type { AccessTier } from "./access-control.js";
 import { AuthorizationError, ExternalServiceError } from "./errors.js";
 import type { SecurityEventStore } from "./event-store.js";
 import type { IdentityContext, IdentityProvider } from "./identity-client.js";
@@ -85,6 +86,7 @@ export class ToolService {
     identityContext?: IdentityContext,
   ): Promise<SensitivePaymentDenial> {
     void customerId;
+    const accessTier = requireApprovedAccessTier(identityContext);
     const accessToken =
       await this.identity.getVerifiedAccessToken(identityContext);
     this.events.record({
@@ -96,6 +98,7 @@ export class ToolService {
     try {
       await this.vault.attemptDeniedDatabaseCredentials(
         accessToken,
+        accessTier,
         "database/creds/bob-payment-pii",
       );
       throw new ExternalServiceError(
@@ -133,6 +136,7 @@ export class ToolService {
   ): Promise<T & { access: OrderStatusResult["access"] }> {
     const startedAt = performance.now();
     try {
+      const accessTier = requireApprovedAccessTier(identityContext);
       const accessToken =
         await this.identity.getVerifiedAccessToken(identityContext);
       this.events.record({
@@ -146,7 +150,7 @@ export class ToolService {
 
       const result = await this.vault.withDatabaseCredentials<
         T & { access: OrderStatusResult["access"] }
-      >(accessToken, async (credentials) => {
+      >(accessToken, accessTier, async (credentials) => {
         this.events.record({
           stage: "vault",
           status: "allowed",
@@ -172,6 +176,7 @@ export class ToolService {
             vault: "authorized",
             credential_type: "dynamic",
             credential_ttl_seconds: credentials.leaseDurationSeconds,
+            access_tier: accessTier,
           },
         };
       });
@@ -187,4 +192,16 @@ export class ToolService {
       throw error;
     }
   }
+}
+
+function requireApprovedAccessTier(
+  context: IdentityContext | undefined,
+): AccessTier {
+  const tier = context?.accessTier ?? "orders-full";
+  if (tier === "unapproved") {
+    throw new AuthorizationError(
+      "The authenticated user is not authorized for protected order data",
+    );
+  }
+  return tier;
 }
