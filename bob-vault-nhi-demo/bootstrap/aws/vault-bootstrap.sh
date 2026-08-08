@@ -114,20 +114,19 @@ write_tier_role bob-orders-limited bob-orders-limited "${access_tier_limited_val
 
 bootstrap_secret_name="${PROJECT_NAME}/bootstrap/vault-db-admin"
 bootstrap_secret_available=false
+db_admin_secret=""
 allowed_roles="bob-orders-full,bob-orders-limited"
 if [[ "${access_tier_enforcement}" != "enforce" ]]; then
   allowed_roles+=",bob-orders-readonly"
 fi
-if aws secretsmanager describe-secret \
-  --secret-id "${bootstrap_secret_name}" >/dev/null 2>&1; then
+if db_admin_secret="$(aws secretsmanager get-secret-value \
+  --secret-id "${bootstrap_secret_name}" \
+  --query SecretString \
+  --output text 2>/dev/null)"; then
   bootstrap_secret_available=true
 fi
 
 if [[ "${bootstrap_secret_available}" == "true" ]]; then
-  db_admin_secret="$(aws secretsmanager get-secret-value \
-    --secret-id "${bootstrap_secret_name}" \
-    --query SecretString \
-    --output text)"
   db_username="$(printf '%s' "${db_admin_secret}" | jq -er '.username')"
   db_password="$(printf '%s' "${db_admin_secret}" | jq -er '.password')"
   db_host="$(printf '%s' "${db_admin_secret}" | jq -er '.host')"

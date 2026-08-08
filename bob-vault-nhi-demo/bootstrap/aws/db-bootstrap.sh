@@ -113,7 +113,10 @@ jq -cn \
   >"${bootstrap_secret_file}"
 
 secret_name="${PROJECT_NAME}/bootstrap/vault-db-admin"
-if aws secretsmanager describe-secret --secret-id "${secret_name}" >/dev/null 2>&1; then
+if aws secretsmanager get-secret-value \
+  --secret-id "${secret_name}" \
+  --query ARN \
+  --output text >/dev/null 2>&1; then
   aws secretsmanager put-secret-value \
     --secret-id "${secret_name}" \
     --secret-string "file://${bootstrap_secret_file}" >/dev/null
