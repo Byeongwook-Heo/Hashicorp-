@@ -126,6 +126,8 @@ describe("VerifyUserAuth", () => {
     expect(login.setCookie).toContain("Path=/;");
     expect(login.setCookie).toContain("HttpOnly; Secure; SameSite=Lax");
     const authorization = new URL(login.redirectUrl);
+    expect(authorization.searchParams.get("prompt")).toBe("login");
+    expect(authorization.searchParams.get("max_age")).toBe("0");
     expectedNonce = authorization.searchParams.get("nonce") ?? "";
     const state = authorization.searchParams.get("state") ?? "";
     const transactionCookie = login.setCookie.split(";")[0];

@@ -129,6 +129,11 @@ export class VerifyUserAuth implements UserAuthenticator {
       nonce,
       code_challenge: challenge,
       code_challenge_method: "S256",
+      // The chatbot session and the Verify SSO session have independent
+      // lifecycles. Force active authentication so a user who signed out of
+      // the chatbot cannot silently reuse the previous Verify identity.
+      prompt: "login",
+      max_age: "0",
     }).toString();
 
     return {
