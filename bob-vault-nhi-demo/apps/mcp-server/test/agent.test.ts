@@ -17,6 +17,14 @@ const principal: UserPrincipal = {
   accessToken: "header.payload.signature.user",
 };
 
+const limitedPrincipal: UserPrincipal = {
+  subject: "limited-user",
+  displayName: "Limited User",
+  accessToken: "header.payload.signature.limited",
+  accessTier: "orders-limited",
+  assertedAccessTier: "orders-limited",
+};
+
 function buildAgent(result: Record<string, unknown>) {
   const mcp: McpToolCaller = {
     callTool: vi.fn().mockResolvedValue(result),
@@ -180,6 +188,7 @@ describe("BoundedChatAgent", () => {
 
   it("routes a validated order identifier to the MCP order tool", async () => {
     const { agent, mcp } = buildAgent({
+      status: "found",
       order_id: "ORD-1001",
       payment_status: "PAID",
       delivery_status: "PREPARING",
@@ -203,6 +212,31 @@ describe("BoundedChatAgent", () => {
       { order_id: "ORD-1001" },
       principal.accessToken,
     );
+  });
+
+  it("does not reveal whether an order is absent or outside the user's scope", async () => {
+    const { agent } = buildAgent({
+      status: "not_found_or_unauthorized",
+      access: {
+        nhi: "chat-agent",
+        user_subject: "limited-user",
+        verify: "authenticated",
+        vault: "authorized",
+        credential_type: "dynamic",
+        credential_ttl_seconds: 120,
+        access_tier: "orders-limited",
+      },
+    });
+
+    const reply = await agent.respond(
+      "주문 ORD-1002 상태를 알려줘",
+      limitedPrincipal,
+    );
+
+    expect(reply.reply).toBe(
+      "주문 ORD-1002에 대한 정보를 찾을 수 없거나 접근 권한이 없습니다.",
+    );
+    expect(reply.reply).not.toContain("MCP:");
   });
 
   it("routes a dated failed-payment request to the aggregate tool", async () => {
@@ -306,6 +340,7 @@ describe("BoundedChatAgent", () => {
 
   it("explains the last real access decision and credential release", async () => {
     const { agent } = buildAgent({
+      status: "found",
       order_id: "ORD-1001",
       payment_status: "PAID",
       delivery_status: "DELIVERED",
@@ -345,6 +380,7 @@ describe("BoundedChatAgent", () => {
     const onFallback = vi.fn();
     const mcp: McpToolCaller = {
       callTool: vi.fn().mockResolvedValue({
+        status: "found",
         order_id: "ORD-1001",
         payment_status: "PAID",
         delivery_status: "DELIVERED",
@@ -370,6 +406,7 @@ describe("BoundedChatAgent", () => {
     };
     const mcp: McpToolCaller = {
       callTool: vi.fn().mockResolvedValue({
+        status: "found",
         order_id: "ORD-1001",
         payment_status: "PAID",
         delivery_status: "DELIVERED",

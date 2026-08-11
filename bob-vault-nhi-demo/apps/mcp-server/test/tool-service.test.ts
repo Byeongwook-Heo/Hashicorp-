@@ -30,6 +30,7 @@ function buildService() {
   };
   const database: OrdersDatabase = {
     getOrderStatus: vi.fn().mockResolvedValue({
+      status: "found",
       order_id: "ORD-1001",
       payment_status: "PAID",
       delivery_status: "PREPARING",
@@ -74,6 +75,10 @@ describe("ToolService", () => {
       "ORD-1001",
     );
 
+    expect(result.status).toBe("found");
+    if (result.status !== "found") {
+      throw new Error("Expected a visible order result");
+    }
     expect(result.payment_status).toBe("PAID");
     expect(result.access.credential_ttl_seconds).toBe(120);
     expect(result.access.access_tier).toBe("orders-full");

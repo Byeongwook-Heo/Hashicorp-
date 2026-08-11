@@ -492,10 +492,11 @@ function createMcpServer(
         ),
       },
       outputSchema: {
-        order_id: z.string(),
-        payment_status: z.string(),
-        delivery_status: z.string(),
-        updated_at: z.string(),
+        status: z.enum(["found", "not_found_or_unauthorized"]),
+        order_id: z.string().optional(),
+        payment_status: z.string().optional(),
+        delivery_status: z.string().optional(),
+        updated_at: z.string().optional(),
         access: z.object({
           nhi: z.string(),
           user_subject: z.string().optional(),

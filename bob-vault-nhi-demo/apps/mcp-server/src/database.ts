@@ -4,12 +4,13 @@ import { Client } from "pg";
 import { z } from "zod";
 
 import type { AppConfig } from "./config.js";
-import { ExternalServiceError, NotFoundError } from "./errors.js";
+import { ExternalServiceError } from "./errors.js";
 import { orderQueries } from "./queries.js";
 import type {
   DynamicDatabaseCredentials,
   FailedPaymentSummary,
   FailedPaymentTrend,
+  OrderLookup,
   OrderStatus,
   RecentOrders,
 } from "./types.js";
@@ -36,7 +37,7 @@ export interface OrdersDatabase {
   getOrderStatus(
     credentials: DynamicDatabaseCredentials,
     orderId: string,
-  ): Promise<OrderStatus>;
+  ): Promise<OrderLookup>;
   getFailedPaymentSummary(
     credentials: DynamicDatabaseCredentials,
     date: string,
@@ -61,7 +62,7 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
   public async getOrderStatus(
     credentials: DynamicDatabaseCredentials,
     orderId: string,
-  ): Promise<OrderStatus> {
+  ): Promise<OrderLookup> {
     return this.#withClient(credentials, async (client) => {
       const queries = orderQueries(credentials.accessTier ?? "orders-full");
       const result = await client.query<Record<string, unknown>>(
@@ -70,9 +71,9 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
       );
       const first = result.rows[0];
       if (!first) {
-        throw new NotFoundError("Order was not found");
+        return { status: "not_found_or_unauthorized" };
       }
-      return mapOrder(first);
+      return { status: "found", ...mapOrder(first) };
     });
   }
 
@@ -165,9 +166,6 @@ export class PostgresOrdersDatabase implements OrdersDatabase {
       await client.connect();
       return await operation(client);
     } catch (error) {
-      if (error instanceof NotFoundError) {
-        throw error;
-      }
       throw new ExternalServiceError(
         "PostgreSQL",
         "database operation failed",

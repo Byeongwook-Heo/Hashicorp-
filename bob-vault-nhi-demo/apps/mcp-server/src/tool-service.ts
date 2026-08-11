@@ -12,7 +12,7 @@ import type {
   FailedPaymentSummaryResult,
   FailedPaymentTrend,
   FailedPaymentTrendResult,
-  OrderStatus,
+  OrderLookup,
   OrderStatusResult,
   RecentOrders,
   RecentOrdersResult,
@@ -127,7 +127,7 @@ export class ToolService {
 
   async #runAuthorized<
     T extends
-      OrderStatus | FailedPaymentSummary | RecentOrders | FailedPaymentTrend,
+      OrderLookup | FailedPaymentSummary | RecentOrders | FailedPaymentTrend,
   >(
     requestId: string,
     action: string,

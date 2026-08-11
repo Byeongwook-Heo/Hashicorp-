@@ -32,7 +32,13 @@ const orderDataSchema = z.object({
   delivery_status: z.string(),
   updated_at: z.string(),
 });
-const orderResultSchema = orderDataSchema.extend({ access: accessSchema });
+const orderResultSchema = z.discriminatedUnion("status", [
+  orderDataSchema.extend({ status: z.literal("found"), access: accessSchema }),
+  z.object({
+    status: z.literal("not_found_or_unauthorized"),
+    access: accessSchema,
+  }),
+]);
 const paymentSummarySchema = z.object({
   date: z.string(),
   failed_count: z.number(),
@@ -559,6 +565,18 @@ export class BoundedChatAgent implements ChatAgent {
             requestId,
           ),
         );
+        if (result.status === "not_found_or_unauthorized") {
+          return allowedReply(
+            `주문 ${plan.order_id}에 대한 정보를 찾을 수 없거나 접근 권한이 없습니다.`,
+            "get_order_status",
+            principal,
+            result.access.credential_ttl_seconds,
+            [
+              { label: "최근 주문 5건", prompt: "최근 주문 5건을 요약해줘" },
+              ...decisionSuggestions(false),
+            ],
+          );
+        }
         return allowedReply(
           `주문 ${result.order_id}는 현재 ${translateDeliveryStatus(
             result.delivery_status,
@@ -585,7 +603,7 @@ export class BoundedChatAgent implements ChatAgent {
           ),
         );
         return allowedReply(
-          `${result.date} 실패 결제는 ${String(result.failed_count)}건입니다.` +
+          `${accessScopeLabel(principal)} ${result.date} 실패 결제는 ${String(result.failed_count)}건입니다.` +
             formatDeliveryBreakdown(result.by_delivery_status),
           "get_failed_payment_summary",
           principal,
@@ -618,7 +636,7 @@ export class BoundedChatAgent implements ChatAgent {
               .join(", ")
           : "조회된 주문이 없습니다";
         return allowedReply(
-          `최근 주문 ${String(result.orders.length)}건을 확인했습니다. ${orderSummary}.`,
+          `${accessScopeLabel(principal)} 최근 주문 ${String(result.orders.length)}건을 확인했습니다. ${orderSummary}.`,
           "get_recent_orders",
           principal,
           result.access.credential_ttl_seconds,
@@ -650,7 +668,7 @@ export class BoundedChatAgent implements ChatAgent {
               .join(", ")
           : "해당 기간에 주문 데이터가 없습니다";
         return allowedReply(
-          `최근 ${String(result.days)}일 실패 결제 통계입니다. ${trend}.`,
+          `${accessScopeLabel(principal)} 최근 ${String(result.days)}일 실패 결제 통계입니다. ${trend}.`,
           "get_failed_payment_trend",
           principal,
           result.access.credential_ttl_seconds,
@@ -975,6 +993,12 @@ function boundedNumber(
 
 function safeIdentityLabel(principal: ChatPrincipal): string {
   return principal.displayName.slice(0, 80);
+}
+
+function accessScopeLabel(principal: UserPrincipal): string {
+  return principal.accessTier === "orders-limited"
+    ? "제한된 주문 범위에서"
+    : "전체 주문 범위에서";
 }
 
 function isApprovedPrincipal(

@@ -19,9 +19,17 @@ export interface OrderStatus {
   updated_at: string;
 }
 
-export interface OrderStatusResult extends OrderStatus {
-  access: AccessMetadata;
+export interface OrderLookupFound extends OrderStatus {
+  status: "found";
 }
+
+export interface OrderLookupUnavailable {
+  status: "not_found_or_unauthorized";
+}
+
+export type OrderLookup = OrderLookupFound | OrderLookupUnavailable;
+
+export type OrderStatusResult = OrderLookup & { access: AccessMetadata };
 
 export interface AccessMetadata {
   nhi: string;

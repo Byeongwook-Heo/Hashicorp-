@@ -60,6 +60,7 @@ function buildApp(options?: {
   };
   const database: OrdersDatabase = {
     getOrderStatus: vi.fn().mockResolvedValue({
+      status: "found",
       order_id: "ORD-1001",
       payment_status: "PAID",
       delivery_status: "PREPARING",
