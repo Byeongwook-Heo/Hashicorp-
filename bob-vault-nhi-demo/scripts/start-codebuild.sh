@@ -61,9 +61,15 @@ print_build_report() {
       --limit 500 \
       --query 'events[].message' \
       --output json \
-      | jq -r '.[]' \
-      | sed -n '/^DEMO_ACCESS_REPORT_BEGIN$/,/^DEMO_ACCESS_REPORT_END$/p' \
-      | sed '/^DEMO_ACCESS_REPORT_\(BEGIN\|END\)$/d'
+      | jq -r '.[] | gsub("\\r"; "") | rtrimstr("\\n")' \
+      | awk '
+          /DEMO_ACCESS_REPORT_BEGIN/ {
+            printing = 1
+            next
+          }
+          /DEMO_ACCESS_REPORT_END/ { printing = 0; next }
+          printing && $0 !~ /^[[:space:]]*$/ { print }
+        '
   fi
 }
 
