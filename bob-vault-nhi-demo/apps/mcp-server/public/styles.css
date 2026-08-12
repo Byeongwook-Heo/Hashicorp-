@@ -1003,7 +1003,7 @@ body.authenticated > .site-footer {
   height: calc(100vh - 64px);
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
-  overflow: hidden;
+  overflow: clip;
   background: var(--surface);
 }
 

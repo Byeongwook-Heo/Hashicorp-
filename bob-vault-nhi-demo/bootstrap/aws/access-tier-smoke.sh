@@ -19,6 +19,7 @@ cleanup() {
   for lease_id in "${lease_ids[@]}"; do
     vault lease revoke "${lease_id}" >/dev/null 2>&1 || true
   done
+  cleanup_bootstrap_files
 }
 trap cleanup EXIT
 

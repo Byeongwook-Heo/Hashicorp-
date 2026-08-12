@@ -50,12 +50,31 @@ print_build_logs() {
   fi
 }
 
+print_build_report() {
+  local log_group log_stream
+  log_group="$(aws codebuild batch-get-builds --ids "${build_id}" --query 'builds[0].logs.groupName' --output text)"
+  log_stream="$(aws codebuild batch-get-builds --ids "${build_id}" --query 'builds[0].logs.streamName' --output text)"
+  if [[ "${log_group}" != "None" && "${log_stream}" != "None" ]]; then
+    aws logs get-log-events \
+      --log-group-name "${log_group}" \
+      --log-stream-name "${log_stream}" \
+      --limit 500 \
+      --query 'events[].message' \
+      --output json \
+      | jq -r '.[]' \
+      | sed -n '/^DEMO_ACCESS_REPORT_BEGIN$/,/^DEMO_ACCESS_REPORT_END$/p' \
+      | sed '/^DEMO_ACCESS_REPORT_\(BEGIN\|END\)$/d'
+  fi
+}
+
 while true; do
   status="$(aws codebuild batch-get-builds --ids "${build_id}" --query 'builds[0].buildStatus' --output text)"
   case "${status}" in
     SUCCEEDED)
       echo "CodeBuild succeeded."
-      if [[ "${PRINT_BUILD_LOGS:-0}" == "1" ]]; then
+      if [[ "${PRINT_BUILD_REPORT:-0}" == "1" ]]; then
+        print_build_report || echo "Warning: CodeBuild report could not be retrieved." >&2
+      elif [[ "${PRINT_BUILD_LOGS:-0}" == "1" ]]; then
         print_build_logs || echo "Warning: CodeBuild logs could not be retrieved." >&2
       fi
       exit 0

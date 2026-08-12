@@ -75,6 +75,7 @@ make build-image
 ACCESS_TIER_ENFORCEMENT=audit make deploy-chatbot
 make smoke
 make access-tier-smoke
+make demo-access-report
 make demo-status
 ```
 
@@ -86,6 +87,7 @@ ACCESS_TIER_ENFORCEMENT=enforce make vault-bootstrap
 ACCESS_TIER_ENFORCEMENT=enforce make deploy-chatbot
 make smoke
 make access-tier-smoke
+make demo-access-report
 ```
 
 In `enforce`, the legacy `bob-orders` Vault role and
@@ -101,3 +103,8 @@ In `enforce`, the legacy `bob-orders` Vault role and
 
 Do not reveal whether an out-of-scope order exists. Return the same
 "not found or unauthorized" response for both cases.
+
+`make demo-access-report` prints a presentation-safe comparison of the full
+and limited tiers. It displays only user labels, Vault/DB role names, visible
+order IDs, the full-view denial result, and lease cleanup status. Dynamic
+database usernames, passwords, Vault tokens, and lease IDs are not printed.

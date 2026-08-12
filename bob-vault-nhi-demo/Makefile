@@ -21,7 +21,7 @@ VERIFY_ACCESS_TIER_LIMITED_VALUE ?= orders-limited
 .PHONY: vault-port-forward vault-init vault-bootstrap db-bootstrap deploy-app
 .PHONY: configure-verify configure-chatbot-verify bootstrap-chat-session-secret bootstrap-contextforge-secret
 .PHONY: bootstrap-agent-runtime-secret agent-runtime-start agent-runtime-stop
-.PHONY: chatbot-plan deploy-chatbot copy-bob-token smoke access-tier-smoke demo-reset demo-status security-check
+.PHONY: chatbot-plan deploy-chatbot copy-bob-token smoke access-tier-smoke demo-access-report demo-reset demo-status security-check
 .PHONY: event-access-plan event-access-apply event-access-connect destroy
 .PHONY: source-cidr-add event-ssh-plan event-ssh-apply
 .PHONY: verify-jwks-plan verify-jwks-apply
@@ -160,6 +160,9 @@ smoke: ## Run AWS endpoint and MCP allow/deny smoke tests.
 
 access-tier-smoke: ## Verify Vault dynamic roles and PostgreSQL full/limited view isolation.
 	@./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=access-tier-smoke"
+
+demo-access-report: ## Show a sanitized full/limited user access report from Vault and PostgreSQL.
+	@PRINT_BUILD_REPORT=1 ./scripts/start-codebuild.sh "$(PROJECT)-bootstrap" "BOOTSTRAP_ACTION=demo-access-report"
 
 demo-reset: ## Reset only sanitized in-memory demo events.
 	@./scripts/demo-reset.sh

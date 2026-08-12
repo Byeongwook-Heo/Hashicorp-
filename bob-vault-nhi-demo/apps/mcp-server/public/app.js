@@ -42,6 +42,7 @@ const verifyDemoResultPanel = document.querySelector(
 const verifyDemoFinish = document.querySelector("#verify-demo-finish");
 const serviceVersion = document.querySelector("#service-version");
 const conversation = document.querySelector("#conversation");
+const chatScroll = document.querySelector(".chat-scroll");
 const trace = document.querySelector("#trace");
 const traceLiveState = document.querySelector("#trace-live-state");
 const traceStageCount = document.querySelector("#trace-stage-count");
@@ -1480,8 +1481,17 @@ function addMessage(kind, text, metadata) {
   }
   article.append(avatar, body);
   conversation.append(article);
-  article.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  scrollChatToBottom();
   return article;
+}
+
+function scrollChatToBottom(behavior = "smooth") {
+  window.requestAnimationFrame(() => {
+    chatScroll?.scrollTo({
+      top: chatScroll.scrollHeight,
+      behavior,
+    });
+  });
 }
 
 function appendQueryPreview(article, tool) {
@@ -2570,10 +2580,7 @@ stageDialogOpenAction?.addEventListener("click", () => {
   if (stageDialogOpenAction.dataset.action !== "focus-agent") return;
   closeStageDialog();
   window.requestAnimationFrame(() => {
-    document.querySelector("#chat-section")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    scrollChatToBottom();
     input?.focus({ preventScroll: true });
   });
 });
@@ -2743,7 +2750,7 @@ function populateComposer(message) {
   resizeComposerInput();
   input.focus({ preventScroll: true });
   input.setSelectionRange(prompt.length, prompt.length);
-  input.scrollIntoView({ behavior: "smooth", block: "center" });
+  scrollChatToBottom();
 }
 
 input.addEventListener("input", resizeComposerInput);
