@@ -158,10 +158,14 @@ export class ToolService {
           requestId,
         });
         const databaseResult = await databaseOperation(credentials);
+        const orderUnavailable =
+          action === "get_order_status" &&
+          "status" in databaseResult &&
+          databaseResult.status === "not_found_or_unauthorized";
         this.events.record({
           stage: "database",
-          status: "ok",
-          action,
+          status: orderUnavailable ? "denied" : "ok",
+          action: orderUnavailable ? "order_not_found_or_unauthorized" : action,
           requestId,
           latencyMs: performance.now() - startedAt,
         });

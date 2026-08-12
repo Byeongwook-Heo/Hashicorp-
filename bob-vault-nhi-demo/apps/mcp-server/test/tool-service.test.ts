@@ -141,6 +141,36 @@ describe("ToolService", () => {
     );
   });
 
+  it("records a scoped order miss as a denied data-return decision", async () => {
+    const fixture = buildService();
+    vi.mocked(fixture.database.getOrderStatus).mockResolvedValueOnce({
+      status: "not_found_or_unauthorized",
+    });
+
+    const result = await fixture.service.getOrderStatus(
+      "request-limited-miss",
+      "ORD-1002",
+      {
+        subject: "limited-user",
+        subjectToken: "header.payload.signature.obo",
+        accessTier: "orders-limited",
+        assertedAccessTier: "orders-limited",
+      },
+    );
+
+    expect(result.status).toBe("not_found_or_unauthorized");
+    expect(fixture.events.list()[0]).toMatchObject({
+      stage: "database",
+      status: "denied",
+      action: "order_not_found_or_unauthorized",
+    });
+    expect(fixture.events.list()[1]).toMatchObject({
+      stage: "vault",
+      status: "allowed",
+      action: "dynamic_credentials_issued",
+    });
+  });
+
   it("rejects an authenticated but unapproved OBO identity before Vault", async () => {
     const fixture = buildService();
 

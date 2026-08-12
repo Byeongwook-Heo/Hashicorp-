@@ -237,6 +237,16 @@ describe("BoundedChatAgent", () => {
       "주문 ORD-1002에 대한 정보를 찾을 수 없거나 접근 권한이 없습니다.",
     );
     expect(reply.reply).not.toContain("MCP:");
+    expect(reply.trace.at(-1)).toEqual({
+      label: "PostgreSQL 데이터 범위",
+      detail:
+        "요청한 주문이 없거나 현재 사용자 권한 범위에서 보이지 않아 데이터를 반환하지 않음",
+      status: "denied",
+    });
+    expect(reply.credential).toEqual({
+      initialTtlSeconds: 120,
+      state: "released",
+    });
   });
 
   it("routes a dated failed-payment request to the aggregate tool", async () => {

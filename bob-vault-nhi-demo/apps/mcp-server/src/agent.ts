@@ -566,9 +566,8 @@ export class BoundedChatAgent implements ChatAgent {
           ),
         );
         if (result.status === "not_found_or_unauthorized") {
-          return allowedReply(
+          return restrictedOrderReply(
             `주문 ${plan.order_id}에 대한 정보를 찾을 수 없거나 접근 권한이 없습니다.`,
-            "get_order_status",
             principal,
             result.access.credential_ttl_seconds,
             [
@@ -813,6 +812,29 @@ function allowedReply(
     reply,
     tool,
     trace: allowedTrace(principal, ttlSeconds),
+    credential: { initialTtlSeconds: ttlSeconds, state: "released" },
+    suggestions,
+  };
+}
+
+function restrictedOrderReply(
+  reply: string,
+  principal: UserPrincipal,
+  ttlSeconds: number,
+  suggestions: AgentSuggestion[],
+): AgentReply {
+  return {
+    reply,
+    tool: "get_order_status",
+    trace: [
+      ...allowedTrace(principal, ttlSeconds),
+      {
+        label: "PostgreSQL 데이터 범위",
+        detail:
+          "요청한 주문이 없거나 현재 사용자 권한 범위에서 보이지 않아 데이터를 반환하지 않음",
+        status: "denied",
+      },
+    ],
     credential: { initialTtlSeconds: ttlSeconds, state: "released" },
     suggestions,
   };

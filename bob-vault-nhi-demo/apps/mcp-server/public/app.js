@@ -258,6 +258,7 @@ const actionLabels = {
   get_failed_payment_summary: "실패 결제 요약 조회",
   get_recent_orders: "최근 주문 조회",
   get_failed_payment_trend: "실패 결제 통계 조회",
+  order_not_found_or_unauthorized: "주문 없음 또는 권한 범위 외",
   vault_policy_denied: "Vault 정책 거부",
   vault_policy_allowed: "Vault 정책 허용",
   pii_access_denied: "민감 정보 접근 차단",
@@ -2002,14 +2003,21 @@ async function sendMessage(message) {
     const deniedByPolicy = traceSteps.some(
       (step) => String(step.status) === "denied",
     );
+    const restrictedByDataScope = traceSteps.some(
+      (step) =>
+        String(step.status) === "denied" &&
+        String(step.label) === "PostgreSQL 데이터 범위",
+    );
     const responseMessage = addMessage(
       "agent",
       String(payload.reply),
-      payload.tool && deniedByPolicy
-        ? `보호 데이터 조회 차단 · 요청 ${String(payload.requestId).slice(0, 8)}`
-        : payload.tool
-          ? `MCP 도구 · ${toolLabels[String(payload.tool)] ?? String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
-          : "에이전트 정책 안내",
+      payload.tool && restrictedByDataScope
+        ? `권한 범위 외 · 데이터 미반환 · 요청 ${String(payload.requestId).slice(0, 8)}`
+        : payload.tool && deniedByPolicy
+          ? `보호 데이터 조회 차단 · 요청 ${String(payload.requestId).slice(0, 8)}`
+          : payload.tool
+            ? `MCP 도구 · ${toolLabels[String(payload.tool)] ?? String(payload.tool)} · 요청 ${String(payload.requestId).slice(0, 8)}`
+            : "에이전트 정책 안내",
     );
     latestTool = deniedByPolicy ? "" : String(payload.tool ?? "");
     if (!deniedByPolicy) {
@@ -2235,10 +2243,21 @@ function renderCurrentAccessStatus(
   const protectedDataDenied = requestEvents.some(
     (event) => String(event.action ?? "") === "protected_data_requires_verify",
   );
+  const scopedDataRestriction = requestEvents.some(
+    (event) =>
+      String(event.stage ?? "") === "database" &&
+      String(event.status ?? "") === "denied" &&
+      String(event.action ?? "") === "order_not_found_or_unauthorized",
+  );
   if (protectedDataDenied) {
     deniedResultByStage.policy = "미승인 사용자의 보호 데이터 조회 차단";
     deniedDescriptionByStage.policy =
       "챗봇 이용은 허용되지만 Verify 사용자 세션이 없어 데이터 조회를 중단했습니다. MCP, Vault, PostgreSQL은 호출하지 않았습니다.";
+  }
+  if (scopedDataRestriction) {
+    deniedResultByStage.database = "주문 데이터 반환 제한";
+    deniedDescriptionByStage.database =
+      "Verify 인증과 OBO·Gateway·MCP·Vault 처리는 성공했지만, PostgreSQL 제한 뷰가 요청한 주문을 반환하지 않았습니다. 주문이 없거나 현재 권한 범위 밖인지는 구분해 공개하지 않습니다.";
   }
   const errorPolicy = preVaultStages.has(stageKey)
     ? "평가 전"
@@ -2280,8 +2299,16 @@ function renderCurrentAccessStatus(
         deniedDescriptionByStage[stageKey] ??
         `${stage} 단계에서 요청을 차단했습니다. 이후 데이터 접근은 수행되지 않았습니다.`,
       badge: "차단",
-      policy: protectedDataDenied ? "Verify 승인 필요" : deniedPolicy,
-      credentials: credentialsIssued ? "발급 후 사용 차단" : "미발급",
+      policy: protectedDataDenied
+        ? "Verify 승인 필요"
+        : scopedDataRestriction
+          ? "제한 데이터 범위 적용"
+          : deniedPolicy,
+      credentials: scopedDataRestriction
+        ? "발급·조회 후 폐기"
+        : credentialsIssued
+          ? "발급 후 사용 차단"
+          : "미발급",
     },
     error: {
       result: "접근 처리 중 오류 발생",
@@ -2359,6 +2386,12 @@ function updatePathFromEvents(events) {
     return status === "denied" || (status !== "allowed" && status !== "ok");
   });
   const terminalKey = terminalEvent ? pathKeyForEvent(terminalEvent) : null;
+  const scopedDataRestriction = requestEvents.some(
+    (event) =>
+      String(event.stage ?? "") === "database" &&
+      String(event.status ?? "") === "denied" &&
+      String(event.action ?? "") === "order_not_found_or_unauthorized",
+  );
   const databaseComplete = requestEvents.some((event) => {
     const status = String(event.status ?? "");
     return (
@@ -2393,7 +2426,10 @@ function updatePathFromEvents(events) {
           ? "허용"
           : "성공"
         : status === "denied"
-          ? "차단"
+          ? key === "database" &&
+            String(event.action ?? "") === "order_not_found_or_unauthorized"
+            ? "조회 제한"
+            : "차단"
           : "오류";
     if (status === "allowed") successfulKeys.add(key);
     updatePathStep(key, label, status, time);
@@ -2409,9 +2445,11 @@ function updatePathFromEvents(events) {
     updatePathOverview(
       terminalKey,
       terminalState,
-      terminalState === "denied"
-        ? `${activePathCopy[terminalKey].label.replace(" 중", "")} 단계에서 요청을 차단했습니다. 이후 단계는 실행하지 않았습니다.`
-        : `${activePathCopy[terminalKey].label.replace(" 중", "")} 단계에서 오류가 발생해 요청을 중단했습니다.`,
+      scopedDataRestriction
+        ? "인증과 Vault 역할 부여는 성공했지만 PostgreSQL 제한 뷰에서 요청한 주문을 반환하지 않았습니다. 데이터는 노출되지 않았습니다."
+        : terminalState === "denied"
+          ? `${activePathCopy[terminalKey].label.replace(" 중", "")} 단계에서 요청을 차단했습니다. 이후 단계는 실행하지 않았습니다.`
+          : `${activePathCopy[terminalKey].label.replace(" 중", "")} 단계에서 오류가 발생해 요청을 중단했습니다.`,
     );
     return;
   }
