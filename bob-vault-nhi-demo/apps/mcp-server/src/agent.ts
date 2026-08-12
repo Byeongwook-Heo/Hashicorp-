@@ -973,7 +973,13 @@ function labTopic(
   if (/\bNHI\b|비인간|비-인간|머신 신원/i.test(message)) return "nhi";
   if (/IBM Verify|Verify 역할|사용자 인증/i.test(message)) return "verify";
   if (/Vault.*(역할|필요|설명)|왜.*Vault/i.test(message)) return "vault";
-  if (/\bMCP\b.*(역할|필요|설명)|MCP는/i.test(message)) return "mcp";
+  if (
+    /(?:\bMCP\b|ContextForge|Gateway).*(역할|필요|설명)|(?:MCP|ContextForge|Gateway)(?:는|가)/i.test(
+      message,
+    )
+  ) {
+    return "mcp";
+  }
   if (/보안 흐름|인증 흐름|신원 경로|Lab.*(구성|흐름)/i.test(message)) {
     return "security_flow";
   }

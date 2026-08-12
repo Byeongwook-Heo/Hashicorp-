@@ -372,6 +372,20 @@ describe("BoundedChatAgent", () => {
     expect(mcp.callTool).not.toHaveBeenCalled();
   });
 
+  it("explains the ContextForge gateway when enhanced planning is unavailable", async () => {
+    const { agent, mcp } = buildAgent({});
+
+    const reply = await agent.respond(
+      "ContextForge Gateway가 이 Lab에서 수행하는 역할을 설명해줘",
+      principal,
+    );
+
+    expect(reply.reply).toContain("등록된 MCP 도구로만 라우팅");
+    expect(reply.reply).toContain("OBO JWT");
+    expect(reply.tool).toBeNull();
+    expect(mcp.callTool).not.toHaveBeenCalled();
+  });
+
   it("falls back to deterministic routing when enhanced planning fails", async () => {
     const primary: MessagePlanner = {
       plan: vi.fn().mockRejectedValue(new Error("planning unavailable")),
