@@ -165,6 +165,10 @@ describe("HTTP security boundary", () => {
             new URL("../public/index.html", import.meta.url),
             "utf8",
           );
+    const appScript = await readFile(
+      new URL("../public/app.js", import.meta.url),
+      "utf8",
+    );
 
     expect(html).toContain('id="chat-section"');
     expect(html).toContain('id="control-center"');
@@ -179,7 +183,11 @@ describe("HTTP security boundary", () => {
     expect(html).toContain('id="access-mode-banner"');
     expect(html).toContain("미승인 사용자 모드");
     expect(html).toContain("일반 대화와 Lab 안내");
-    expect(html).toContain('data-protected="true"');
+    expect(html).toContain('id="suggestions"');
+    expect(html).toContain('id="shuffle-suggestions"');
+    expect(html).not.toContain('id="request-progress-dock"');
+    expect(appScript).toContain("protectedSuggestionPool");
+    expect(appScript).toContain('button.dataset.protected = "true"');
     expect(html).toContain('data-stage="vault"');
     expect(html).toContain("/icons/custom/postgresql-elephant.svg");
     expect(html).toContain("/icons/custom/hashicorp-vault.svg");

@@ -9,10 +9,10 @@
       content="IBM Verify 사용자 인증과 OBO 교환, ContextForge MCP Gateway, Vault 동적 권한, PostgreSQL 접근을 한 화면에서 보여주는 Agentic Security Lab"
     />
     <title>Agentic Security Lab | 대화 · 접근제어</title>
-    <script src="/theme.js?v=20260803-motion2"></script>
-    <link rel="stylesheet" href="/ibm-ui.css?v=20260803-motion2" />
-    <link rel="stylesheet" href="/styles.css?v=20260803-motion2" />
-    <script src="/app.js?v=20260803-motion2" type="module"></script>
+    <script src="/theme.js?v=20260812-carbon3"></script>
+    <link rel="stylesheet" href="/ibm-ui.css?v=20260812-carbon3" />
+    <link rel="stylesheet" href="/styles.css?v=20260812-carbon3" />
+    <script src="/app.js?v=20260812-carbon3" type="module"></script>
   </head>
   <body>
     <header class="topbar">
@@ -183,75 +183,6 @@
       </section>
 
       <section class="workspace" id="workspace" hidden>
-        <section
-          class="request-progress-dock"
-          id="request-progress-dock"
-          data-state="waiting"
-          aria-labelledby="request-progress-title"
-        >
-          <div
-            class="request-progress-summary"
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <span class="request-progress-signal" aria-hidden="true"></span>
-            <span class="request-progress-copy">
-              <small id="request-progress-id">새 요청 대기</small>
-              <strong id="request-progress-title">요청 대기</strong>
-            </span>
-            <span class="request-progress-metrics">
-              <b id="request-progress-count">0/7</b>
-              <span id="request-progress-elapsed">—</span>
-            </span>
-          </div>
-
-          <ol
-            class="request-progress-stages"
-            aria-label="현재 요청 보안 처리 단계"
-          >
-            <li data-dock-stage="verify">
-              <span class="dock-stage-marker" aria-hidden="true">1</span>
-              <span>Verify</span>
-            </li>
-            <li data-dock-stage="agent">
-              <span class="dock-stage-marker" aria-hidden="true">2</span>
-              <span>Agent</span>
-            </li>
-            <li data-dock-stage="obo">
-              <span class="dock-stage-marker" aria-hidden="true">3</span>
-              <span>OBO</span>
-            </li>
-            <li data-dock-stage="gateway">
-              <span class="dock-stage-marker" aria-hidden="true">4</span>
-              <span>Gateway</span>
-            </li>
-            <li data-dock-stage="mcp">
-              <span class="dock-stage-marker" aria-hidden="true">5</span>
-              <span>MCP</span>
-            </li>
-            <li data-dock-stage="vault">
-              <span class="dock-stage-marker" aria-hidden="true">6</span>
-              <span>Vault</span>
-            </li>
-            <li data-dock-stage="database">
-              <span class="dock-stage-marker" aria-hidden="true">7</span>
-              <span>PostgreSQL</span>
-            </li>
-          </ol>
-
-          <div
-            class="request-progress-track"
-            id="request-progress-track"
-            role="progressbar"
-            aria-label="현재 요청 전체 진행률"
-            aria-valuemin="0"
-            aria-valuemax="5"
-            aria-valuenow="0"
-          >
-            <span id="request-progress-track-fill"></span>
-          </div>
-        </section>
-
         <section class="console-layout">
           <section
             class="chat-surface"
@@ -306,72 +237,30 @@
                     Bob입니다.<br />무엇을 도와드릴까요?
                   </p>
 
-                  <div class="suggestions" aria-label="빠른 요청">
-                    <button
-                      type="button"
-                      data-protected="true"
-                      data-prompt="주문 ORD-1001 상태를 확인해줘"
-                    >
-                      <span
-                        class="carbon-icon icon-delivery"
-                        aria-hidden="true"
-                      ></span>
-                      주문 ORD-1001 상태 확인
-                    </button>
-                    <button
-                      type="button"
-                      data-protected="true"
-                      data-prompt="최근 주문 5건을 요약해줘"
-                    >
-                      <span
-                        class="carbon-icon icon-cloud-auditing"
-                        aria-hidden="true"
-                      ></span>
-                      최근 주문 5건 요약
-                    </button>
-                    <button
-                      type="button"
-                      data-protected="true"
-                      data-prompt="오늘 실패한 결제를 요약해줘"
-                    >
-                      <span
-                        class="carbon-icon icon-chart-bar"
-                        aria-hidden="true"
-                      ></span>
-                      오늘 실패 결제 요약
-                    </button>
-                    <button
-                      type="button"
-                      data-protected="true"
-                      data-prompt="최근 7일 실패 결제 통계를 보여줘"
-                    >
-                      <span
-                        class="carbon-icon icon-chart-bar"
-                        aria-hidden="true"
-                      ></span>
-                      7일 실패 결제 통계
-                    </button>
-                    <button
-                      type="button"
-                      data-protected="true"
-                      data-prompt="CUS-1001의 민감 결제 정보를 보여줘"
-                    >
-                      <span
-                        class="carbon-icon icon-locked"
-                        aria-hidden="true"
-                      ></span>
-                      민감 정보 정책 차단 확인
-                    </button>
-                    <button
-                      type="button"
-                      data-prompt="이 Lab의 보안 흐름을 설명해줘"
-                    >
-                      <span
-                        class="carbon-icon icon-security"
-                        aria-hidden="true"
-                      ></span>
-                      Lab 보안 흐름 안내
-                    </button>
+                  <div class="suggestion-panel">
+                    <div class="suggestion-heading">
+                      <span>
+                        <small>추천 프롬프트</small>
+                        <strong>샘플 요청</strong>
+                      </span>
+                      <button
+                        id="shuffle-suggestions"
+                        type="button"
+                        aria-label="다른 샘플 요청 보기"
+                      >
+                        <span
+                          class="carbon-icon icon-renew"
+                          aria-hidden="true"
+                        ></span>
+                        다른 요청
+                      </button>
+                    </div>
+                    <div
+                      class="suggestions"
+                      id="suggestions"
+                      aria-label="샘플 요청"
+                      aria-live="polite"
+                    ></div>
                   </div>
                 </div>
               </section>

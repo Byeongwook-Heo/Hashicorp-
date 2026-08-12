@@ -43,23 +43,14 @@ const verifyDemoFinish = document.querySelector("#verify-demo-finish");
 const serviceVersion = document.querySelector("#service-version");
 const conversation = document.querySelector("#conversation");
 const chatScroll = document.querySelector(".chat-scroll");
+const suggestions = document.querySelector("#suggestions");
+const shuffleSuggestionsButton = document.querySelector("#shuffle-suggestions");
 const trace = document.querySelector("#trace");
 const traceLiveState = document.querySelector("#trace-live-state");
 const traceStageCount = document.querySelector("#trace-stage-count");
 const traceStageDetail = document.querySelector("#trace-stage-detail");
 const pathProgress = document.querySelector("#path-progress");
 const traceProgressFill = document.querySelector("#trace-progress-fill");
-const requestProgressDock = document.querySelector("#request-progress-dock");
-const requestProgressId = document.querySelector("#request-progress-id");
-const requestProgressTitle = document.querySelector("#request-progress-title");
-const requestProgressCount = document.querySelector("#request-progress-count");
-const requestProgressElapsed = document.querySelector(
-  "#request-progress-elapsed",
-);
-const requestProgressTrack = document.querySelector("#request-progress-track");
-const requestProgressTrackFill = document.querySelector(
-  "#request-progress-track-fill",
-);
 const form = document.querySelector("#chat-form");
 const input = document.querySelector("#chat-input");
 const send = document.querySelector("#send");
@@ -130,15 +121,95 @@ const pathSteps = {
   vault: document.querySelector("#path-step-vault"),
   database: document.querySelector("#path-step-database"),
 };
-const dockSteps = Object.fromEntries(
-  ["verify", "agent", "obo", "gateway", "mcp", "vault", "database"].map(
-    (key) => [key, document.querySelector(`[data-dock-stage="${key}"]`)],
-  ),
-);
 
 const defaultTraceMarkup = trace.innerHTML;
 const defaultConversationMarkup = conversation.innerHTML;
 const themeStorageKey = "bob-vault-demo-theme";
+const suggestionLimit = 6;
+const protectedSuggestionPool = [
+  {
+    label: "주문 ORD-1001 상태 확인",
+    prompt: "주문 ORD-1001 상태를 확인해줘",
+    icon: "icon-delivery",
+  },
+  {
+    label: "주문 ORD-1002 상태 확인",
+    prompt: "주문 ORD-1002 상태를 확인해줘",
+    icon: "icon-delivery",
+  },
+  {
+    label: "주문 ORD-1003 배송 현황",
+    prompt: "주문 ORD-1003의 결제와 배송 상태를 알려줘",
+    icon: "icon-delivery",
+  },
+  {
+    label: "주문 ORD-1004 상태 확인",
+    prompt: "주문 ORD-1004 상태를 확인해줘",
+    icon: "icon-delivery",
+  },
+  {
+    label: "최근 주문 5건 요약",
+    prompt: "최근 주문 5건을 요약해줘",
+    icon: "icon-cloud-auditing",
+  },
+  {
+    label: "오늘 실패 결제 요약",
+    prompt: "오늘 실패한 결제를 요약해줘",
+    icon: "icon-chart-bar",
+  },
+  {
+    label: "7일 실패 결제 추이",
+    prompt: "최근 7일 실패 결제 통계를 보여줘",
+    icon: "icon-chart-bar",
+  },
+  {
+    label: "민감 정보 차단 확인",
+    prompt: "CUS-1001의 민감 결제 정보를 보여줘",
+    icon: "icon-locked",
+  },
+];
+const guideSuggestionPool = [
+  {
+    label: "Lab 보안 흐름 안내",
+    prompt: "이 Lab의 보안 흐름을 설명해줘",
+    icon: "icon-security",
+  },
+  {
+    label: "OBO 토큰 교환 설명",
+    prompt: "사용자 JWT가 OBO 토큰으로 교환되는 과정을 설명해줘",
+    icon: "icon-user-id",
+  },
+  {
+    label: "Vault 동적 자격증명 설명",
+    prompt: "Vault가 PostgreSQL 동적 자격증명을 발급하는 과정을 설명해줘",
+    icon: "icon-locked",
+  },
+  {
+    label: "권한 등급 차이 설명",
+    prompt: "전체 사용자와 제한 사용자의 주문 조회 권한 차이를 설명해줘",
+    icon: "icon-policy",
+  },
+  {
+    label: "Gateway 역할 설명",
+    prompt: "ContextForge Gateway가 이 Lab에서 수행하는 역할을 설명해줘",
+    icon: "icon-network",
+  },
+  {
+    label: "차단 시나리오 안내",
+    prompt: "권한 없는 사용자의 데이터 요청이 어디에서 차단되는지 설명해줘",
+    icon: "icon-warning",
+  },
+  {
+    label: "최소 권한 정책 안내",
+    prompt: "이 Lab이 최소 권한 원칙을 적용하는 방법을 설명해줘",
+    icon: "icon-security-services",
+  },
+  {
+    label: "자격증명 폐기 과정",
+    prompt: "데이터 조회 후 동적 자격증명이 어떻게 폐기되는지 설명해줘",
+    icon: "icon-renew",
+  },
+];
 const allowedStatuses = new Set(["allowed", "denied", "error", "ok"]);
 const toolLabels = {
   get_order_status: "주문 상태 조회",
@@ -305,16 +376,77 @@ let latestTool = "";
 let stageDialogTrigger = null;
 let activeRequestId = null;
 let requestProgressInterval = null;
-let requestElapsedInterval = null;
-let requestStartedAt = 0;
-let requestElapsedMilliseconds = 0;
 let currentStageDetail = null;
+let lastSuggestionSignature = "";
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+function shuffled(items) {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+
+function syncSuggestionAccessState() {
+  document
+    .querySelectorAll(".suggestions [data-protected='true']")
+    .forEach((button) => {
+      button.classList.toggle("requires-approval", !isApprovedUser);
+      button.title = isApprovedUser
+        ? "승인된 읽기 전용 데이터 요청"
+        : "요청은 가능하지만 미승인 상태에서는 Agent가 조회를 차단합니다";
+    });
+}
+
+function renderSuggestions() {
+  if (!suggestions) return;
+  let selected = [];
+  let signature = "";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const protectedItems = shuffled(protectedSuggestionPool).slice(0, 4);
+    const guideItems = shuffled(guideSuggestionPool).slice(
+      0,
+      suggestionLimit - protectedItems.length,
+    );
+    selected = shuffled([
+      ...protectedItems.map((item) => ({ ...item, protected: true })),
+      ...guideItems.map((item) => ({ ...item, protected: false })),
+    ]);
+    signature = selected.map((item) => item.prompt).join("|");
+    if (signature !== lastSuggestionSignature) break;
+  }
+  lastSuggestionSignature = signature;
+
+  suggestions.replaceChildren(
+    ...selected.map((item) => {
+      const button = element("button", "suggestion-item");
+      button.type = "button";
+      button.dataset.prompt = item.prompt;
+      if (item.protected) button.dataset.protected = "true";
+      const icon = element("span", `carbon-icon ${item.icon}`);
+      icon.setAttribute("aria-hidden", "true");
+      const copy = element("span", "suggestion-copy");
+      copy.append(
+        element(
+          "small",
+          "suggestion-type",
+          item.protected ? "보호 데이터" : "Lab 안내",
+        ),
+        element("strong", "", item.label),
+      );
+      button.append(icon, copy);
+      return button;
+    }),
+  );
+  syncSuggestionAccessState();
 }
 
 function preferredTheme() {
@@ -1421,14 +1553,9 @@ function showWorkspace(approved = false, authenticated = false) {
       : "일반 대화와 Lab 안내는 사용할 수 있지만 주문·결제 데이터 조회는 Agent 단계에서 차단됩니다.";
   accessModeLogin.hidden = authenticated;
   demoReset.hidden = !authenticated;
-  document.querySelectorAll("[data-protected='true']").forEach((button) => {
-    button.classList.toggle("requires-approval", !approved);
-    button.title = approved
-      ? "승인된 읽기 전용 데이터 요청"
-      : "요청은 가능하지만 미승인 상태에서는 Agent가 조회를 차단합니다";
-  });
+  renderSuggestions();
+  syncSuggestionAccessState();
   activeRequestId = null;
-  resetRequestProgressDock();
   resetTelemetryPath();
   renderCurrentAccessStatus([]);
   input.focus();
@@ -1528,7 +1655,9 @@ function setBusy(busy) {
   send.disabled = busy;
   conversation.setAttribute("aria-busy", String(busy));
   document
-    .querySelectorAll(".suggestions button, .follow-up-suggestions button")
+    .querySelectorAll(
+      ".suggestions button, #shuffle-suggestions, .follow-up-suggestions button",
+    )
     .forEach((button) => (button.disabled = busy));
 }
 
@@ -1542,50 +1671,6 @@ function startRequestProgressPolling() {
   stopRequestProgressPolling();
   void loadEvents();
   requestProgressInterval = window.setInterval(() => void loadEvents(), 250);
-}
-
-function formatRequestElapsed(milliseconds) {
-  if (!Number.isFinite(milliseconds) || milliseconds < 0) return "—";
-  const seconds = milliseconds / 1000;
-  return seconds < 10 ? `${seconds.toFixed(1)}초` : `${Math.round(seconds)}초`;
-}
-
-function renderRequestElapsed() {
-  const elapsed = requestStartedAt
-    ? Date.now() - requestStartedAt
-    : requestElapsedMilliseconds;
-  requestElapsedMilliseconds = Math.max(elapsed, 0);
-  requestProgressElapsed.textContent = formatRequestElapsed(
-    requestElapsedMilliseconds,
-  );
-}
-
-function stopRequestElapsedTimer() {
-  if (requestStartedAt) renderRequestElapsed();
-  requestStartedAt = 0;
-  if (!requestElapsedInterval) return;
-  window.clearInterval(requestElapsedInterval);
-  requestElapsedInterval = null;
-}
-
-function startRequestElapsedTimer() {
-  stopRequestElapsedTimer();
-  requestElapsedMilliseconds = 0;
-  requestStartedAt = Date.now();
-  renderRequestElapsed();
-  requestElapsedInterval = window.setInterval(renderRequestElapsed, 100);
-}
-
-function resetRequestProgressDock() {
-  stopRequestElapsedTimer();
-  requestElapsedMilliseconds = 0;
-  requestProgressId.textContent = "새 요청 대기";
-  requestProgressTitle.textContent = "요청 대기";
-  requestProgressCount.textContent = "0/7";
-  requestProgressElapsed.textContent = "—";
-  requestProgressDock.dataset.state = "waiting";
-  requestProgressTrack.setAttribute("aria-valuenow", "0");
-  requestProgressTrackFill.style.width = "0%";
 }
 
 function addThinking() {
@@ -1706,19 +1791,6 @@ function updatePathStep(
 
   const visualState = active ? "active" : status;
   if (animateMotion) applyStageMotion(step, visualState);
-
-  const dockStep = dockSteps[key];
-  if (dockStep) {
-    dockStep.classList.toggle("active", active);
-    dockStep.classList.toggle("complete", status === "allowed");
-    dockStep.classList.toggle("denied", status === "denied");
-    dockStep.classList.toggle("error", status === "error");
-    dockStep.setAttribute(
-      "aria-label",
-      `${dockStep.textContent.trim()} ${label}`,
-    );
-    if (animateMotion) applyStageMotion(dockStep, visualState);
-  }
 }
 
 function resetVisiblePath(preserveMotionState = false) {
@@ -1726,10 +1798,7 @@ function resetVisiblePath(preserveMotionState = false) {
     updatePathStep(key, value.label, value.status, "—", false, false);
   }
   if (!preserveMotionState) {
-    for (const node of [
-      ...Object.values(pathSteps),
-      ...Object.values(dockSteps),
-    ]) {
+    for (const node of Object.values(pathSteps)) {
       if (!node) continue;
       node.classList.remove(...stageMotionClasses);
       node.dataset.motionState = "neutral";
@@ -1770,7 +1839,6 @@ function updatePathOverview(stage, state, detail) {
     state === "waiting"
       ? `0/${String(pathOrder.length)}`
       : `${String(currentValue)}/${String(pathOrder.length)}`;
-  requestProgressCount.textContent = traceStageCount.textContent;
   traceLiveState.textContent = overviewLabel;
   traceLiveState.className = `live-state ${
     state === "complete" || state === "response" ? "verified" : state
@@ -1779,19 +1847,9 @@ function updatePathOverview(stage, state, detail) {
   pathProgress.className = `path-progress ${state}`;
   pathProgress.setAttribute("aria-valuenow", String(currentValue));
   traceProgressFill.style.width = `${String(progressPercent)}%`;
-  requestProgressDock.dataset.state = state;
-  requestProgressTitle.textContent = overviewLabel;
-  requestProgressTrack.setAttribute("aria-valuenow", String(currentValue));
-  requestProgressTrackFill.style.width = `${String(progressPercent)}%`;
-
-  if (["complete", "response", "denied", "error"].includes(state)) {
-    stopRequestElapsedTimer();
-  }
 }
 
 function beginRequestPath() {
-  requestProgressId.textContent = `요청 ${activeRequestId.slice(0, 8)}`;
-  startRequestElapsedTimer();
   resetVisiblePath();
   if (isApprovedUser) {
     updatePathStep("verify", activePathCopy.verify.state, "active", "—", true);
@@ -2526,8 +2584,8 @@ async function resetDemoSession() {
     latestTool = "";
     stopRequestProgressPolling();
     activeRequestId = null;
-    resetRequestProgressDock();
     conversation.innerHTML = defaultConversationMarkup;
+    renderSuggestions();
     renderTrace([]);
     renderEvents([]);
     renderCurrentAccessStatus([]);
@@ -2755,6 +2813,15 @@ function populateComposer(message) {
 
 input.addEventListener("input", resizeComposerInput);
 
+shuffleSuggestionsButton?.addEventListener("click", () => {
+  if (shuffleSuggestionsButton.disabled) return;
+  renderSuggestions();
+  shuffleSuggestionsButton.classList.remove("is-shuffling");
+  window.requestAnimationFrame(() => {
+    shuffleSuggestionsButton.classList.add("is-shuffling");
+  });
+});
+
 document.addEventListener("click", (event) => {
   const button = event.target.closest?.("button[data-prompt]");
   if (!button || button.disabled) return;
@@ -2779,6 +2846,7 @@ logout.addEventListener("click", async () => {
 });
 
 applyTheme(preferredTheme());
+renderSuggestions();
 await loadStatus();
 
 try {
