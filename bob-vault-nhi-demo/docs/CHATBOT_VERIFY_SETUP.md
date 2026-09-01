@@ -108,7 +108,8 @@ configuration.
 
 1. Open the root URL and complete Verify login.
 2. Ask for `ORD-1001`.
-3. Confirm the response has an MCP tool name and a six-step security trace.
-4. Open `/ops` and confirm sanitized `identity`, `gateway`, `transport`, `vault`,
-   and `database` events.
+3. Confirm the response has an MCP tool name and the seven-stage Verify, Agent,
+   OBO, ContextForge, MCP, Vault, and PostgreSQL trace.
+4. Open `/#control-center` and confirm sanitized `identity`, `gateway`,
+   `transport`, `vault`, and `database` events.
 5. Run the sensitive-data prompt and confirm Vault denial with no DB event.

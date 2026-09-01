@@ -1,34 +1,42 @@
 # Blockers and external inputs
 
-## Does not block implementation or bootstrap deployment
+## Current event state
 
-IBM Verify values are intentionally optional until the bootstrap MCP endpoint and KMS-backed JWKS are online.
+There is no known implementation blocker for the deployed event scenario. The
+user OIDC application, Agent STS client, OBO exchange, signed access-tier
+claims, Vault policies, and PostgreSQL full/limited views have been configured
+and validated.
 
-## Required before Verify preflight
+## Inputs required for a rebuild
 
-- `VERIFY_ISSUER`
-- `VERIFY_TOKEN_URL`
-- `VERIFY_JWKS_URL`
-- `VERIFY_AUDIENCE`
-- `VERIFY_CLIENT_ID`
-- `VERIFY_SCOPE`
-- `VERIFY_NHI_CLAIM`
-- `VERIFY_NHI_VALUE`
+- valid short-lived AWS STS credentials for account `063455554839`
+- the approved Vault Enterprise license file, kept outside Git
+- the existing VPC, six subnets, Route 53 hosted zone, Terraform state bucket,
+  and approved hardened AMI listed in `scripts/aws-preflight.sh`
+- IBM Verify tenant administration access for the public OIDC application,
+  Agent STS client, scopes, entitlements, and `access_tier` claim mapping
+- an approved public source CIDR for the event laptop or VPN
+- the private planning runtime token when natural-language planning is enabled
 
-## Required before the event
+## Time-bound constraints
 
-- Confirm the event venue or VPN public egress CIDR and update `ALLOWED_SOURCE_CIDRS`.
-- Complete `gh auth login` before publishing the branch and draft pull request.
-- Configure Bob with the MCP transport token retrieved through the approved secret handoff process.
+- Vault license expiry: `2026-09-02T00:00:00Z`
+- event IAM/SSM access expiry: `2026-09-02T00:00:00Z`
+- event SSH authorized-key expiry: `20260902000000` UTC
 
-## Current status
+Do not extend these values without approval. If the environment is reused,
+renew the license, re-approve operator access, rotate the event key material,
+and run a fresh Terraform plan.
 
-- AWS bootstrap endpoint, KMS JWKS, Vault, RDS, ECR image, and ECS service are deployed.
-- Full Vault JWT/database-engine configuration waits for the Verify issuer, JWKS, audience, client ID, scope, and NHI claim.
-- GitHub publication waits for `gh auth login`; the local branch contains committed source.
+## Operational caveats
 
-## Accepted constraints
+- A changed laptop/VPN public IP requires an approved source-CIDR update.
+- Manage source CIDRs through `make source-cidr-add`; duplicate manual
+  security-group rules can cause a later Terraform apply to fail.
+- ContextForge is private and intentionally has no public Admin UI.
+- Full chatbot MCP calls require a Verify OBO JWT. The static transport token is
+  discovery-only in this mode.
+- The event Vault topology is single-node Raft and is not production HA.
 
-- The Vault license terminates on 2026-09-02 00:00 UTC. The event is on 2026-09-01.
-- The selected hardened AMI is x86_64, so the Vault instance type must also be x86_64.
-- IBM Verify configuration remains a documented manual step unless tenant administration credentials are supplied.
+See [the installation guide](docs/INSTALLATION.md) and
+[operations runbook](docs/OPERATIONS_RUNBOOK.md) for the supported procedures.

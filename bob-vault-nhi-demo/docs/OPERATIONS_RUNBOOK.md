@@ -34,8 +34,10 @@ make bootstrap-chat-session-secret
 make bootstrap-agent-runtime-secret
 make vault-bootstrap
 make agent-runtime-start
+make chatbot-plan
 make deploy-chatbot
 make smoke
+make access-tier-smoke
 make demo-status
 ```
 
@@ -61,16 +63,24 @@ make agent-runtime-stop
 
 ## Source CIDR change
 
-If the laptop or VPN public egress changes:
+If the laptop or VPN public egress changes, add the exact approved `/32` without
+replacing the existing allowlist:
 
 ```bash
-./scripts/configure-source-cidr.sh
-make upload-source
-make tf-apply-base
+SOURCE_CIDR='203.0.113.10/32' make source-cidr-add
 ```
 
-Set `BOB_SOURCE_CIDRS` to a comma-separated allowlist for the known event/VPN
-egress ranges.
+Do not add the same rule manually in the EC2 console; duplicate unmanaged rules
+can cause a later Terraform apply to fail. For a new bootstrap, set
+`BOB_SOURCE_CIDRS` to a comma-separated allowlist before `make bootstrap-aws`.
+
+## ContextForge operations
+
+ContextForge runs on loopback port `4444` in the ECS task. Its native UI is
+disabled and no ALB listener exposes it. Use the integrated control center and
+the CloudWatch `contextforge` log stream for health and routing evidence. The
+static transport token is discovery-only in chatbot mode; protected tool calls
+must carry a Verify OBO JWT.
 
 ## Secret rotation
 

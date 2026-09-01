@@ -1,6 +1,9 @@
-# IBM Verify setup
+# IBM Verify setup (legacy client-credentials mode)
 
-IBM Verify tenant administration is the only external configuration still required.
+This document is retained for the legacy `deploy-app` client-credentials mode.
+The current event chatbot uses browser OIDC plus RFC 8693 OBO Token Exchange;
+follow [CHATBOT_VERIFY_SETUP.md](CHATBOT_VERIFY_SETUP.md) and
+[ACCESS_TIER_SETUP.md](ACCESS_TIER_SETUP.md) for that deployment.
 
 ## Values to collect
 
@@ -48,7 +51,7 @@ Required access token:
 
 - signed JWT, not opaque
 - expected issuer and audience
-- NHI claim equal to `bob-db-reader`
+- NHI claim equal to the configured generated API client ID
 - short lifetime appropriate for the demo
 
 ## Store the public integration metadata

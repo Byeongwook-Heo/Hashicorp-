@@ -34,33 +34,40 @@ User → Verify login → Chat Agent → Verify OBO → ContextForge → MCP →
                          └→ Private intent planning (message only)
 ```
 
-Deployed bootstrap endpoint:
+Deployed chatbot endpoint:
 
 ```text
 https://bob-vault-demo.byeongwook-heo.sbx.hashidemos.io
 ```
 
-The chatbot and MCP runtime share one private ECS task. IBM Verify user OIDC and
-STS client IDs are external tenant inputs before the OBO path can be deployed.
-The planning runtime remains on a private peered network and is started only for
-event preparation and live-demo windows.
+The chatbot and MCP runtime share one private ECS task. A rebuild requires the
+IBM Verify user OIDC and STS client IDs as external tenant inputs. The planning
+runtime remains on a private peered network and is started only for event
+preparation and live-demo windows.
 
-Start or verify with:
+For the existing deployed environment, load fresh short-lived AWS credentials
+and verify it with:
 
 ```bash
 make aws-preflight
-make bootstrap-aws
-make bootstrap-contextforge-secret
-make upload-source
-make ci
-make tf-plan
 make smoke
+make access-tier-smoke
+make demo-status
 ```
 
-See [chatbot Verify/OBO setup](docs/CHATBOT_VERIFY_SETUP.md),
-[access-tier rollout](docs/ACCESS_TIER_SETUP.md),
-[architecture](docs/ARCHITECTURE.md), [the editable draw.io
-architecture](docs/bob-vault-nhi-demo-architecture.drawio), [event team EC2
-access](docs/EC2_TEAM_ACCESS.md), [the operations
-runbook](docs/OPERATIONS_RUNBOOK.md), and [threat
-model](docs/THREAT_MODEL.md).
+For a new installation or a full rebuild, follow the ordered
+[AWS environment and installation guide](docs/INSTALLATION.md). It documents
+the existing account/network prerequisites, AWS-only build path, IBM Verify
+OIDC/OBO setup, Vault/RDS bootstrap, access methods, validation, and cleanup
+guardrails.
+
+Additional references:
+
+- [current implementation status](IMPLEMENTATION_STATUS.md)
+- [chatbot Verify/OBO setup](docs/CHATBOT_VERIFY_SETUP.md)
+- [access-tier rollout](docs/ACCESS_TIER_SETUP.md)
+- [architecture](docs/ARCHITECTURE.md)
+- [editable draw.io architecture](docs/bob-vault-nhi-demo-architecture.drawio)
+- [event team EC2 access](docs/EC2_TEAM_ACCESS.md)
+- [operations runbook](docs/OPERATIONS_RUNBOOK.md)
+- [threat model](docs/THREAT_MODEL.md)

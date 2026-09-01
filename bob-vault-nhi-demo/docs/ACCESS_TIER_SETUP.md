@@ -22,7 +22,10 @@ The deployed default is now `enforce`. Verify emits the configured claim in
 both tokens, and full, limited, and unapproved paths have completed end-to-end
 validation. `audit` remains available only for a deliberate staged rollout.
 
-## Verify tenant work still required
+## Verify tenant configuration
+
+The current event tenant has completed these steps. Repeat them when rebuilding
+the lab in another tenant or adding a new access tier:
 
 1. Create groups or entitlements corresponding to `orders-full` and
    `orders-limited`.
