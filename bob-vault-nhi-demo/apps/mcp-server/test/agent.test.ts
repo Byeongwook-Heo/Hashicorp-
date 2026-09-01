@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   BoundedChatAgent,
+  type AnswerComposer,
   type McpToolCaller,
   ResilientPlanner,
   RuleBasedPlanner,
@@ -214,6 +215,79 @@ describe("BoundedChatAgent", () => {
     );
   });
 
+  it("uses bounded conversation context for a follow-up question", async () => {
+    const orderResult = {
+      status: "found",
+      order_id: "ORD-1001",
+      payment_status: "PAID",
+      delivery_status: "PREPARING",
+      updated_at: "2026-07-30T00:00:00.000Z",
+      access: accessResult(),
+    } as const;
+    const mcp: McpToolCaller = {
+      callTool: vi
+        .fn()
+        .mockResolvedValueOnce(orderResult)
+        .mockResolvedValueOnce(orderResult),
+    };
+    const agent = new BoundedChatAgent(mcp);
+
+    await agent.respond("ORD-1001 상태를 알려줘", principal);
+    const followUp = await agent.respond("그 주문 다시 설명해줘", principal);
+
+    expect(followUp.reply).toContain("ORD-1001");
+    expect(mcp.callTool).toHaveBeenNthCalledWith(
+      2,
+      "get_order_status",
+      { order_id: "ORD-1001" },
+      principal.accessToken,
+    );
+  });
+
+  it("does not reuse a previous order when the next message is a greeting", async () => {
+    const mcp: McpToolCaller = {
+      callTool: vi.fn().mockResolvedValue({
+        status: "found",
+        order_id: "ORD-1004",
+        payment_status: "FAILED",
+        delivery_status: "ON_HOLD",
+        updated_at: "2026-08-08T07:46:23.248589Z",
+        access: accessResult(),
+      }),
+    };
+    const answerComposer: AnswerComposer = {
+      compose: vi
+        .fn()
+        .mockImplementation((input: Parameters<AnswerComposer["compose"]>[0]) =>
+          Promise.resolve(input.groundedReply),
+        ),
+    };
+    const agent = new BoundedChatAgent(
+      mcp,
+      new RuleBasedPlanner(),
+      undefined,
+      undefined,
+      answerComposer,
+    );
+
+    await agent.respond("ORD-1004 상태를 알려줘", principal);
+    const greeting = await agent.respond("안녕?", principal);
+
+    expect(greeting.reply).toContain("안녕하세요");
+    expect(greeting.reply).not.toContain("ORD-1004");
+    expect(greeting.reply).not.toContain("결제 실패");
+    expect(greeting.tool).toBeNull();
+    expect(mcp.callTool).toHaveBeenCalledOnce();
+    expect(answerComposer.compose).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        message: "안녕?",
+        intent: "casual_chat",
+        context: [],
+      }),
+    );
+  });
+
   it("does not reveal whether an order is absent or outside the user's scope", async () => {
     const { agent } = buildAgent({
       status: "not_found_or_unauthorized",
@@ -382,6 +456,87 @@ describe("BoundedChatAgent", () => {
     expect(mcp.callTool).not.toHaveBeenCalled();
   });
 
+  it("recognizes natural JWT-to-OBO questions as the security flow", async () => {
+    const { agent, mcp } = buildAgent({});
+
+    const reply = await agent.respond(
+      "승인된 사용자로 로그인하고 사용자 JWT가 OBO 토큰으로 교환되는 과정을 설명해줘",
+      principal,
+    );
+
+    expect(reply.reply).toContain("RFC 8693 OBO 교환");
+    expect(reply.tool).toBeNull();
+    expect(mcp.callTool).not.toHaveBeenCalled();
+  });
+
+  it("uses the response composer only after producing a grounded answer", async () => {
+    const mcp: McpToolCaller = {
+      callTool: vi.fn().mockResolvedValue({
+        status: "found",
+        order_id: "ORD-1001",
+        payment_status: "PAID",
+        delivery_status: "DELIVERED",
+        updated_at: "2026-07-30T00:00:00.000Z",
+        access: accessResult(),
+      }),
+    };
+    const answerComposer: AnswerComposer = {
+      compose: vi
+        .fn()
+        .mockResolvedValue(
+          "확인해 보니 ORD-1001은 배송이 완료됐고 결제도 정상적으로 완료됐습니다.",
+        ),
+    };
+    const agent = new BoundedChatAgent(
+      mcp,
+      new RuleBasedPlanner(),
+      undefined,
+      undefined,
+      answerComposer,
+    );
+
+    const reply = await agent.respond("ORD-1001 상태가 궁금해", principal);
+
+    expect(reply.reply).toContain("확인해 보니");
+    expect(answerComposer.compose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "ORD-1001 상태가 궁금해",
+        groundedReply:
+          "주문 ORD-1001은 현재 배송 완료 상태이며, 결제 상태는 결제 완료입니다.",
+        intent: "order_status",
+      }),
+    );
+  });
+
+  it("keeps the deterministic grounded answer when composition fails", async () => {
+    const mcp: McpToolCaller = {
+      callTool: vi.fn().mockResolvedValue({
+        status: "found",
+        order_id: "ORD-1001",
+        payment_status: "PAID",
+        delivery_status: "DELIVERED",
+        updated_at: "2026-07-30T00:00:00.000Z",
+        access: accessResult(),
+      }),
+    };
+    const answerComposer: AnswerComposer = {
+      compose: vi.fn().mockRejectedValue(new Error("response unavailable")),
+    };
+    const agent = new BoundedChatAgent(
+      mcp,
+      new RuleBasedPlanner(),
+      undefined,
+      undefined,
+      answerComposer,
+    );
+
+    const reply = await agent.respond("ORD-1001 상태가 궁금해", principal);
+
+    expect(reply.reply).toBe(
+      "주문 ORD-1001은 현재 배송 완료 상태이며, 결제 상태는 결제 완료입니다.",
+    );
+  });
+
   it("explains the ContextForge gateway when enhanced planning is unavailable", async () => {
     const { agent, mcp } = buildAgent({});
 
@@ -417,11 +572,75 @@ describe("BoundedChatAgent", () => {
       new ResilientPlanner(primary, fallback, onFallback),
     );
 
-    const reply = await agent.respond("ORD-1001 상태를 알려줘", principal);
+    await agent.respond("ORD-1001 상태를 알려줘", principal);
+    const reply = await agent.respond("그 주문 다시 알려줘", principal);
 
     expect(reply.tool).toBe("get_order_status");
     expect(onFallback).toHaveBeenCalledOnce();
     expect(agent.getStatus().mode).toBe("safe-fallback");
+  });
+
+  it("keeps an explicit order request ahead of unrelated conversation context", async () => {
+    const primary: MessagePlanner = {
+      plan: vi
+        .fn()
+        .mockResolvedValue({ intent: "explain_lab", topic: "security_flow" }),
+    };
+    const planner = new ResilientPlanner(primary, new RuleBasedPlanner());
+
+    const plan = await planner.plan("ORD-1001 상태를 자연스럽게 설명해줘", [
+      {
+        role: "assistant",
+        content: "사용자 JWT는 RFC 8693 OBO 토큰으로 교환됩니다.",
+      },
+    ]);
+
+    expect(plan).toEqual({ intent: "order_status", order_id: "ORD-1001" });
+    expect(primary.plan).not.toHaveBeenCalled();
+  });
+
+  it("does not send unrelated conversation context to enhanced planning", async () => {
+    const primary: MessagePlanner = {
+      plan: vi.fn().mockResolvedValue({ intent: "unsupported" }),
+    };
+    const planner = new ResilientPlanner(primary, new RuleBasedPlanner());
+
+    const plan = await planner.plan("오늘 날씨는 어때?", [
+      { role: "user", content: "ORD-1004 상태를 알려줘" },
+      {
+        role: "assistant",
+        content: "ORD-1004은 보류 상태이며 결제는 실패했습니다.",
+      },
+    ]);
+
+    expect(plan).toEqual({ intent: "unsupported" });
+    expect(primary.plan).toHaveBeenCalledWith("오늘 날씨는 어때?", []);
+  });
+
+  it("passes conversation context for a genuine follow-up reference", async () => {
+    const primary: MessagePlanner = {
+      plan: vi
+        .fn()
+        .mockResolvedValue({ intent: "explain_lab", topic: "security_flow" }),
+    };
+    const planner = new ResilientPlanner(primary, new RuleBasedPlanner());
+    const context = [
+      {
+        role: "assistant" as const,
+        content: "사용자 JWT는 RFC 8693 OBO 토큰으로 교환됩니다.",
+      },
+    ];
+
+    const plan = await planner.plan(
+      "그 과정에서 Agent 신원은 어떻게 확인해?",
+      context,
+    );
+
+    expect(plan).toEqual({ intent: "explain_lab", topic: "security_flow" });
+    expect(primary.plan).toHaveBeenCalledWith(
+      "그 과정에서 Agent 신원은 어떻게 확인해?",
+      context,
+    );
   });
 
   it("uses the fallback immediately while the primary retry circuit is open", async () => {
@@ -444,10 +663,11 @@ describe("BoundedChatAgent", () => {
     );
 
     await agent.respond("ORD-1001 상태를 알려줘", principal);
-    await agent.respond("ORD-1001 상태를 알려줘", principal);
+    await agent.respond("그 주문 다시 알려줘", principal);
+    await agent.respond("한 번 더 설명해줘", principal);
 
     expect(primary.plan).toHaveBeenCalledOnce();
-    expect(mcp.callTool).toHaveBeenCalledTimes(2);
+    expect(mcp.callTool).toHaveBeenCalledTimes(3);
   });
 });
 

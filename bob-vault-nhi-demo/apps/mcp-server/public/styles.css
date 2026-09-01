@@ -363,10 +363,10 @@ main {
 .landing-copy h1 {
   max-width: 760px;
   margin: 0;
-  font-size: clamp(42px, 5vw, 68px);
+  font-size: clamp(40px, 4.5vw, 62px);
   font-weight: 600;
-  line-height: 1.08;
-  letter-spacing: -0.055em;
+  line-height: 1.12;
+  letter-spacing: -0.045em;
   word-break: keep-all;
 }
 
@@ -3321,8 +3321,8 @@ body,
 }
 
 .identity-path li.complete {
-  border-color: color-mix(in srgb, var(--green) 34%, var(--border-subtle));
-  background: color-mix(in srgb, var(--green-soft) 26%, var(--layer-01));
+  border-color: var(--border-subtle);
+  background: var(--layer-01);
   opacity: 1;
   transform: none;
 }
@@ -3394,7 +3394,71 @@ body,
   border-top: 1px solid var(--border-subtle);
   border-right: 1px solid var(--border-subtle);
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--layer-02);
+  background: var(--layer-01);
+}
+
+/* Operational restraint
+ * Preserve the existing demo structure and drill-down behavior while keeping
+ * routine states quiet. Color is reserved for the active or stopped step.
+ */
+.panel-context,
+.planning-chip,
+.live-state,
+.access-status-badge {
+  font-weight: 500;
+}
+
+.planning-chip.ready {
+  border-color: var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.access-mode-banner.approved .access-mode-icon,
+.access-mode-banner.limited .access-mode-icon {
+  background: transparent;
+}
+
+.identity-path li.complete .path-icon {
+  border-color: var(--border-subtle);
+  background: var(--layer-01);
+}
+
+.identity-path li.complete .path-copy strong,
+.identity-path li.complete .path-copy small,
+.identity-path li.complete .path-meta time {
+  color: var(--text-secondary);
+}
+
+.identity-path li.complete .path-state.allowed {
+  color: var(--text-secondary);
+}
+
+.identity-path li.complete:hover {
+  border-color: var(--border-interactive);
+  background: var(--layer-hover);
+}
+
+.access-status-summary.allowed,
+.access-status-summary.response {
+  border-color: var(--green);
+  background: var(--layer-01);
+}
+
+.access-status-summary.denied {
+  border-color: var(--red);
+  background: var(--layer-01);
+}
+
+.access-status-summary.error {
+  border-color: var(--amber-text);
+  background: var(--layer-01);
+}
+
+.event-status.allowed::before,
+.event-status.ok::before {
+  border-color: var(--border-interactive);
+  color: var(--green);
 }
 
 .access-status-details > div,

@@ -110,6 +110,12 @@ export const agentPlanSchema = z.discriminatedUnion("intent", [
       topic: z.enum(["nhi", "verify", "vault", "mcp", "security_flow"]),
     })
     .strict(),
+  z
+    .object({
+      intent: z.literal("casual_chat"),
+      topic: z.enum(["greeting", "thanks", "identity"]),
+    })
+    .strict(),
   z.object({ intent: z.literal("unsupported") }).strict(),
 ]);
 
@@ -160,6 +166,22 @@ export interface AgentPlanningStatus {
   fallbackReady: true;
 }
 
+export interface ConversationTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface AnswerComposerInput {
+  message: string;
+  groundedReply: string;
+  intent: AgentPlan["intent"];
+  context: readonly ConversationTurn[];
+}
+
+export interface AnswerComposer {
+  compose(input: AnswerComposerInput): Promise<string>;
+}
+
 export interface McpToolCaller {
   callTool(
     tool: AgentToolName,
@@ -170,7 +192,10 @@ export interface McpToolCaller {
 }
 
 export interface MessagePlanner {
-  plan(message: string): Promise<AgentPlan>;
+  plan(
+    message: string,
+    context?: readonly ConversationTurn[],
+  ): Promise<AgentPlan>;
   prewarm?(): Promise<void>;
   status?(): AgentPlanningStatus;
 }
@@ -293,15 +318,41 @@ export function resolvePublishedToolName(
 }
 
 export class RuleBasedPlanner implements MessagePlanner {
-  public plan(message: string): Promise<AgentPlan> {
+  public plan(
+    message: string,
+    context: readonly ConversationTurn[] = [],
+  ): Promise<AgentPlan> {
+    const direct = this.#planSingle(message);
+    if (
+      direct.intent !== "unsupported" ||
+      context.length === 0 ||
+      !shouldUseConversationContext(message)
+    ) {
+      return Promise.resolve(direct);
+    }
+    const recentContext = context
+      .slice(-2)
+      .map((turn) => `${turn.role}: ${turn.content}`)
+      .join("\n");
+    return Promise.resolve(
+      this.#planSingle(`${recentContext}\nuser: ${message}`),
+    );
+  }
+
+  #planSingle(message: string): AgentPlan {
     const normalized = message.trim();
+
+    const casualTopic = casualChatTopic(normalized);
+    if (casualTopic) {
+      return { intent: "casual_chat", topic: casualTopic };
+    }
 
     if (
       /(왜|이유|설명).*(차단|거부|허용|권한|요청)|(차단|거부|허용).*(왜|이유|설명)|임시.*(권한|자격증명)|직전.*(결정|요청)/i.test(
         normalized,
       )
     ) {
-      return Promise.resolve({ intent: "explain_last_decision" });
+      return { intent: "explain_last_decision" };
     }
 
     const sensitiveCustomer = /\bCUS-[0-9]{4,12}\b/i.exec(normalized);
@@ -309,17 +360,17 @@ export class RuleBasedPlanner implements MessagePlanner {
       sensitiveCustomer &&
       /(민감|카드|원문|개인|payment data|sensitive)/i.test(normalized)
     ) {
-      return Promise.resolve({
+      return {
         intent: "sensitive_payment_data",
         customer_id: sensitiveCustomer[0].toUpperCase(),
-      });
+      };
     }
 
     if (/(최근|최신).*(주문)|(주문).*(최근|최신)/i.test(normalized)) {
-      return Promise.resolve({
+      return {
         intent: "recent_orders",
         limit: boundedNumber(normalized, 5, 1, 5),
-      });
+      };
     }
 
     if (
@@ -327,18 +378,18 @@ export class RuleBasedPlanner implements MessagePlanner {
         normalized,
       )
     ) {
-      return Promise.resolve({
+      return {
         intent: "failed_payment_trend",
         days: boundedNumber(normalized, 7, 1, 7),
-      });
+      };
     }
 
     const order = /\bORD-[0-9]{4,12}\b/i.exec(normalized);
     if (order) {
-      return Promise.resolve({
+      return {
         intent: "order_status",
         order_id: order[0].toUpperCase(),
-      });
+      };
     }
 
     if (
@@ -347,18 +398,18 @@ export class RuleBasedPlanner implements MessagePlanner {
       )
     ) {
       const date = /\b\d{4}-\d{2}-\d{2}\b/.exec(normalized)?.[0];
-      return Promise.resolve({
+      return {
         intent: "failed_payment_summary",
         ...(date ? { date } : {}),
-      });
+      };
     }
 
     const topic = labTopic(normalized);
     if (topic) {
-      return Promise.resolve({ intent: "explain_lab", topic });
+      return { intent: "explain_lab", topic };
     }
 
-    return Promise.resolve({ intent: "unsupported" });
+    return { intent: "unsupported" };
   }
 }
 
@@ -373,24 +424,34 @@ export class ResilientPlanner implements MessagePlanner {
     private readonly retryDelayMs = 30_000,
   ) {}
 
-  public async plan(message: string): Promise<AgentPlan> {
+  public async plan(
+    message: string,
+    context: readonly ConversationTurn[] = [],
+  ): Promise<AgentPlan> {
+    const relevantContext = shouldUseConversationContext(message)
+      ? context
+      : [];
+    const deterministicPlan = await this.fallback.plan(message, []);
+    if (deterministicPlan.intent !== "unsupported") {
+      return deterministicPlan;
+    }
     if (Date.now() < this.#retryAfter) {
-      return this.fallback.plan(message);
+      return this.fallback.plan(message, relevantContext);
     }
     try {
-      const primaryPlan = await this.primary.plan(message);
+      const primaryPlan = await this.primary.plan(message, relevantContext);
       this.#lastMode = "enhanced";
       this.#retryAfter = 0;
       if (primaryPlan.intent !== "unsupported") {
         return primaryPlan;
       }
-      const fallbackPlan = await this.fallback.plan(message);
+      const fallbackPlan = await this.fallback.plan(message, relevantContext);
       return fallbackPlan.intent === "unsupported" ? primaryPlan : fallbackPlan;
     } catch (error) {
       this.#lastMode = "safe-fallback";
       this.#retryAfter = Date.now() + this.retryDelayMs;
       this.onFallback?.(error);
-      return this.fallback.plan(message);
+      return this.fallback.plan(message, relevantContext);
     }
   }
 
@@ -426,17 +487,25 @@ interface RememberedDecision {
   reply: AgentReply;
 }
 
+interface RememberedConversation {
+  at: number;
+  turns: ConversationTurn[];
+}
+
 const decisionRetentionMs = 15 * 60 * 1000;
 const maximumRememberedUsers = 100;
+const maximumConversationTurns = 6;
 
 export class BoundedChatAgent implements ChatAgent {
   readonly #lastDecisions = new Map<string, RememberedDecision>();
+  readonly #conversations = new Map<string, RememberedConversation>();
 
   public constructor(
     private readonly mcp: McpToolCaller,
     private readonly planner: MessagePlanner = new RuleBasedPlanner(),
     private readonly reportProgress?: AgentProgressReporter,
     private readonly delegatedIdentity?: IdentityProvider,
+    private readonly answerComposer?: AnswerComposer,
   ) {}
 
   public async respond(
@@ -449,9 +518,18 @@ export class BoundedChatAgent implements ChatAgent {
       throw new AppError("Message is required", 400, "INVALID_CHAT_MESSAGE");
     }
 
+    const rememberConversation = "accessToken" in principal;
+    const context = rememberConversation
+      ? this.#conversationContext(principal.subject)
+      : [];
+    const relevantContext = shouldUseConversationContext(normalized)
+      ? context
+      : [];
     let plan: AgentPlan;
     try {
-      plan = agentPlanSchema.parse(await this.planner.plan(normalized));
+      plan = agentPlanSchema.parse(
+        await this.planner.plan(normalized, relevantContext),
+      );
     } catch (error) {
       if (requestId) {
         this.reportProgress?.({
@@ -472,8 +550,17 @@ export class BoundedChatAgent implements ChatAgent {
           requestId,
         });
       }
-      const reply = unapprovedDataReply(plan, principal);
+      const draft = unapprovedDataReply(plan, principal);
+      const reply = await this.#composeReply(
+        normalized,
+        plan,
+        draft,
+        relevantContext,
+      );
       this.#remember(principal.subject, reply);
+      if (rememberConversation) {
+        this.#rememberConversation(principal.subject, normalized, reply.reply);
+      }
       return reply;
     }
     if (requestId) {
@@ -486,11 +573,20 @@ export class BoundedChatAgent implements ChatAgent {
         requestId,
       });
     }
-    const reply = isApprovedPrincipal(principal)
+    const draft = isApprovedPrincipal(principal)
       ? await this.#execute(plan, principal, requestId)
       : this.#executeUnapproved(plan, principal);
+    const reply = await this.#composeReply(
+      normalized,
+      plan,
+      draft,
+      relevantContext,
+    );
     if (reply.tool) {
       this.#remember(principal.subject, reply);
+    }
+    if (rememberConversation) {
+      this.#rememberConversation(principal.subject, normalized, reply.reply);
     }
     return reply;
   }
@@ -513,6 +609,29 @@ export class BoundedChatAgent implements ChatAgent {
 
   public reset(subject: string): void {
     this.#lastDecisions.delete(subject);
+    this.#conversations.delete(subject);
+  }
+
+  async #composeReply(
+    message: string,
+    plan: AgentPlan,
+    draft: AgentReply,
+    context: readonly ConversationTurn[],
+  ): Promise<AgentReply> {
+    if (!this.answerComposer || plan.intent === "unsupported") {
+      return draft;
+    }
+    try {
+      const reply = await this.answerComposer.compose({
+        message,
+        groundedReply: draft.reply,
+        intent: plan.intent,
+        context,
+      });
+      return { ...draft, reply };
+    } catch {
+      return draft;
+    }
   }
 
   #executeUnapproved(plan: AgentPlan, principal: ChatPrincipal): AgentReply {
@@ -521,6 +640,8 @@ export class BoundedChatAgent implements ChatAgent {
         return this.#explainLastDecision(principal);
       case "explain_lab":
         return explainLab(plan.topic, principal);
+      case "casual_chat":
+        return casualChat(plan.topic, principal);
       case "unsupported":
         return unsupportedReply(principal);
       default:
@@ -577,7 +698,7 @@ export class BoundedChatAgent implements ChatAgent {
           );
         }
         return allowedReply(
-          `주문 ${result.order_id}는 현재 ${translateDeliveryStatus(
+          `주문 ${result.order_id}은 현재 ${translateDeliveryStatus(
             result.delivery_status,
           )} 상태이며, 결제 상태는 ${translatePaymentStatus(
             result.payment_status,
@@ -681,6 +802,8 @@ export class BoundedChatAgent implements ChatAgent {
         return this.#explainLastDecision(principal);
       case "explain_lab":
         return explainLab(plan.topic, principal);
+      case "casual_chat":
+        return casualChat(plan.topic, principal);
       case "unsupported":
         return unsupportedReply(principal);
     }
@@ -798,6 +921,39 @@ export class BoundedChatAgent implements ChatAgent {
     }
     this.#lastDecisions.delete(subject);
     this.#lastDecisions.set(subject, { at: now, reply });
+  }
+
+  #conversationContext(subject: string): readonly ConversationTurn[] {
+    const remembered = this.#conversations.get(subject);
+    if (!remembered || Date.now() - remembered.at > decisionRetentionMs) {
+      this.#conversations.delete(subject);
+      return [];
+    }
+    return remembered.turns;
+  }
+
+  #rememberConversation(subject: string, message: string, reply: string): void {
+    const now = Date.now();
+    for (const [key, value] of this.#conversations) {
+      if (now - value.at > decisionRetentionMs) {
+        this.#conversations.delete(key);
+      }
+    }
+    if (
+      this.#conversations.size >= maximumRememberedUsers &&
+      !this.#conversations.has(subject)
+    ) {
+      const oldest = this.#conversations.keys().next().value;
+      if (oldest) this.#conversations.delete(oldest);
+    }
+    const previous = this.#conversations.get(subject)?.turns ?? [];
+    const turns: ConversationTurn[] = [
+      ...previous,
+      { role: "user", content: message.slice(0, 500) },
+      { role: "assistant", content: reply.slice(0, 1_500) },
+    ].slice(-maximumConversationTurns) as ConversationTurn[];
+    this.#conversations.delete(subject);
+    this.#conversations.set(subject, { at: now, turns });
   }
 }
 
@@ -949,6 +1105,26 @@ function explainLab(
   };
 }
 
+function casualChat(
+  topic: Extract<AgentPlan, { intent: "casual_chat" }>["topic"],
+  principal: ChatPrincipal,
+): AgentReply {
+  const replies = {
+    greeting:
+      "안녕하세요. 주문 조회나 이 Lab의 인증·권한 흐름에 관해 도와드릴 수 있습니다. 무엇이 궁금하신가요?",
+    thanks:
+      "천만에요. 다른 주문 조회나 보안 흐름이 궁금하면 이어서 말씀해 주세요.",
+    identity:
+      "저는 Bob AI 에이전트입니다. 등록된 읽기 전용 MCP 도구와 현재 사용자의 권한 범위 안에서 주문을 조회하고, 이 Lab의 인증·권한 흐름을 설명합니다.",
+  } as const;
+  return {
+    reply: replies[topic],
+    tool: null,
+    trace: policyOnlyTrace(principal),
+    suggestions: defaultSuggestions(),
+  };
+}
+
 function unsupportedReply(principal: ChatPrincipal): AgentReply {
   return {
     reply:
@@ -994,6 +1170,13 @@ function labTopic(
 ): Extract<AgentPlan, { intent: "explain_lab" }>["topic"] | undefined {
   if (/\bNHI\b|비인간|비-인간|머신 신원/i.test(message)) return "nhi";
   if (/IBM Verify|Verify 역할|사용자 인증/i.test(message)) return "verify";
+  if (
+    /\bOBO\b|토큰\s*교환|Token\s*Exchange|subject_token|사용자\s*(?:JWT|Access Token)|RFC\s*8693/i.test(
+      message,
+    )
+  ) {
+    return "security_flow";
+  }
   if (/Vault.*(역할|필요|설명)|왜.*Vault/i.test(message)) return "vault";
   if (
     /(?:\bMCP\b|ContextForge|Gateway).*(역할|필요|설명)|(?:MCP|ContextForge|Gateway)(?:는|가)/i.test(
@@ -1006,6 +1189,35 @@ function labTopic(
     return "security_flow";
   }
   return undefined;
+}
+
+function casualChatTopic(
+  message: string,
+): Extract<AgentPlan, { intent: "casual_chat" }>["topic"] | undefined {
+  if (/^(?:안녕(?:하세요)?|반가워(?:요)?|hello|hi)[?!.~\s]*$/iu.test(message)) {
+    return "greeting";
+  }
+  if (
+    /^(?:고마워(?:요)?|감사(?:해요|합니다)?|thanks?|thank you)[?!.~\s]*$/iu.test(
+      message,
+    )
+  ) {
+    return "thanks";
+  }
+  if (
+    /^(?:너는\s*누구(?:야|니)?|누구(?:야|세요)?|자기소개(?:해줘)?|뭐\s*하는\s*(?:챗봇|에이전트)(?:이야)?)[?!.~\s]*$/u.test(
+      message,
+    )
+  ) {
+    return "identity";
+  }
+  return undefined;
+}
+
+function shouldUseConversationContext(message: string): boolean {
+  return /(?:^|\s)(?:그|이|저)\s*(?:주문|요청|과정|단계|결과|접근|결정|내용)|(?:아까|방금|직전|이전|다시|한\s*번\s*더|그거|그것|그때|거기서|이어서)|(?:위|해당)\s*(?:내용|결과|주문|요청|과정)/iu.test(
+    message.trim(),
+  );
 }
 
 function boundedNumber(

@@ -266,6 +266,10 @@ export class VerifyUserAuth implements UserAuthenticator {
         contentEncryptionAlgorithms: ["A256GCM"],
       });
       const session = storedSessionSchema.parse(decrypted.payload);
+      const authorizationMode = session.authorization_mode ?? "off";
+      if (authorizationMode !== this.#accessControl.mode) {
+        return null;
+      }
       return {
         subject: session.sub,
         displayName: session.name,
@@ -276,7 +280,7 @@ export class VerifyUserAuth implements UserAuthenticator {
           ? { assertedAccessTier: session.asserted_access_tier }
           : {}),
         accessTierClaimPresent: session.access_tier_claim_present ?? false,
-        authorizationMode: session.authorization_mode ?? "off",
+        authorizationMode,
         csrfToken: session.csrf,
         expiresAt: session.exp,
       };

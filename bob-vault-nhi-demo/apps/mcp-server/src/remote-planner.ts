@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   type AgentPlan,
   type AgentPlanningStatus,
+  type ConversationTurn,
   agentPlanSchema,
   type MessagePlanner,
 } from "./agent.js";
@@ -81,6 +82,14 @@ const planningJsonSchema = {
       additionalProperties: false,
     },
     {
+      properties: {
+        intent: { const: "casual_chat" },
+        topic: { enum: ["greeting", "thanks", "identity"] },
+      },
+      required: ["intent", "topic"],
+      additionalProperties: false,
+    },
+    {
       properties: { intent: { const: "unsupported" } },
       required: ["intent"],
       additionalProperties: false,
@@ -92,6 +101,10 @@ const systemMessage = [
   "You are a strict intent router for a Korean security lab.",
   "Return exactly one JSON object matching the supplied schema.",
   "Never answer the user and never add identifiers that are absent from the input.",
+  "Map questions about JWT, OBO, subject_token, token exchange, or RFC 8693 to explain_lab/security_flow.",
+  "Map questions about IBM Verify login or user authentication to explain_lab/verify.",
+  "Map standalone greetings, thanks, and identity questions to casual_chat.",
+  "Use the recent conversation only to resolve follow-up references.",
   "Use unsupported when the request does not match a listed intent.",
 ].join(" ");
 
@@ -100,8 +113,15 @@ export class RemoteMessagePlanner implements MessagePlanner {
 
   public constructor(private readonly config: RemotePlannerConfig) {}
 
-  public async plan(message: string): Promise<AgentPlan> {
+  public async plan(
+    message: string,
+    context: readonly ConversationTurn[] = [],
+  ): Promise<AgentPlan> {
     const boundedMessage = message.trim().slice(0, 500);
+    const boundedContext = context.slice(-4).map((turn) => ({
+      role: turn.role,
+      content: turn.content.trim().slice(0, 1_000),
+    }));
     const endpoint = new URL(
       "api/chat",
       ensureTrailingSlash(this.config.baseUrl),
@@ -116,6 +136,7 @@ export class RemoteMessagePlanner implements MessagePlanner {
         model: this.config.model,
         messages: [
           { role: "system", content: systemMessage },
+          ...boundedContext,
           { role: "user", content: boundedMessage },
         ],
         stream: false,
@@ -140,7 +161,12 @@ export class RemoteMessagePlanner implements MessagePlanner {
     const plan = agentPlanSchema.parse(
       JSON.parse(stripCodeFence(body.message.content)) as unknown,
     );
-    validateSourceGrounding(plan, boundedMessage);
+    validateSourceGrounding(
+      plan,
+      [...boundedContext.map((turn) => turn.content), boundedMessage].join(
+        "\n",
+      ),
+    );
     this.#ready = true;
     return plan;
   }

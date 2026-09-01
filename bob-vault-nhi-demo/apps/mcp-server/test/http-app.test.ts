@@ -565,7 +565,7 @@ describe("HTTP security boundary", () => {
       ready: true,
     });
     expect(response.body.controls.accessTiers).toEqual({
-      mode: "audit",
+      mode: "enforce",
       claim: "access_tier",
       profiles: ["orders-full", "orders-limited", "unapproved"],
     });

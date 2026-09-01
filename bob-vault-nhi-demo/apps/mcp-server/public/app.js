@@ -345,7 +345,7 @@ const stageDestinations = {
     title: "HashiCorp Vault UI",
     note: "Bastion 소스 CIDR 허용과 SSH 포트포워딩이 완료된 운영자 환경에서만 열립니다.",
     label: "Vault UI 열기",
-    href: "http://127.0.0.1:8200/ui/",
+    href: "https://127.0.0.1:8200/ui/",
     secondaryLabel: "터널 명령 복사",
     copyText: vaultTunnelCommand,
   },
@@ -1511,7 +1511,7 @@ function showLogin() {
   resetUnauthenticatedDemo();
   userName.textContent = "미승인 사용자";
   userInitial.textContent = "미";
-  agentGreeting.textContent = "안녕하세요! 챗봇 안내는 바로 이용할 수 있어요.";
+  agentGreeting.textContent = "안녕하세요.";
   showWorkspace(false);
 }
 

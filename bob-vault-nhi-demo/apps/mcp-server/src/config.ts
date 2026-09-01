@@ -78,7 +78,7 @@ const environmentSchema = z
     VERIFY_OBO_ACTOR_VALUE: optionalNonEmpty,
     ACCESS_TIER_ENFORCEMENT: z
       .enum(["off", "audit", "enforce"])
-      .default("audit"),
+      .default("enforce"),
     VERIFY_ACCESS_TIER_CLAIM: z.string().min(1).default("access_tier"),
     VERIFY_ACCESS_TIER_FULL_VALUE: z.string().min(1).default("orders-full"),
     VERIFY_ACCESS_TIER_LIMITED_VALUE: z

@@ -23,6 +23,7 @@ phases:
           vault-bootstrap) ./bootstrap/aws/vault-bootstrap.sh ;;
           access-tier-smoke) ./bootstrap/aws/access-tier-smoke.sh ;;
           demo-access-report) ./bootstrap/aws/demo-access-report.sh ;;
+          rds-data-report) ./bootstrap/aws/rds-data-report.sh ;;
           verify-preflight) ./bootstrap/aws/verify-preflight.sh ;;
           verify-client-jwt-plan) ./bootstrap/aws/verify-client-enable-jwt.sh plan ;;
           verify-client-enable-jwt) ./bootstrap/aws/verify-client-enable-jwt.sh apply ;;

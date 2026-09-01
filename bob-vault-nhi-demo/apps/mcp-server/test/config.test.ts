@@ -23,7 +23,7 @@ describe("loadConfig", () => {
     expect(config.database.caFile).toBe("/app/certs/rds-ca.pem");
     expect(config.agentPlanning.mode).toBe("bounded");
     expect(config.accessControl).toEqual({
-      mode: "audit",
+      mode: "enforce",
       claim: "access_tier",
       fullValue: "orders-full",
       limitedValue: "orders-limited",
@@ -93,7 +93,7 @@ describe("loadConfig", () => {
     expect(config.mcpAuthMode).toBe("obo_jwt");
     expect(config.contextForge.enabled).toBe(true);
     expect(config.verify.obo.clientId).toBe("agent-sts-client");
-    expect(config.accessControl.mode).toBe("audit");
+    expect(config.accessControl.mode).toBe("enforce");
   });
 
   it("requires all private planning boundaries when enabled", () => {

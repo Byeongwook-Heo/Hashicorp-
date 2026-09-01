@@ -146,9 +146,9 @@ variable "service_version" {
 }
 
 variable "access_tier_enforcement" {
-  description = "User access-tier enforcement mode. Keep audit until Verify emits the configured claim in user and OBO JWTs."
+  description = "User access-tier enforcement mode. Production defaults to fail-closed enforcement of the configured Verify claim."
   type        = string
-  default     = "audit"
+  default     = "enforce"
 
   validation {
     condition     = contains(["off", "audit", "enforce"], var.access_tier_enforcement)

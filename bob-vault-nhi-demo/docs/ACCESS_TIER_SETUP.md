@@ -18,8 +18,9 @@ data states:
 - `enforce`: require a recognized signed claim in both the user Access Token
   and the OBO JWT. Missing, unknown, or ambiguous values fail closed.
 
-The deployed default is `audit`. Do not switch to `enforce` until Verify emits
-the claim in both tokens and a limited user has completed an end-to-end test.
+The deployed default is now `enforce`. Verify emits the configured claim in
+both tokens, and full, limited, and unapproved paths have completed end-to-end
+validation. `audit` remains available only for a deliberate staged rollout.
 
 ## Verify tenant work still required
 
@@ -80,7 +81,8 @@ make demo-status
 ```
 
 After Verify configuration and a real full/limited token inspection, enable
-strict enforcement in a scheduled change window:
+strict enforcement in a scheduled change window. This is now the default, so
+the explicit variable is optional:
 
 ```bash
 ACCESS_TIER_ENFORCEMENT=enforce make vault-bootstrap

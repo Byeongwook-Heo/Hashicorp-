@@ -154,5 +154,25 @@ describe("VerifyUserAuth", () => {
     expect(callback.setCookies.join(";")).not.toContain(
       session?.accessToken ?? "missing",
     );
+
+    const staleModeReader = new VerifyUserAuth({
+      authorizationUrl: `${baseUrl}/authorize`,
+      tokenUrl: `${baseUrl}/token`,
+      jwksUrl: `${baseUrl}/jwks`,
+      issuer,
+      clientId,
+      scopes: "openid profile vault.db.read",
+      redirectUri: "https://chat.example.test/auth/callback",
+      sessionSecret: "session-secret-for-tests-".padEnd(48, "x"),
+      accessControl: {
+        mode: "audit",
+        claim: "access_tier",
+        fullValue: "orders-full",
+        limitedValue: "orders-limited",
+      },
+    });
+    await expect(
+      staleModeReader.readSession(sessionCookie),
+    ).resolves.toBeNull();
   });
 });

@@ -4,7 +4,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/common.sh"
 
-access_tier_enforcement="${ACCESS_TIER_ENFORCEMENT:-audit}"
+access_tier_enforcement="${ACCESS_TIER_ENFORCEMENT:-enforce}"
 access_tier_claim="${VERIFY_ACCESS_TIER_CLAIM:-access_tier}"
 access_tier_full_value="${VERIFY_ACCESS_TIER_FULL_VALUE:-orders-full}"
 access_tier_limited_value="${VERIFY_ACCESS_TIER_LIMITED_VALUE:-orders-limited}"

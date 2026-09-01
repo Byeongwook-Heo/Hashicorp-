@@ -25,6 +25,7 @@ import {
 import { KmsClientAssertionSigner } from "./kms-signer.js";
 import { createLogger } from "./logger.js";
 import { RemoteMessagePlanner } from "./remote-planner.js";
+import { RemoteAnswerComposer } from "./remote-responder.js";
 import { ToolService } from "./tool-service.js";
 import {
   UnconfiguredUserAuth,
@@ -101,28 +102,34 @@ httpServer.listen(config.port, "0.0.0.0", () => {
 function createAgent(): BoundedChatAgent {
   const fallback = new RuleBasedPlanner();
   const planning = config.agentPlanning;
-  const planner =
+  const privateRuntime =
     planning.mode === "private" &&
     planning.baseUrl &&
     planning.model &&
     planning.apiToken
-      ? new ResilientPlanner(
-          new RemoteMessagePlanner({
-            baseUrl: planning.baseUrl,
-            model: planning.model,
-            apiToken: planning.apiToken,
-            timeoutMs: planning.timeoutMs,
-            keepAlive: planning.keepAlive,
-          }),
-          fallback,
-          (error) => {
-            logger.warn(
-              { err: error },
-              "agent planning service unavailable; safe routing is active",
-            );
-          },
-        )
-      : fallback;
+      ? {
+          baseUrl: planning.baseUrl,
+          model: planning.model,
+          apiToken: planning.apiToken,
+          timeoutMs: planning.timeoutMs,
+          keepAlive: planning.keepAlive,
+        }
+      : undefined;
+  const planner = privateRuntime
+    ? new ResilientPlanner(
+        new RemoteMessagePlanner(privateRuntime),
+        fallback,
+        (error) => {
+          logger.warn(
+            { err: error },
+            "agent planning service unavailable; safe routing is active",
+          );
+        },
+      )
+    : fallback;
+  const answerComposer = privateRuntime
+    ? new RemoteAnswerComposer(privateRuntime)
+    : undefined;
   return new BoundedChatAgent(
     new HttpMcpToolCaller(
       config.mcpInternalUrl,
@@ -132,6 +139,7 @@ function createAgent(): BoundedChatAgent {
     planner,
     (event) => events.record(event),
     delegatedIdentity,
+    answerComposer,
   );
 }
 

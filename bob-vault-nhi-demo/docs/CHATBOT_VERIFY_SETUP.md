@@ -49,9 +49,10 @@ preserved user `sub` and the configured Agent claim (default `client_id`), sends
 the OBO token through ContextForge, and MCP verifies it again before Vault.
 
 User-level protected-data authorization is rolled out separately. See
-[Verify access-tier rollout](ACCESS_TIER_SETUP.md). Keep the service in `audit`
-mode until the user Access Token and exchanged OBO JWT both contain the signed
-`access_tier` claim.
+[Verify access-tier rollout](ACCESS_TIER_SETUP.md). The service now runs in
+`enforce` mode because the user Access Token and exchanged OBO JWT both contain
+the signed `access_tier` claim. Use `audit` only during a deliberate remapping
+or migration window.
 
 IBM references:
 
