@@ -25,13 +25,11 @@ variable "default_tags" {
 variable "ami_id" {
   description = "Approved arm64 Ubuntu 24.04 AMI ID."
   type        = string
-  default     = "ami-0de44fe9c10f5cac7"
 }
 
 variable "key_name" {
   description = "Existing EC2 key pair name."
   type        = string
-  default     = "Byeongwook"
 }
 
 variable "azs" {

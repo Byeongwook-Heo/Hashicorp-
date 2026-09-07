@@ -1,3 +1,5 @@
+> 공개용 예시: 아래 주소·리소스 ID·파일명은 익명화되었습니다. 실제 접속값은 본인 환경에서 확인하세요. 과거 작업 기록은 현재 서비스 상태를 보장하지 않습니다.
+
 # HashiCorp Enterprise AWS Lab 구성도
 
 작성일: 2026-06-23
@@ -13,7 +15,7 @@ flowchart TB
   STATE["HCP Terraform Remote State"]
   LOCAL["Local Execution: envs/dev"]
   AWSAPI["AWS API: ap-northeast-2"]
-  AGENT["Bootstrap EC2 HCP Agent: i-070379b67ec9730c1"]
+  AGENT["Bootstrap EC2 HCP Agent: i-00000000000000000"]
 
   DEV -->|"git push"| GH
   GH --> BR
@@ -32,7 +34,7 @@ flowchart TB
   USER["Internet Client"]
   MCPCLIENT["MCP Client"]
 
-  subgraph AWS["AWS Account 063455554839 / ap-northeast-2"]
+  subgraph AWS["AWS Account 123456789012 / ap-northeast-2"]
     subgraph EDGE["Public Edge"]
       IGW["Internet Gateway"]
       APPALB["App Public ALB\nhashicorp-lab-dev-alb"]
@@ -41,7 +43,7 @@ flowchart TB
       NAT["NAT Gateways\n2 AZ"]
     end
 
-    subgraph VPC["VPC vpc-0faaeb5858901d385 / 10.40.0.0/16"]
+    subgraph VPC["VPC vpc-00000000000000000 / 10.40.0.0/16"]
       subgraph APP["Private App Subnets"]
         APPA["App EC2\n10.40.10.73"]
         APPC["App EC2\n10.40.11.47"]
@@ -114,8 +116,8 @@ flowchart TB
 ```mermaid
 flowchart TB
   APP["App EC2 / Future Workloads"]
-  BENCH["Vault Benchmark Runner\nc7g.2xlarge / 10.40.10.98"]
-  VAULTSG["Vault SG: sg-008ac46b7cedb8ffe"]
+  BENCH["Vault Benchmark Runner\nc7g.2xlarge / 192.0.2.98"]
+  VAULTSG["Vault SG: sg-00000000000000000"]
 
   subgraph CLUSTER["Vault Enterprise Raft Cluster"]
     V1["Vault 01 Leader\n10.40.10.202"]
@@ -245,9 +247,9 @@ sequenceDiagram
 ## 7. 운영 메모
 
 - Vault Enterprise는 3노드 Raft 클러스터로 초기화됨.
-- Vault 리더는 `10.40.10.202`, standby는 `10.40.11.68`, `10.40.10.147`.
+- Vault 리더는 `192.0.2.202`, standby는 `192.0.2.68`, `192.0.2.147`.
 - Vault init 결과는 `/hashicorp-lab/dev/vault/init` SSM SecureString에 저장됨.
-- `/Users/heobyeong-ug/Downloads/vault.hclic`는 `2026-05-31` 만료라 기동 실패했고, 현재 SSM 라이선스 파라미터는 `vault_exp20260930.hclic` 내용으로 갱신됨.
+- `./private/vault.hclic`는 `2026-05-31` 만료라 기동 실패했고, 현재 SSM 라이선스 파라미터는 `vault_exp20260930.hclic` 내용으로 갱신됨.
 - Keycloak은 2노드 EC2 ASG와 전용 PostgreSQL Multi-AZ RDS로 구성됨.
 - MCP 서버는 2노드 EC2 ASG, 내부 ALB, API Gateway HTTP API VPC Link로 구성됨.
 - Vault benchmark runner는 private subnet의 `c7g.2xlarge` 단일 EC2로 구성됨.

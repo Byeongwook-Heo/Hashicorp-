@@ -20,5 +20,5 @@ output "security_group_id" {
 
 output "ssh_command" {
   description = "SSH command for connecting from this laptop."
-  value       = "ssh -i ~/Downloads/Byeongwook.pem ubuntu@${aws_instance.this.public_ip}"
+  value       = "ssh -i ~/.ssh/lab.pem ubuntu@${aws_instance.this.public_ip}"
 }

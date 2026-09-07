@@ -17,3 +17,9 @@ override.tf.json
 *.hclic
 .env
 .DS_Store
+
+# Private runtime material: keep example configuration only
+private/
+.env.*
+!.env.example
+!*.tfvars.example

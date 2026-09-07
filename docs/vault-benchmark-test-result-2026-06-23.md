@@ -1,3 +1,5 @@
+> 공개용 예시: 아래 주소·리소스 ID·파일명은 익명화되었습니다. 실제 접속값은 본인 환경에서 확인하세요. 과거 작업 기록은 현재 서비스 상태를 보장하지 않습니다.
+
 # Vault Benchmark Test Result
 
 작성일: 2026-06-23
@@ -8,10 +10,10 @@
 | --- | --- |
 | Vault Version | `2.0.3+ent` |
 | Vault Topology | 3-node integrated storage Raft cluster |
-| Vault Leader | `i-0711d6a1adb0e1609` / `10.40.10.202` |
-| Vault Followers | `i-01d934cd430ab6576` / `10.40.11.68`, `i-013740958d1b26329` / `10.40.10.147` |
-| Benchmark Runner | `i-0892a214dc539c83f` / `10.40.10.98` / `c7g.2xlarge` |
-| Target Endpoint | `http://10.40.10.202:8200` |
+| Vault Leader | `i-00000000000000000` / `192.0.2.202` |
+| Vault Followers | `i-00000000000000000` / `192.0.2.68`, `i-00000000000000000` / `192.0.2.147` |
+| Benchmark Runner | `i-00000000000000000` / `192.0.2.98` / `c7g.2xlarge` |
+| Target Endpoint | `http://192.0.2.202:8200` |
 | Tools | `wrk`, `vault-benchmark`, Vault CLI |
 | Matrix Duration | 5 seconds per case |
 | 10M Load Definition | 10,000,000 data items, not 10,000,000 HTTP requests |
@@ -172,10 +174,10 @@ CloudWatch `AWS/EC2 CPUUtilization` 기준 최근 약 45분 구간의 평균/최
 
 | Instance | Role | Avg CPU | Max CPU |
 | --- | --- | ---: | ---: |
-| `i-0711d6a1adb0e1609` | Vault leader | 21.71% | 84.60% |
-| `i-01d934cd430ab6576` | Vault follower 1 | 0.90% | 1.70% |
-| `i-013740958d1b26329` | Vault follower 2 | 0.86% | 1.04% |
-| `i-0892a214dc539c83f` | Benchmark runner | 2.45% | 21.75% |
+| `i-00000000000000000` | Vault leader | 21.71% | 84.60% |
+| `i-00000000000000000` | Vault follower 1 | 0.90% | 1.70% |
+| `i-00000000000000000` | Vault follower 2 | 0.86% | 1.04% |
+| `i-00000000000000000` | Benchmark runner | 2.45% | 21.75% |
 
 해석: 이번 테스트는 Vault leader endpoint로 직접 부하를 넣은 결과라 leader CPU 사용률이 가장 높고 follower CPU는 낮게 관측됐다. 실제 운영 환경에서는 load balancer, client routing, standby read, audit device, network path 구성에 따라 CPU 분포가 달라질 수 있다.
 

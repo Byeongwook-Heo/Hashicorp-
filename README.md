@@ -7,10 +7,10 @@ Terraform code for a HashiCorp enterprise-style AWS lab environment.
 The existing bootstrap EC2 instance has already been resized to `t4g.2xlarge`.
 
 ```text
-Instance ID: i-070379b67ec9730c1
-Public IP:   52.79.210.204
-Private IP:  172.31.15.102
-SSH:         ssh -i ~/Downloads/Byeongwook.pem ubuntu@52.79.210.204
+Instance ID: i-00000000000000000
+Public IP:   192.0.2.204
+Private IP:  192.0.2.102
+SSH:         ssh -i ~/.ssh/lab.pem ubuntu@192.0.2.204
 ```
 
 The active HCP Terraform agent runs on this instance and is registered in the `aws-agent-pool` pool.

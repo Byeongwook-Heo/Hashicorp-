@@ -7,11 +7,10 @@ variable "aws_region" {
 variable "ami_id" {
   description = "Approved arm64 Ubuntu 24.04 AMI ID to use for the lab EC2 instance. AMI IDs are region-specific."
   type        = string
-  default     = "ami-0de44fe9c10f5cac7"
 
   validation {
     condition     = can(regex("^ami-[0-9a-f]+$", var.ami_id))
-    error_message = "ami_id must look like an AWS AMI ID, for example ami-0de44fe9c10f5cac7."
+    error_message = "ami_id must look like an AWS AMI ID, for example ami-00000000000000000."
   }
 }
 
@@ -30,25 +29,21 @@ variable "instance_type" {
 variable "vpc_id" {
   description = "Existing VPC ID to use. The current AWS session policy denies creating a new VPC."
   type        = string
-  default     = "vpc-085f5bb3399430e3f"
 }
 
 variable "subnet_id" {
   description = "Existing public subnet ID where the EC2 instance will be launched."
   type        = string
-  default     = "subnet-0f5fc48f84768a173"
 }
 
 variable "security_group_ids" {
   description = "Existing security group IDs to attach to the EC2 instance. The current AWS session policy denies creating new security groups."
   type        = list(string)
-  default     = ["sg-0c1931fccdb2d3e3c"]
 }
 
 variable "key_name" {
   description = "Existing EC2 key pair name for SSH access."
   type        = string
-  default     = "Byeongwook"
 }
 
 variable "default_tags" {
