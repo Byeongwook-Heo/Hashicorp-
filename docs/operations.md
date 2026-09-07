@@ -1,4 +1,4 @@
-> 공개용 예시: 아래 주소·리소스 ID·파일명은 익명화되었습니다. 실제 접속값은 본인 환경에서 확인하세요. 과거 작업 기록은 현재 서비스 상태를 보장하지 않습니다.
+> 주소와 리소스 ID는 예시입니다. 실제 값은 배포 환경에 맞게 지정하세요.
 
 # Operations
 
@@ -19,9 +19,9 @@ envs/dev
 
 ## AWS Source IP Restriction
 
-The current AWS credentials are restricted by a session policy. Remote plans from an EC2-hosted agent may fail if the agent public IP is not allowed by that policy.
+When AWS credentials use a source-IP session policy, remote plans can fail if the runner public IP is not allowed.
 
-Current agent public IP:
+Example runner source CIDR:
 
 ```text
 192.0.2.204/32
@@ -70,7 +70,7 @@ License parameter:       /hashicorp-lab/dev/vault/license
 Init output parameter:   /hashicorp-lab/dev/vault/init
 ```
 
-The original `./private/vault.hclic` license was for Vault but expired on `2026-05-31`, so Vault refused to start. The active SSM license parameter was updated with `./private/vault.hclic`.
+A valid Vault Enterprise license must be available in the configured SSM parameter before startup. Check its entitlement and expiry date before deployment.
 
 The init output parameter contains sensitive recovery material and the initial root token. Only retrieve it when needed, and avoid sharing the terminal output.
 
