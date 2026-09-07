@@ -1,6 +1,0 @@
-package-lock.json
-coverage/
-dist/
-.terraform/
-*.tfstate
-*.tfplan

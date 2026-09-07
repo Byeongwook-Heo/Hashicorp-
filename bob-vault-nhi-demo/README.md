@@ -1,73 +1,15 @@
-# Verify authenticates. The Agent uses MCP. Vault authorizes.
+# Vault Agentic AI Demo — 저장소 이전
 
-`bob-vault-nhi-demo` is an AWS-hosted Agentic Identity lab. A sample chatbot
-authenticates the human user with IBM Verify, a private planning service maps
-natural language to a fixed MCP tool, the Agent exchanges the user token at
-the IBM Verify Token Endpoint for an Agent-bound OBO JWT, ContextForge routes
-the request to the private MCP Server, and Vault authorizes a short-lived
-PostgreSQL credential. Deterministic routing remains available if the planning
-service is not ready.
+이 데모는 별도 저장소에서 관리합니다.
 
-> 사용자는 Verify로 로그인하고, Agent는 MCP를 사용하며, Vault는 필요한
-> 순간에만 DB 접근 권한을 제공합니다.
+- [한국어 README · 작동 플로우 · 챗봇 UI](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo)
+- [English README](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo/blob/main/README.en.md)
+- [설치 가이드](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo/blob/main/docs/SETUP.ko.md)
 
-## Security model
+기존 데모 파일은 이 브랜치의 최신 버전에서 제거했습니다. 새 저장소에는 개인 경로와 실제 환경 식별값을 제외한 소스·문서·템플릿이 있습니다. 비공개 저장소는 승인된 계정으로 접근해야 합니다.
 
-- The browser uses Authorization Code + PKCE and an encrypted HttpOnly session.
-- The ECS task uses its IAM role to call KMS. The Agent private key never leaves KMS.
-- Verify OBO preserves the user subject while binding the Agent workload.
-- IBM ContextForge is a private ECS sidecar that exposes only the registered
-  MCP virtual server; it is not attached to the public ALB.
-- Verify access tokens, Vault tokens, and dynamic database credentials exist only in process memory.
-- The planning boundary receives only the user message (maximum 500 characters); it never receives tokens, credentials, or tool results.
-- SQL is fixed and parameterized. No generic SQL or secret-reading MCP tool exists.
-- RDS and Vault have no public address. Vault administration uses Systems Manager.
-- All deployment builds run in AWS CodeBuild and images are stored in ECR; Docker Desktop is not used.
+이 브랜치는 이전 안내용이며 새 작업은 전용 저장소에서 진행합니다. 과거 Git 이력은 보존되어 있습니다. 현재 파일 제거가 과거 커밋의 완전 삭제를 의미하지 않습니다.
 
-## Delivery workflow
+---
 
-```text
-Local source → S3 source artifact → CodeBuild → ECR → ECS Fargate
-                                 └→ Terraform → AWS infrastructure
-
-User → Verify login → Chat Agent → Verify OBO → ContextForge → MCP → Vault → RDS PostgreSQL
-                         └→ Private intent planning (message only)
-```
-
-Deployed chatbot endpoint:
-
-```text
-https://bob-vault-demo.byeongwook-heo.sbx.hashidemos.io
-```
-
-The chatbot and MCP runtime share one private ECS task. A rebuild requires the
-IBM Verify user OIDC and STS client IDs as external tenant inputs. The planning
-runtime remains on a private peered network and is started only for event
-preparation and live-demo windows.
-
-For the existing deployed environment, load fresh short-lived AWS credentials
-and verify it with:
-
-```bash
-make aws-preflight
-make smoke
-make access-tier-smoke
-make demo-status
-```
-
-For a new installation or a full rebuild, follow the ordered
-[AWS environment and installation guide](docs/INSTALLATION.md). It documents
-the existing account/network prerequisites, AWS-only build path, IBM Verify
-OIDC/OBO setup, Vault/RDS bootstrap, access methods, validation, and cleanup
-guardrails.
-
-Additional references:
-
-- [current implementation status](IMPLEMENTATION_STATUS.md)
-- [chatbot Verify/OBO setup](docs/CHATBOT_VERIFY_SETUP.md)
-- [access-tier rollout](docs/ACCESS_TIER_SETUP.md)
-- [architecture](docs/ARCHITECTURE.md)
-- [editable draw.io architecture](docs/bob-vault-nhi-demo-architecture.drawio)
-- [event team EC2 access](docs/EC2_TEAM_ACCESS.md)
-- [operations runbook](docs/OPERATIONS_RUNBOOK.md)
-- [threat model](docs/THREAT_MODEL.md)
+This demo is maintained in the standalone repository linked above. The old demo files were removed from this branch's current tree. Git history is retained; this is not a history purge. Access to the new private repository requires permission.
