@@ -1,4 +1,4 @@
-> 공개용 예시: 아래 주소·리소스 ID·파일명은 익명화되었습니다. 실제 접속값은 본인 환경에서 확인하세요. 과거 작업 기록은 현재 서비스 상태를 보장하지 않습니다.
+> 주소와 리소스 ID는 예시입니다. 실제 값은 배포 환경에 맞게 지정하세요.
 
 # HashiCorp Enterprise AWS Lab 구성도
 
@@ -8,9 +8,9 @@
 
 ```mermaid
 flowchart TB
-  DEV["작업자 MacBook"]
-  GH["GitHub Repository: Byeongwook-Heo/Hashicorp-"]
-  BR["Branch: codex/enterprise-aws-lab"]
+  DEV["운영자 CLI"]
+  GH["Git Repository"]
+  BR["Reviewed Terraform Configuration"]
   HCP["HCP Terraform Workspace: hashicorp_lab-enterprise-dev"]
   STATE["HCP Terraform Remote State"]
   LOCAL["Local Execution: envs/dev"]
@@ -24,7 +24,7 @@ flowchart TB
   DEV -->|"terraform apply"| LOCAL
   LOCAL --> STATE
   LOCAL --> AWSAPI
-  AGENT -. "별도 agent pool idle" .-> HCP
+  AGENT -. "Agent execution option" .-> HCP
 ```
 
 ## 2. AWS 전체 구성도
