@@ -18,3 +18,9 @@ override.tf.json
 .env
 .DS_Store
 output/
+
+# Private runtime material: keep example configuration only
+private/
+.env.*
+!.env.example
+!*.tfvars.example

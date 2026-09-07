@@ -47,7 +47,7 @@ The Terraform entry point is `infra/aws/terraform/ollama.tf`. Bootstrap logic is
 From the portal path:
 
 ```bash
-curl http://security-portal-test-alb-951069000.ap-northeast-2.elb.amazonaws.com/api/health/llm
+curl http://service.example.invalid/api/health/llm
 ```
 
 Expected result:

@@ -92,7 +92,7 @@ The current lab Vault nodes are private. Browser or backend access from a laptop
 Example tunnel when Bastion is reachable:
 
 ```bash
-ssh -i ~/Downloads/Byeongwook.pem -L 8200:10.40.10.202:8200 ubuntu@<bastion-public-ip>
+ssh -i ~/.ssh/lab.pem -L 8200:192.0.2.202:8200 ubuntu@<bastion-public-ip>
 ```
 
 Then:

@@ -8,18 +8,18 @@ The isolated AWS test environment for the Security Portal is deployed and reacha
 
 - Environment: `security-portal-test`
 - Region: `ap-northeast-2`
-- Portal URL: `http://security-portal-test-alb-951069000.ap-northeast-2.elb.amazonaws.com`
+- Portal URL: `http://service.example.invalid`
 - ECS cluster: `security-portal-test-cluster`
 - Frontend service: `security-portal-test-frontend`
 - Backend service: `security-portal-test-backend`
 - Frontend ECR repository: `security-portal-test-frontend`
 - Backend ECR repository: `security-portal-test-backend`
 - CodeBuild deployment project: `security-portal-test-app-deploy`
-- CodeBuild source bucket: `security-portal-test-codebuild-source-063455554839`
+- CodeBuild source bucket: `security-portal-test-codebuild-source-123456789012`
 - Database: private RDS PostgreSQL
 - Runtime database URL: stored in AWS Secrets Manager
 - Plugin Factory assistant: private Ollama GPU service
-- Ollama instance: `i-0d5f6e9e55891b9ac` (`g6.xlarge`, NVIDIA L4)
+- Ollama instance: `i-00000000000000000` (`g6.xlarge`, NVIDIA L4)
 - Ollama model: `qwen3:8b`
 - Ollama access token: stored in AWS Secrets Manager
 

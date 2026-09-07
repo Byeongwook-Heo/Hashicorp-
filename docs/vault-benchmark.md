@@ -1,3 +1,5 @@
+> 공개용 예시: 아래 주소·리소스 ID·파일명은 익명화되었습니다. 실제 접속값은 본인 환경에서 확인하세요. 과거 작업 기록은 현재 서비스 상태를 보장하지 않습니다.
+
 # Vault Benchmark
 
 작성일: 2026-06-23
@@ -7,11 +9,11 @@
 ```text
 Vault version:      2.0.3+ent
 Vault topology:     3-node integrated storage Raft cluster
-Vault leader:       i-0711d6a1adb0e1609 / 10.40.10.202
-Vault standbys:     i-01d934cd430ab6576 / 10.40.11.68, i-013740958d1b26329 / 10.40.10.147
-Benchmark runner:   i-0892a214dc539c83f / 10.40.10.98 / c7g.2xlarge
+Vault leader:       i-00000000000000000 / 192.0.2.202
+Vault standbys:     i-00000000000000000 / 192.0.2.68, i-00000000000000000 / 192.0.2.147
+Benchmark runner:   i-00000000000000000 / 192.0.2.98 / c7g.2xlarge
 Benchmark tools:    vault-benchmark, wrk
-Vault target:       http://10.40.10.202:8200
+Vault target:       http://192.0.2.202:8200
 ```
 
 ## 실행 구조
@@ -42,7 +44,7 @@ PDF 스타일 matrix 및 1000만 개 부하 테스트 결과는 `docs/vault-benc
 ```text
 Command:      DURATION=10s run-vault-benchmark transit-smoke
 Result dir:   /opt/vault-benchmark/results/20260623T083716Z-transit-smoke
-Target:       http://10.40.10.202:8200
+Target:       http://192.0.2.202:8200
 ```
 
 | Operation | Count | Rate | Throughput | Mean | P95 | P99 | Success |
@@ -57,7 +59,7 @@ Commands:
   prepare-transform-fpe
   THREADS=2 CONNECTIONS=2 CARD_COUNT=20 DURATION=10s run-transform-fpe-wrk
 Result dir: /opt/vault-benchmark/results/20260623T083745Z-transform-fpe-20cards-t2-c2
-Target:     http://10.40.10.202:8200
+Target:     http://192.0.2.202:8200
 ```
 
 | Scenario | Threads | Connections | Card Count | Duration | Requests | Requests/sec | Avg Latency | Max Latency |
@@ -71,7 +73,7 @@ SSM 접속:
 ```bash
 aws ssm start-session \
   --region ap-northeast-2 \
-  --target i-0892a214dc539c83f
+  --target i-00000000000000000
 ```
 
 Vault 상태 확인:

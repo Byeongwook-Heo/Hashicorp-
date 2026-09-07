@@ -25,13 +25,11 @@ variable "default_tags" {
 variable "ami_id" {
   description = "Approved arm64 Ubuntu 24.04 AMI ID."
   type        = string
-  default     = "ami-0de44fe9c10f5cac7"
 }
 
 variable "key_name" {
   description = "Existing EC2 key pair name."
   type        = string
-  default     = "Byeongwook"
 }
 
 variable "azs" {
@@ -367,5 +365,5 @@ variable "bastion_root_volume_size" {
 variable "bastion_allowed_ssh_cidrs" {
   description = "CIDR blocks allowed to SSH to the bastion host."
   type        = list(string)
-  default     = ["121.190.86.98/32"]
+  default     = []
 }
