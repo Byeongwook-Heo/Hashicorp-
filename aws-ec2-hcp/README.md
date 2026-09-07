@@ -1,72 +1,30 @@
-# AWS EC2 with HCP Terraform
+# AWS EC2 · HCP Terraform
 
-This configuration manages a small AWS lab EC2 instance through an HCP Terraform workspace.
+[한국어](README.md) · [English](README.en.md)
 
-## What It Creates
+## 목적
 
-- Existing security group attached to the EC2 instance
-- EC2 instance from the approved Ubuntu 24.04 arm64 AMI
+기존 네트워크와 보안그룹을 사용해 EC2를 구성하고 원격 Terraform 실행을 연습하는 예제입니다.
 
-The current AWS sandbox session policy explicitly denies creating new VPC, IAM role, and security group resources from remote runners, so this configuration uses the existing default VPC/subnet, existing security group, and existing EC2 key pair.
+## 기대 효과
 
-## Approved AMI
+- 원격 워크스페이스의 입력값·계획·상태 관리 흐름을 이해합니다.
 
-The instance uses the approved AMI from the screenshot:
+## 주요 기능과 구성
 
-```text
-AMI ID: ami-00000000000000000
-AMI name: hc-base-ubuntu-2404-arm64-20260622041515
-Owner account: 888995627335
-Architecture: arm64
-Platform: Linux/UNIX
-Virtualization: hvm
-Root device: /dev/sda1
-Root device type: EBS
-```
+- EC2 인스턴스, 기존 서브넷·보안그룹·키 페어 입력
+- ARM64 AMI와 호환되는 인스턴스 유형 필요
 
-Because this AMI is `arm64`, the default instance type is `t4g.2xlarge`. Do not use `t3.micro` or other x86_64-only instance types with this AMI.
+## 시작하기
 
-AMI IDs are region-specific. If `ami-00000000000000000` is not in `ap-northeast-2`, set `aws_region` and `ami_id` to the matching region and copied AMI ID.
-
-## HCP Terraform Connection
-
-The workspace is configured for HCP Terraform:
-
-```text
-hostname: app.terraform.io
-organization: hashicorp_lab
-workspace: aws-ec2-dev
-```
-
-## AWS Authentication for Runs
-
-For the first test, the fastest option is to add these as sensitive environment variables in the Terraform Enterprise workspace:
-
-```text
-AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY
-AWS_SESSION_TOKEN    # only if using temporary credentials
-```
-
-For Enterprise-style operation, prefer AWS dynamic provider credentials or Vault-backed dynamic credentials instead of long-lived access keys.
-
-## Run
+이 디렉터리에서 `variables.tf`와 backend/cloud 설정을 확인하고 접근 가능한 환경 값을 지정하세요.
 
 ```bash
-terraform -chdir=aws-ec2-tfe plan
-terraform -chdir=aws-ec2-tfe apply
+terraform init
+terraform validate
+terraform plan
 ```
 
-The plan and apply run in Terraform Enterprise, and the CLI streams the result locally.
+## 범위와 제약사항
 
-After apply, connect with SSH:
-
-```bash
-ssh -i ~/.ssh/lab.pem ubuntu@<instance-public-ip>
-```
-
-## Clean Up
-
-```bash
-terraform -chdir=aws-ec2-tfe destroy
-```
+AMI ID는 리전과 계정 권한에 따라 다릅니다. 실제 SSH CIDR을 최소 범위로 지정하고, AWS 인증은 워크스페이스의 동적 자격증명 또는 승인된 secret 공급 경로를 사용하세요. 적용 시 EC2·스토리지 비용이 발생합니다.
