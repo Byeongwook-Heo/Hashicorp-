@@ -1,34 +1,28 @@
-# HashiCorp 실습 자료
+# HashiCorp Guides
 
-Vault 운영·설정 및 Terraform 학습 문서를 모아 둔 저장소입니다.
+[한국어](README.md) · [English](README.en.md)
 
-## Vault Agentic AI Demo
+## 목적
 
-AI Agent의 사용자 인증·OBO Token Exchange·MCP·Vault·DB 접근제어 데모는 **별도 저장소에서 관리합니다**.
+Vault·Terraform 설치와 운영을 학습하기 위한 기술 문서 모음입니다.
 
-- [Vault Agentic AI Demo — 한국어](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo)
-- [English README](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo/blob/main/README.en.md)
-- [설치 가이드](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo/blob/main/docs/SETUP.ko.md)
+## 기대 효과
 
-새 저장소에는 시퀀스 다이어그램, 실제 챗봇 UI, 전체·제한·미승인 시나리오와 익명화된 배포 템플릿이 포함됩니다. 비공개 저장소는 접근 권한이 있는 계정으로 로그인해야 볼 수 있습니다.
+- 설치 전 확인할 항목을 빠뜨리지 않도록 돕습니다.
+- 환경별 작업 순서와 검증 기준을 준비할 때 참고할 수 있습니다.
 
-## 독립 프로젝트
+## 주요 기능과 구성
 
-브랜치에 함께 있던 인프라와 애플리케이션은 다음 저장소에서 관리합니다.
-
-| 프로젝트 | 기준 저장소 | 범위 |
-|---|---|---|
-| Enterprise AWS Lab | [hashicorp-enterprise-aws-lab](https://github.com/Byeongwook-Heo/hashicorp-enterprise-aws-lab) | Terraform 인프라, Vault·Keycloak·MCP·벤치마크·Bastion |
-| Vault Security Portal | [vault-security-portal](https://github.com/Byeongwook-Heo/vault-security-portal) | 셀프서비스 포털, 승인·감사, Plugin Factory 확장 |
-
-분리 저장소는 우선 비공개입니다. 기존 `enterprise-aws-lab`, `vault-portal-ui-refresh`, `factory-productivity-suite` 브랜치는 이력을 보존하며 후속 개발은 위 저장소의 `main`에서 진행합니다. 저장소 분리 과정에서는 AWS 배포를 실행하지 않았습니다.
-
-## 기존 문서
-
-- [Terraform 설정](TERRAFORM_SETUP.md)
+- [TERRAFORM_SETUP](TERRAFORM_SETUP.md)
 - [Vault Guide](Vault%20Guide.md)
-- [Vault 가이드](vault-guide.md)
-- [Vault 업그레이드](vault-upgrade-runbook.md)
-- [Vault 노트](vault.md)
+- [vault-guide](vault-guide.md)
+- [vault-upgrade-runbook](vault-upgrade-runbook.md)
+- [vault](vault.md)
 
-실제 자격증명, 개인 경로, 운영 환경 식별값은 이 문서의 예제로 사용하지 않습니다.
+## 시작하기
+
+필요한 문서를 선택한 뒤 제품 버전, OS, 권한, 네트워크와 라이선스 조건부터 확인하세요. 예제 명령의 주소·경로·입력값을 본인 환경에 맞게 바꾸고, 테스트 환경에서 검토 후 실행합니다.
+
+## 범위와 제약사항
+
+문서 중심 저장소이며 자동 설치나 현재 서비스 상태를 보증하지 않습니다. 제품 버전에 따라 절차가 달라질 수 있습니다.
