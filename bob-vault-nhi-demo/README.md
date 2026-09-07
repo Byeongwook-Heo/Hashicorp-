@@ -1,15 +1,23 @@
-# Vault Agentic AI Demo — 저장소 이전
+# Vault Agentic AI Demo
 
-이 데모는 별도 저장소에서 관리합니다.
+[한국어](README.md) · [English](README.en.md)
 
-- [한국어 README · 작동 플로우 · 챗봇 UI](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo)
-- [English README](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo/blob/main/README.en.md)
-- [설치 가이드](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo/blob/main/docs/SETUP.ko.md)
+## 목적
 
-기존 데모 파일은 이 브랜치의 최신 버전에서 제거했습니다. 새 저장소에는 개인 경로와 실제 환경 식별값을 제외한 소스·문서·템플릿이 있습니다. 비공개 저장소는 승인된 계정으로 접근해야 합니다.
+AI Agent의 사용자 위임과 데이터 접근제어 데모를 안내합니다.
 
-이 브랜치는 이전 안내용이며 새 작업은 전용 저장소에서 진행합니다. 과거 Git 이력은 보존되어 있습니다. 현재 파일 제거가 과거 커밋의 완전 삭제를 의미하지 않습니다.
+## 기대 효과
 
----
+- 인증·위임·조회 권한을 비교하며 학습합니다.
 
-This demo is maintained in the standalone repository linked above. The old demo files were removed from this branch's current tree. Git history is retained; this is not a history purge. Access to the new private repository requires permission.
+## 주요 기능과 구성
+
+- Verify, ContextForge, MCP, Vault, PostgreSQL
+
+## 시작하기
+
+[데모 프로젝트](https://github.com/Byeongwook-Heo/vault-agentic-ai-demo)에서 챗봇 화면, 시퀀스 다이어그램과 설치 절차를 확인하세요.
+
+## 범위와 제약사항
+
+이 디렉터리는 안내 문서이며 실행 코드를 포함하지 않습니다.
