@@ -14,7 +14,7 @@ The current AWS sandbox session policy explicitly denies creating new VPC, IAM r
 The instance uses the approved AMI from the screenshot:
 
 ```text
-AMI ID: ami-0de44fe9c10f5cac7
+AMI ID: ami-00000000000000000
 AMI name: hc-base-ubuntu-2404-arm64-20260622041515
 Owner account: 888995627335
 Architecture: arm64
@@ -26,7 +26,7 @@ Root device type: EBS
 
 Because this AMI is `arm64`, the default instance type is `t4g.2xlarge`. Do not use `t3.micro` or other x86_64-only instance types with this AMI.
 
-AMI IDs are region-specific. If `ami-0de44fe9c10f5cac7` is not in `ap-northeast-2`, set `aws_region` and `ami_id` to the matching region and copied AMI ID.
+AMI IDs are region-specific. If `ami-00000000000000000` is not in `ap-northeast-2`, set `aws_region` and `ami_id` to the matching region and copied AMI ID.
 
 ## HCP Terraform Connection
 
@@ -62,7 +62,7 @@ The plan and apply run in Terraform Enterprise, and the CLI streams the result l
 After apply, connect with SSH:
 
 ```bash
-ssh -i ~/Downloads/Byeongwook.pem ubuntu@<instance-public-ip>
+ssh -i ~/.ssh/lab.pem ubuntu@<instance-public-ip>
 ```
 
 ## Clean Up

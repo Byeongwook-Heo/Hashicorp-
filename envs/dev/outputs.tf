@@ -107,5 +107,5 @@ output "bastion_private_ip" {
 
 output "bastion_ssh_command" {
   description = "SSH command for the bastion host."
-  value       = "ssh -i ~/Downloads/Byeongwook.pem ubuntu@${module.bastion.public_ip}"
+  value       = "ssh -i ~/.ssh/lab.pem ubuntu@${module.bastion.public_ip}"
 }
